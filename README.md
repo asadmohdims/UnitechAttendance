@@ -1,10 +1,12 @@
 # Shop Attendance Tracker
 
-A single-file web app to track employee attendance for a small shop (< 10 employees).
+A web app to track employee attendance for a small shop (< 10 employees).
 
 ## Features
 
 - Employees clock in/out by tapping their name; a photo is captured via the device camera as proof.
+- Punches are captured instantly and sync to the server in the background, so a brief
+  internet drop at the shop doesn't lose a clock-in/out — it just syncs a little later.
 - Daily hours are calculated automatically (supports overnight shifts and fixing missed punches).
 - Records view per day with in/out photos, editable times.
 - Monthly report: hours per day per employee, days worked, total hours — downloadable as Excel (.xlsx).
@@ -16,6 +18,8 @@ Open the hosted page (GitHub Pages) on the tablet/phone at the shop entry and al
 ## Data storage & security
 
 Data lives in a [Supabase](https://supabase.com) free-tier project: employees and attendance records in Postgres, clock-in/out photos in a private storage bucket. The whole site requires sign-in (Supabase Auth); the Records, Report and Employees tabs are additionally locked behind an admin password re-entry, so employees at the shared tablet can only clock in/out.
+
+Clock-in/out itself is offline-resilient: each punch is written to the browser's local storage first and synced to Supabase in the background, so a spotty shop internet connection won't lose a timestamp or photo. (That local queue lives in the browser, so wiping the kiosk device's browser data before a punch has synced would lose that one punch — worth keeping in mind for whatever device ends up running the kiosk day to day.)
 
 ### One-time setup
 

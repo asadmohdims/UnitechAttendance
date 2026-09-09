@@ -1,0 +1,25 @@
+export const $ = id => document.getElementById(id);
+
+export function toast(msg){
+  const t = $('toast');
+  t.textContent = msg; t.classList.add('show');
+  setTimeout(() => t.classList.remove('show'), 3200);
+}
+
+export function busy(on){ $('busy').style.display = on ? 'block' : 'none'; }
+
+export const pad = n => String(n).padStart(2,'0');
+
+export const dateStr = (d=new Date()) => `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`;
+
+export const fmtTime = iso => iso
+  ? new Date(iso).toLocaleTimeString('en-IN', {hour:'numeric', minute:'2-digit', hour12:true}).replace(/am|pm/i, part => part.toUpperCase())
+  : '—';
+
+export function fmtHours(h){
+  if(h == null) return '—';
+  const m = Math.round(h*60);
+  return `${Math.floor(m/60)}:${pad(m%60)}`;
+}
+
+export function recHours(r){ return r.clock_out ? Math.max(0,(new Date(r.clock_out) - new Date(r.clock_in))/3600000) : null; }

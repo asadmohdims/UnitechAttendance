@@ -43,6 +43,11 @@ create policy "authenticated read photos" on storage.objects
   for select to authenticated using (bucket_id = 'photos');
 create policy "authenticated delete photos" on storage.objects
   for delete to authenticated using (bucket_id = 'photos');
+-- Needed for re-uploading to an existing path with upsert:true (e.g. "Retake photo") — Supabase
+-- Storage treats overwriting an existing object as an update, not an insert, so without this the
+-- first upload to a path succeeds but every subsequent upsert to that same path hits RLS and fails.
+create policy "authenticated update photos" on storage.objects
+  for update to authenticated using (bucket_id = 'photos');
 
 -- Avatar photo per employee (path in the 'photos' bucket, like records.in_photo/out_photo)
 alter table employees add column if not exists avatar text;

@@ -43,3 +43,6 @@ create policy "authenticated read photos" on storage.objects
   for select to authenticated using (bucket_id = 'photos');
 create policy "authenticated delete photos" on storage.objects
   for delete to authenticated using (bucket_id = 'photos');
+
+-- Avatar photo per employee (path in the 'photos' bucket, like records.in_photo/out_photo)
+alter table employees add column if not exists avatar text;

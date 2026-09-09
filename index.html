@@ -30,6 +30,17 @@
   .emp-tile.in{border-color:var(--green); background:linear-gradient(160deg,#153c2a,var(--card));}
   .emp-tile.in .avatar{border-color:var(--green);}
   .emp-tile.in .status{color:#a7f3c0;}
+  .state-badge{position:absolute; top:10px; right:10px; width:24px; height:24px; border-radius:50%; display:grid; place-items:center; font-size:11px; font-weight:800; background:var(--raised); color:var(--muted); border:1px solid var(--border);}
+  .emp-tile.in .state-badge{background:var(--green); color:var(--green-ink); border-color:var(--green);}
+  #punchConfirm{position:fixed; inset:0; background:rgba(4,9,17,.97); display:none; flex-direction:column; align-items:center; justify-content:center; z-index:140; padding:20px; text-align:center; cursor:pointer;}
+  #punchConfirm.open{display:flex;}
+  #pcPhoto{width:150px; height:150px; border-radius:50%; object-fit:cover; border:4px solid var(--green); margin-bottom:18px;}
+  #punchConfirm.out #pcPhoto{border-color:var(--blue);}
+  #pcCheck{width:56px; height:56px; border-radius:50%; background:var(--green); color:var(--green-ink); font-size:32px; font-weight:900; display:grid; place-items:center; margin-bottom:14px;}
+  #punchConfirm.out #pcCheck{background:var(--blue); color:#07111d;}
+  #pcAction{font-size:28px; font-weight:800; margin-bottom:4px;}
+  #pcName{font-size:20px; color:var(--muted); margin-bottom:10px;}
+  #pcDetail{font-size:15px; color:var(--muted);}
   .btn{display:inline-flex; align-items:center; justify-content:center; min-height:52px; border:none; border-radius:13px; padding:13px 20px; font-size:16px; font-weight:750; cursor:pointer; color:#07111d; background:var(--blue);}
   .btn.green{background:var(--green); color:var(--green-ink);} .btn.red{background:var(--red); color:#500716;}
   .btn.ghost{background:transparent; color:var(--ink); border:1px solid var(--border);}
@@ -241,6 +252,15 @@
   <p class="modal-err" id="camError"></p>
 </div>
 
+<!-- Punch confirmation -->
+<div id="punchConfirm">
+  <img id="pcPhoto" alt="">
+  <div id="pcCheck">✓</div>
+  <div id="pcAction"></div>
+  <div id="pcName"></div>
+  <div id="pcDetail" class="muted"></div>
+</div>
+
 <!-- Photo viewer -->
 <div id="photoView" onclick="this.classList.remove('open')"><img id="photoViewImg" alt="attendance photo"></div>
 
@@ -327,6 +347,25 @@ async function signedUrl(path){
   if(DEMO_MODE) return demoPhotoUrl(path);
   const {data} = await sb.storage.from('photos').createSignedUrl(path, 3600);
   return data ? data.signedUrl : null;
+}
+
+/* ---------- avatars ---------- */
+function initialsAvatarUrl(name){
+  const initials = (name || '?').trim().split(/\s+/).map(w => w[0]).slice(0, 2).join('').toUpperCase() || '?';
+  let hash = 0;
+  for(let i = 0; i < name.length; i++) hash = (hash * 31 + name.charCodeAt(i)) >>> 0;
+  const hue = hash % 360;
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 68 68">`
+    + `<circle cx="34" cy="34" r="34" fill="hsl(${hue} 45% 32%)"/>`
+    + `<text x="34" y="35" text-anchor="middle" dominant-baseline="central" font-family="-apple-system,sans-serif" font-size="26" font-weight="700" fill="hsl(${hue} 70% 88%)">${initials}</text></svg>`;
+  return 'data:image/svg+xml;utf8,' + encodeURIComponent(svg);
+}
+function applyAvatar(img, emp){
+  img.src = initialsAvatarUrl(emp.name);
+  const path = emp.avatar;
+  if(!path) return;
+  if(path.startsWith('assets/')){ img.src = path; return; }
+  signedUrl(path).then(u => { if(u) img.src = u; });
 }
 
 /* ---------- auth ---------- */
@@ -474,29 +513,38 @@ function renderHome(){
     div.className = 'emp-tile' + (open ? ' in' : '');
     div.setAttribute('role', 'button');
     div.setAttribute('tabindex', '0');
-    div.innerHTML = '<img class="avatar" alt=""><div class="name"></div><div class="status"></div>';
+    div.innerHTML = '<span class="state-badge"></span><img class="avatar" alt=""><div class="name"></div><div class="status"></div>';
     const avatar = div.querySelector('.avatar');
-    avatar.src = e.avatar || 'assets/avatars/shakib.png';
-    avatar.alt = `${e.name} profile placeholder`;
+    applyAvatar(avatar, e);
+    avatar.alt = e.name;
+    div.querySelector('.state-badge').textContent = open ? '■' : '▶';
     div.querySelector('.name').textContent = e.name;
     div.querySelector('.status').innerHTML = open
       ? `● Working since ${fmtTime(open.clock_in)}<br>Touch to finish work`
       : 'Touch to start work';
-    div.onclick = () => startCapture(e);
-    div.onkeydown = ev => { if(ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); startCapture(e); } };
+    div.onclick = () => startCapture(e, 'punch');
+    div.onkeydown = ev => { if(ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); startCapture(e, 'punch'); } };
     grid.appendChild(div);
   });
 }
 
 /* ---------- camera + clock in/out ---------- */
-let stream = null, pendingEmp = null;
-async function startCapture(emp){
+let stream = null, pendingEmp = null, captureMode = 'punch';
+async function startCapture(emp, mode){
   pendingEmp = emp;
+  captureMode = mode || 'punch';
   const open = openSessions[emp.id];
-  $('camTitle').textContent = open ? `Finish work, ${emp.name}?` : `Start work, ${emp.name}?`;
-  document.querySelector('.camera-help').textContent = open
-    ? 'Look at the camera, then take your photo to finish work.'
-    : 'Look at the camera, then take your photo to start work.';
+  if(captureMode === 'avatar'){
+    $('camTitle').textContent = `Take ${emp.name}'s photo`;
+    document.querySelector('.camera-help').textContent = 'Look at the camera, then take a clear photo for their profile.';
+    $('btnCamCancel').textContent = 'Skip for now';
+  }else{
+    $('camTitle').textContent = open ? `Finish work, ${emp.name}?` : `Start work, ${emp.name}?`;
+    document.querySelector('.camera-help').textContent = open
+      ? 'Look at the camera, then take your photo to finish work.'
+      : 'Look at the camera, then take your photo to start work.';
+    $('btnCamCancel').textContent = 'Cancel';
+  }
   $('camError').textContent = '';
   $('camModal').classList.add('open');
   $('btnCapture').disabled = true;
@@ -523,15 +571,36 @@ $('btnCapture').onclick = async () => {
   c.getContext('2d').drawImage(video, 0, 0, c.width, c.height);
   const blob = await new Promise(res => c.toBlob(res, 'image/jpeg', 0.7));
   const emp = pendingEmp;
+  const mode = captureMode;
   $('btnCapture').disabled = true;
   busy(true);
   try{
+    if(mode === 'avatar'){
+      const path = `${emp.id}/avatar.jpg`;
+      if(DEMO_MODE){
+        await demoStorePhoto(path, blob);
+        emp.avatar = path;
+        localStorage.setItem(DEMO_EMPLOYEES_KEY, JSON.stringify(employees));
+      }else{
+        const up = await sb.storage.from('photos').upload(path, blob, {contentType:'image/jpeg', upsert:true});
+        if(up.error) throw up.error;
+        const {error} = await sb.from('employees').update({avatar:path}).eq('id', emp.id);
+        if(error) throw error;
+        await refreshAll();
+      }
+      stopCam();
+      renderHome(); renderEmployees();
+      toast(`Photo saved for ${emp.name}`);
+      busy(false);
+      return;
+    }
     const path = `${emp.id}/${Date.now()}.jpg`;
     const open = openSessions[emp.id];
     const nowIso = new Date().toISOString();
     if(DEMO_MODE){
       await demoStorePhoto(path, blob);
       const records = demoRecords();
+      let action;
       if(open){
         const idx = records.findIndex(r => r.id === open.id);
         if(idx < 0) throw new Error('Demo attendance record not found');
@@ -539,34 +608,37 @@ $('btnCapture').onclick = async () => {
         records[idx].out_photo = path;
         demoSaveRecords(records);
         delete openSessions[emp.id];
-        toast(`${emp.name} clocked OUT — ${fmtHours((Date.now() - new Date(open.clock_in))/3600000)} hrs`);
+        action = 'out';
       }else{
         const data = {id:'demo-rec-' + Date.now(), emp_id:emp.id, date:dateStr(), clock_in:nowIso, clock_out:null, in_photo:path, out_photo:null, created_at:nowIso};
         records.push(data);
         demoSaveRecords(records);
         openSessions[emp.id] = data;
-        toast(`${emp.name} clocked IN at ${fmtTime(nowIso)}`);
+        action = 'in';
       }
       stopCam();
       renderHome();
+      showPunchConfirm(emp, action, blob, open);
       busy(false);
       return;
     }
     const up = await sb.storage.from('photos').upload(path, blob, {contentType:'image/jpeg'});
     if(up.error) throw up.error;
+    let action;
     if(open){
       const {error} = await sb.from('records').update({clock_out:nowIso, out_photo:path}).eq('id', open.id);
       if(error) throw error;
       delete openSessions[emp.id];
-      toast(`${emp.name} clocked OUT — ${fmtHours((Date.now() - new Date(open.clock_in))/3600000)} hrs`);
+      action = 'out';
     }else{
       const {data, error} = await sb.from('records').insert({emp_id:emp.id, date:dateStr(), clock_in:nowIso, in_photo:path}).select().single();
       if(error) throw error;
       openSessions[emp.id] = data;
-      toast(`${emp.name} clocked IN at ${fmtTime(nowIso)}`);
+      action = 'in';
     }
     stopCam();
     renderHome();
+    showPunchConfirm(emp, action, blob, open);
   }catch(err){
     $('camError').textContent = 'Failed: ' + err.message + ' — check internet and try again.';
     $('btnCapture').disabled = false;
@@ -574,26 +646,46 @@ $('btnCapture').onclick = async () => {
   busy(false);
 };
 
+/* ---------- punch confirmation ---------- */
+function showPunchConfirm(emp, action, blob, priorOpen){
+  const el = $('punchConfirm');
+  $('pcPhoto').src = URL.createObjectURL(blob);
+  $('pcName').textContent = emp.name;
+  $('pcAction').textContent = action === 'in' ? 'Clocked IN' : 'Clocked OUT';
+  el.classList.remove('in', 'out');
+  el.classList.add(action);
+  $('pcDetail').textContent = action === 'in'
+    ? `Started at ${fmtTime(new Date().toISOString())}`
+    : `Worked ${fmtHours((Date.now() - new Date(priorOpen.clock_in))/3600000)} hrs today`;
+  el.classList.add('open');
+  clearTimeout(showPunchConfirm._t);
+  showPunchConfirm._t = setTimeout(() => el.classList.remove('open'), 1800);
+}
+$('punchConfirm').onclick = () => $('punchConfirm').classList.remove('open');
+
 /* ---------- employees ---------- */
 $('btnAddEmp').onclick = async () => {
   const name = $('newEmpName').value.trim();
   if(!name) return;
   busy(true);
   if(DEMO_MODE){
-    employees.push({id:'demo-' + Date.now(), name, active:true});
+    const emp = {id:'demo-' + Date.now(), name, active:true};
+    employees.push(emp);
     localStorage.setItem(DEMO_EMPLOYEES_KEY, JSON.stringify(employees));
     $('newEmpName').value = '';
     busy(false);
     renderHome();
     renderEmployees();
+    startCapture(emp, 'avatar');
     return;
   }
-  const {error} = await sb.from('employees').insert({name});
+  const {data, error} = await sb.from('employees').insert({name}).select().single();
   busy(false);
   if(error) return toast('Failed: ' + error.message);
   $('newEmpName').value = '';
   await refreshAll();
   renderEmployees();
+  startCapture(data, 'avatar');
 };
 function renderEmployees(){
   const tb = document.querySelector('#empTable tbody');
@@ -601,12 +693,20 @@ function renderEmployees(){
   $('empEmpty').style.display = employees.length ? 'none' : '';
   employees.forEach(e => {
     const tr = document.createElement('tr');
+    const tdAvatar = document.createElement('td');
+    const avatarImg = document.createElement('img');
+    avatarImg.className = 'photo-thumb'; avatarImg.style.borderRadius = '50%'; avatarImg.alt = '';
+    applyAvatar(avatarImg, e);
+    tdAvatar.appendChild(avatarImg);
     const tdName = document.createElement('td');
     tdName.textContent = e.name + (e.active ? '' : ' (inactive)');
     const tdBtns = document.createElement('td');
     tdBtns.style.textAlign = 'right';
+    const bPhoto = document.createElement('button');
+    bPhoto.className = 'btn small ghost'; bPhoto.textContent = e.avatar ? 'Retake photo' : 'Add photo';
+    bPhoto.onclick = () => startCapture(e, 'avatar');
     const bRen = document.createElement('button');
-    bRen.className = 'btn small ghost'; bRen.textContent = 'Rename';
+    bRen.className = 'btn small ghost'; bRen.style.marginLeft = '8px'; bRen.textContent = 'Rename';
     bRen.onclick = async () => {
       const n = prompt('New name', e.name);
       if(!n || !n.trim()) return;
@@ -635,8 +735,8 @@ function renderEmployees(){
       if(error) return toast('Failed: ' + error.message);
       await refreshAll(); renderEmployees();
     };
-    tdBtns.append(bRen, bTog);
-    tr.append(tdName, tdBtns);
+    tdBtns.append(bPhoto, bRen, bTog);
+    tr.append(tdAvatar, tdName, tdBtns);
     tb.appendChild(tr);
   });
 }
@@ -835,7 +935,7 @@ async function renderReport(){
     row.className = 'report-person';
     const avatar = document.createElement('img');
     avatar.className = 'report-avatar'; avatar.alt = '';
-    avatar.src = employee.avatar || 'assets/avatars/shakib.png';
+    applyAvatar(avatar, employee);
     const who = document.createElement('div');
     const name = document.createElement('div'); name.className = 'report-name'; name.textContent = employee.name;
     const days = document.createElement('span'); days.className = 'report-detail'; days.textContent = `${daysWorked} ${daysWorked === 1 ? 'attendance day' : 'attendance days'}`;

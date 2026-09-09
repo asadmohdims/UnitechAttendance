@@ -4,6 +4,9 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
 <title>Unitech Attendance</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bebas+Neue&display=swap">
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <style>
@@ -20,18 +23,38 @@
   nav{display:none;}
   main{padding:12px 20px 80px; max-width:980px; margin:0 auto;}
   .card{background:var(--card); border:1px solid var(--border); border-radius:18px; padding:18px; margin-bottom:16px; box-shadow:0 14px 35px rgba(0,0,0,.17);}
-  .emp-grid{display:grid; grid-template-columns:repeat(auto-fill,minmax(160px,1fr)); gap:14px;}
-  .emp-tile{position:relative; min-height:166px; background:var(--card); border:2px solid var(--border); border-radius:18px; padding:20px 12px 16px; text-align:center; cursor:pointer; box-shadow:0 9px 22px rgba(0,0,0,.15); transition:transform .14s,background .14s,border-color .14s;}
-  .emp-tile:active{transform:scale(.97); background:var(--raised);}
-  .emp-tile:focus-visible,.btn:focus-visible{outline:3px solid var(--blue); outline-offset:3px;}
-  .emp-tile .avatar{display:block; width:68px; height:68px; margin:0 auto 12px; border:3px solid #293b53; border-radius:50%; background:#293b53; object-fit:cover; color:#e8f0fb;}
-  .emp-tile .name{font-weight:700; font-size:18px; margin-bottom:8px;}
-  .emp-tile .status{font-size:13px; color:var(--muted); font-weight:600; line-height:1.35;}
-  .emp-tile.in{border-color:var(--green); background:linear-gradient(160deg,#153c2a,var(--card));}
-  .emp-tile.in .avatar{border-color:var(--green);}
-  .emp-tile.in .status{color:#a7f3c0;}
-  .state-badge{position:absolute; top:10px; right:10px; width:24px; height:24px; border-radius:50%; display:grid; place-items:center; font-size:11px; font-weight:800; background:var(--raised); color:var(--muted); border:1px solid var(--border);}
-  .emp-tile.in .state-badge{background:var(--green); color:var(--green-ink); border-color:var(--green);}
+  .btn:focus-visible{outline:3px solid var(--blue); outline-offset:3px;}
+  body.kiosk-active main{display:none;}
+  body.kiosk-active{overflow:hidden;}
+  #tab-home{position:fixed; inset:0; z-index:40; display:flex; background:var(--bg);}
+  .kiosk-side{width:clamp(240px,30vw,360px); flex:0 0 auto; background:linear-gradient(160deg,#101c30,#0a1424); border-right:1px solid var(--border); display:flex; flex-direction:column; justify-content:space-between; padding:28px 26px;}
+  .kiosk-brand{font-weight:700; font-size:15px; color:var(--ink); opacity:.85;}
+  .kiosk-hero{margin:auto 0;}
+  .kiosk-greet{font-family:ui-monospace,monospace; color:var(--blue); font-size:12px; letter-spacing:.14em; text-transform:uppercase; margin-bottom:10px;}
+  .kiosk-time{font-family:'Bebas Neue',sans-serif; color:var(--ink); font-size:clamp(48px,7vw,72px); letter-spacing:.03em; line-height:1; font-variant-numeric:tabular-nums;}
+  .kiosk-date{color:var(--muted); font-size:14px; margin-top:8px;}
+  .kiosk-admin-link{align-self:flex-start; color:var(--muted); font-size:13px; text-decoration:underline; background:none; border:0; padding:8px 0; cursor:pointer;}
+  .kiosk-main{flex:1; display:flex; align-items:center; justify-content:center; padding:32px; overflow:auto;}
+  .kiosk-badges{display:flex; flex-wrap:wrap; align-content:center; justify-content:center; gap:clamp(14px,2vw,22px); max-width:1000px;}
+  .badge-tile{position:relative; width:clamp(122px,13vw,152px); background:var(--card); border:1.5px solid var(--border); border-radius:14px; padding:18px 10px 14px; text-align:center; cursor:pointer; box-shadow:0 10px 24px rgba(0,0,0,.28); transition:transform .14s,background .14s,border-color .14s,box-shadow .14s;}
+  .badge-tile::before{content:""; position:absolute; top:-6px; left:50%; transform:translateX(-50%); width:20px; height:7px; border-radius:4px; background:var(--border);}
+  .badge-tile:active{transform:scale(.96); background:var(--raised);}
+  .badge-tile:focus-visible{outline:3px solid var(--blue); outline-offset:3px;}
+  .badge-tile .avatar{display:block; width:clamp(56px,6vw,72px); height:clamp(56px,6vw,72px); margin:0 auto 12px; border:2.5px solid #293b53; border-radius:12px; object-fit:cover; background:#293b53;}
+  .badge-tile .name{font-weight:700; font-size:15px; margin-bottom:6px;}
+  .badge-tile .status{font-size:12px; color:var(--muted); font-weight:600; line-height:1.35;}
+  .badge-tile.in{border-color:var(--green); background:linear-gradient(160deg,#123524,var(--card)); box-shadow:0 10px 26px rgba(34,197,94,.32); transform:translateY(-3px);}
+  .badge-tile.in .avatar{border-color:var(--green);}
+  .badge-tile.in .status{color:#a7f3c0;}
+  .badge-tile .state-badge{position:absolute; top:-9px; right:-9px; width:24px; height:24px; border-radius:50%; display:grid; place-items:center; font-size:11px; font-weight:800; background:var(--raised); color:var(--muted); border:2px solid var(--bg);}
+  .badge-tile.in .state-badge{background:var(--green); color:var(--green-ink);}
+  @media (max-width:760px), (orientation:portrait){
+    #tab-home{flex-direction:column;}
+    .kiosk-side{width:auto; flex-direction:row; align-items:center; justify-content:space-between; padding:16px 18px; border-right:0; border-bottom:1px solid var(--border); position:relative;}
+    .kiosk-hero{margin:0; text-align:right;}
+    .kiosk-time{font-size:28px;}
+    .kiosk-admin-link{position:absolute; bottom:-6px; left:18px; padding:4px 0;}
+  }
   #punchConfirm{position:fixed; inset:0; background:rgba(4,9,17,.97); display:none; flex-direction:column; align-items:center; justify-content:center; z-index:140; padding:20px; text-align:center; cursor:pointer;}
   #punchConfirm.open{display:flex;}
   #pcPhoto{width:150px; height:150px; border-radius:50%; object-fit:cover; border:4px solid var(--green); margin-bottom:18px;}
@@ -79,11 +102,6 @@
   h3{font-size:16px; margin-bottom:10px;}
   #busy{position:fixed; top:0; left:0; right:0; height:3px; background:var(--blue); display:none; z-index:130; animation:busy 1s linear infinite;}
   @keyframes busy{0%{transform:scaleX(.1); transform-origin:left}50%{transform:scaleX(1)}100%{transform:scaleX(.1); transform-origin:right}}
-  .kiosk-hero{text-align:center; padding:22px 0 25px;}
-  .kiosk-hero .eyebrow{color:var(--green); font-size:14px; font-weight:800; letter-spacing:.11em; text-transform:uppercase;}
-  .kiosk-hero h2{font-size:clamp(29px,6vw,42px); letter-spacing:-.04em; margin:8px 0 10px;}
-  .kiosk-hero p{color:var(--muted); font-size:17px;}
-  .admin-entry{display:block; margin:28px auto 0; color:var(--muted); font-size:14px; text-decoration:underline; background:none; border:0; padding:12px; cursor:pointer;}
   .admin-panel{display:flex; gap:8px; padding:8px; margin-bottom:16px; overflow:auto; background:var(--raised); border-radius:14px;}
   .admin-panel button{white-space:nowrap; min-height:40px; padding:8px 12px; border:1px solid transparent; border-radius:9px; background:transparent; color:var(--muted); cursor:pointer; font-weight:700;}
   .admin-panel button.active{background:var(--card); color:var(--ink); border-color:var(--border);}
@@ -108,15 +126,15 @@
   .report-number{text-align:right; font-variant-numeric:tabular-nums}.report-number strong{font-size:16px}.report-number span{display:block; color:var(--muted); font-size:12px; margin-bottom:2px;}
   .report-detail-toggle{display:block; width:max-content; margin:16px auto 0; border:0; padding:12px; background:none; color:#93c5fd; text-decoration:underline; font-size:14px; font-weight:700; cursor:pointer;}
   #reportDetail{margin-top:16px;}
-  @media (max-width:520px){header{padding:15px 16px} main{padding:8px 16px 70px}.emp-grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:11px}.emp-tile{min-height:151px;padding-top:16px}.emp-tile .name{font-size:16px}.kiosk-hero{padding:18px 0 21px}.kiosk-hero p{font-size:15px} #clock{font-size:12px}.card{padding:14px}}
+  @media (max-width:520px){header{padding:15px 16px} main{padding:8px 16px 70px} #clock{font-size:12px}.card{padding:14px}}
   @media (max-width:620px){.report-summary{grid-template-columns:1fr}.report-top{align-items:stretch; flex-direction:column}.report-top .btn{width:100%}.report-person{grid-template-columns:43px 1fr 82px; gap:10px}.report-person .report-state{grid-column:2; grid-row:2}.report-person .days-worked{display:none}.report-person .report-number:last-child{grid-column:3; grid-row:1 / span 2}.review-alert{align-items:flex-start; flex-direction:column}.review-alert .btn{width:100%}}
 </style>
 </head>
-<body>
+<body class="kiosk-active">
 
 <div id="busy"></div>
 
-<header>
+<header id="topHeader" style="display:none">
   <h1><span class="brand-mark">✓</span>Unitech Attendance</h1>
   <div class="row" style="gap:8px">
     <div id="clock"></div>
@@ -132,6 +150,23 @@
   <button data-tab="employees">Employees 🔒</button>
 </nav>
 
+<!-- HOME (its own fixed-viewport screen, kept outside <main> so hiding <main> in kiosk mode can't hide it too) -->
+<section id="tab-home">
+  <div class="kiosk-side">
+    <div class="kiosk-brand">Unitech Attendance</div>
+    <div class="kiosk-hero">
+      <div class="kiosk-greet" id="kioskGreet"></div>
+      <div class="kiosk-time" id="kioskTime"></div>
+      <div class="kiosk-date" id="kioskDate"></div>
+    </div>
+    <button class="kiosk-admin-link" id="btnAdminEntry">Admin access</button>
+  </div>
+  <div class="kiosk-main">
+    <div class="kiosk-badges" id="empGrid"></div>
+    <p class="muted" id="homeEmpty" style="display:none">No employees yet — ask the admin to add them.</p>
+  </div>
+</section>
+
 <main>
   <div id="adminTools" class="admin-panel" style="display:none">
     <button data-tab="employees">Employees</button>
@@ -139,13 +174,6 @@
     <button data-tab="report">Monthly report</button>
     <button id="btnReturnKiosk">Return to kiosk</button>
   </div>
-  <!-- HOME -->
-  <section id="tab-home">
-    <div class="emp-grid" id="empGrid"></div>
-    <p class="muted" id="homeEmpty" style="display:none; margin-top:10px">No employees yet — ask the admin to add them.</p>
-    <button class="admin-entry" id="btnAdminEntry">Admin access</button>
-  </section>
-
   <!-- RECORDS -->
   <section id="tab-records" class="admin-tab" style="display:none">
     <div class="card">
@@ -450,6 +478,8 @@ function switchTab(tab){
   document.querySelectorAll('nav button').forEach(x => x.classList.toggle('active', x.dataset.tab === tab));
   ['home','records','report','employees'].forEach(t =>
     $('tab-'+t).style.display = (t === tab) ? '' : 'none');
+  document.body.classList.toggle('kiosk-active', tab === 'home');
+  $('topHeader').style.display = tab === 'home' ? 'none' : '';
   $('adminTools').style.display = tab === 'home' ? 'none' : 'flex';
   document.querySelectorAll('#adminTools [data-tab]').forEach(x => x.classList.toggle('active', x.dataset.tab === tab));
   if(tab === 'records') renderRecords();
@@ -474,9 +504,16 @@ document.querySelectorAll('#adminTools [data-tab]').forEach(b => b.onclick = () 
 });
 
 /* ---------- live clock ---------- */
-setInterval(() => {
-  $('clock').textContent = new Date().toLocaleString('en-IN', {weekday:'short', day:'numeric', month:'short', hour:'numeric', minute:'2-digit', hour12:true}).replace(/am|pm/i, part => part.toUpperCase());
-}, 1000);
+function tickClock(){
+  const now = new Date();
+  $('clock').textContent = now.toLocaleString('en-IN', {weekday:'short', day:'numeric', month:'short', hour:'numeric', minute:'2-digit', hour12:true}).replace(/am|pm/i, part => part.toUpperCase());
+  const h = now.getHours();
+  $('kioskGreet').textContent = h < 12 ? 'Good morning' : h < 17 ? 'Good afternoon' : 'Good evening';
+  $('kioskTime').textContent = now.toLocaleTimeString('en-IN', {hour:'numeric', minute:'2-digit', hour12:true}).replace(/am|pm/i, p => p.toUpperCase());
+  $('kioskDate').textContent = now.toLocaleDateString('en-IN', {weekday:'long', day:'numeric', month:'long'});
+}
+tickClock();
+setInterval(tickClock, 1000);
 
 /* ---------- data ---------- */
 async function refreshAll(){
@@ -510,7 +547,7 @@ function renderHome(){
   active.forEach(e => {
     const open = openSessions[e.id];
     const div = document.createElement('div');
-    div.className = 'emp-tile' + (open ? ' in' : '');
+    div.className = 'badge-tile' + (open ? ' in' : '');
     div.setAttribute('role', 'button');
     div.setAttribute('tabindex', '0');
     div.innerHTML = '<span class="state-badge"></span><img class="avatar" alt=""><div class="name"></div><div class="status"></div>';
@@ -520,8 +557,8 @@ function renderHome(){
     div.querySelector('.state-badge').textContent = open ? '■' : '▶';
     div.querySelector('.name').textContent = e.name;
     div.querySelector('.status').innerHTML = open
-      ? `● Working since ${fmtTime(open.clock_in)}<br>Touch to finish work`
-      : 'Touch to start work';
+      ? `Working since ${fmtTime(open.clock_in)}<br>Tap to finish`
+      : 'Tap to start work';
     div.onclick = () => startCapture(e, 'punch');
     div.onkeydown = ev => { if(ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); startCapture(e, 'punch'); } };
     grid.appendChild(div);

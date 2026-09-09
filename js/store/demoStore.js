@@ -65,24 +65,31 @@ function setEmployeeAvatar(id, path){
   saveEmployees(employees);
 }
 
-function clockIn(empId, photoPath){
-  const records = loadRecords();
+async function clockIn(empId, blob){
+  const id = 'demo-rec-' + Date.now();
+  const path = `${empId}/${id}-in.jpg`;
+  await uploadPhoto(path, blob);
   const nowIso = new Date().toISOString();
-  const data = {id:'demo-rec-' + Date.now(), emp_id:empId, date:dateStr(), clock_in:nowIso, clock_out:null, in_photo:photoPath, out_photo:null, created_at:nowIso};
+  const data = {id, emp_id:empId, date:dateStr(), clock_in:nowIso, clock_out:null, in_photo:path, out_photo:null, created_at:nowIso};
+  const records = loadRecords();
   records.push(data);
   saveRecords(records);
   return data;
 }
 
-function clockOut(recordId, photoPath){
+async function clockOut(recordId, blob){
   const records = loadRecords();
   const idx = records.findIndex(r => r.id === recordId);
   if(idx < 0) throw new Error('Demo attendance record not found');
+  const path = `${records[idx].emp_id}/${recordId}-out.jpg`;
+  await uploadPhoto(path, blob);
   records[idx].clock_out = new Date().toISOString();
-  records[idx].out_photo = photoPath;
+  records[idx].out_photo = path;
   saveRecords(records);
   return records[idx];
 }
+
+async function getSyncStatus(){ return {pending:0, stuck:false}; }
 
 function listRecordsForDate(date){
   return loadRecords().filter(r => r.date === date).sort((a, b) => new Date(a.clock_in) - new Date(b.clock_in));
@@ -123,5 +130,5 @@ export const demoStore = {
   listEmployees, addEmployee, renameEmployee, setEmployeeActive, setEmployeeAvatar,
   listOpenSessions, clockIn, clockOut,
   listRecordsForDate, listRecordsForRange, updateRecordTimes, deleteRecord,
-  uploadPhoto, getPhotoUrl
+  uploadPhoto, getPhotoUrl, getSyncStatus
 };

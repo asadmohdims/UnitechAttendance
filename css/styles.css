@@ -22,6 +22,9 @@ body.kiosk-active{overflow:hidden;}
 .kiosk-time{font-family:'Bebas Neue',sans-serif; color:var(--ink); font-size:clamp(48px,7vw,72px); letter-spacing:.03em; line-height:1; font-variant-numeric:tabular-nums;}
 .kiosk-date{color:var(--muted); font-size:14px; margin-top:8px;}
 .kiosk-admin-link{align-self:flex-start; color:var(--muted); font-size:13px; text-decoration:underline; background:none; border:0; padding:8px 0; cursor:pointer;}
+.sync-status{display:none; font-size:12px; font-weight:700; margin-bottom:4px;}
+.sync-status.pending{display:block; color:var(--amber);}
+.sync-status.stuck{display:block; color:var(--red);}
 .kiosk-main{flex:1; display:flex; align-items:center; justify-content:center; padding:32px; overflow:auto;}
 .kiosk-badges{display:flex; flex-wrap:wrap; align-content:center; justify-content:center; gap:clamp(14px,2vw,22px); max-width:1000px;}
 .badge-tile{position:relative; width:clamp(122px,13vw,152px); background:var(--card); border:1.5px solid var(--border); border-radius:14px; padding:18px 10px 14px; text-align:center; cursor:pointer; box-shadow:0 10px 24px rgba(0,0,0,.28); transition:transform .14s,background .14s,border-color .14s,box-shadow .14s;}

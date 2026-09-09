@@ -22,7 +22,7 @@ Data lives in a [Supabase](https://supabase.com) free-tier project: employees an
 1. Create a free project at supabase.com.
 2. Run `supabase-setup.sql` in the project's SQL Editor.
 3. Create the admin login: Authentication → Users → Add user (email + password, check "Auto Confirm User").
-4. Paste the project URL and anon public key into the CONFIG block at the top of `index.html`.
+4. Paste the project URL and anon public key into the CONFIG block at the top of `js/config.js`, and set `DEMO_MODE = false`.
 
 ## Tech
 
@@ -30,6 +30,6 @@ Plain HTML/CSS/JS, no build step. Supabase JS v2 and [SheetJS](https://sheetjs.c
 
 ## Development
 
-No build step — edit `index.html` directly and open it in a browser to test. Deploys automatically to GitHub Pages on every push to `main` (see `.github/workflows/deploy.yml`).
+No build step — plain HTML/CSS/JS split into ES modules under `js/` (see `CLAUDE.md` for the module map). Because it uses `<script type="module">`, opening `index.html` directly via `file://` won't work in most browsers; serve it locally instead, e.g. `python3 -m http.server 8743` from the project root, then open `http://localhost:8743`. Deploys automatically to GitHub Pages on every push to `main` (see `.github/workflows/deploy.yml`).
 
 `archive/source/` holds an earlier draft, kept for reference only — not part of the live app.

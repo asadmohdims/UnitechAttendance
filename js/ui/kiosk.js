@@ -49,15 +49,13 @@ function punchTap(emp){
 
 async function handlePunchCapture(emp, blob){
   const open = state.openSessions[emp.id];
-  const path = `${emp.id}/${Date.now()}.jpg`;
-  await store.uploadPhoto(path, blob);
   let action;
   if(open){
-    await store.clockOut(open.id, path);
+    await store.clockOut(open.id, blob);
     delete state.openSessions[emp.id];
     action = 'out';
   }else{
-    const rec = await store.clockIn(emp.id, path);
+    const rec = await store.clockIn(emp.id, blob);
     state.openSessions[emp.id] = rec;
     action = 'in';
   }
@@ -80,3 +78,14 @@ function showPunchConfirm(emp, action, blob, priorOpen){
   showPunchConfirm._t = setTimeout(() => el.classList.remove('open'), 1800);
 }
 $('punchConfirm').onclick = () => $('punchConfirm').classList.remove('open');
+
+// Small, mostly-invisible signal for the shop owner — hidden whenever the outbox is
+// empty (the common case), so it never distracts an employee tapping tiles.
+async function updateSyncIndicator(){
+  const {pending, stuck} = await store.getSyncStatus();
+  const el = $('syncStatus');
+  el.className = 'sync-status' + (pending ? (stuck ? ' stuck' : ' pending') : '');
+  el.textContent = pending ? (stuck ? `${pending} punch${pending > 1 ? 'es' : ''} pending — check Wi-Fi` : `Syncing ${pending}…`) : '';
+}
+updateSyncIndicator();
+setInterval(updateSyncIndicator, 5000);

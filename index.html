@@ -1,0 +1,901 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>Unitech Attendance</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<style>
+  :root{
+    --bg:#0b1220; --card:#151f2e; --raised:#1d2a3b; --ink:#f4f7fb; --muted:#b8c3d1;
+    --green:#22c55e; --green-ink:#052e16; --amber:#f59e0b; --red:#fb7185; --blue:#60a5fa; --border:#2b3b50;
+  }
+  *{box-sizing:border-box; margin:0; padding:0; -webkit-tap-highlight-color:transparent;}
+  body{min-height:100vh; font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif; background:radial-gradient(circle at 50% -20%,#223958 0,var(--bg) 43%); color:var(--ink);}
+  header{padding:18px 20px; display:flex; align-items:center; justify-content:space-between; max-width:980px; margin:0 auto; gap:12px;}
+  header h1{font-size:17px; letter-spacing:.01em;}
+  .brand-mark{display:inline-grid; place-items:center; width:30px; height:30px; margin-right:9px; border-radius:9px; color:var(--green-ink); background:var(--green); font-size:17px; vertical-align:middle;}
+  #clock{font-size:14px; color:var(--muted); font-variant-numeric:tabular-nums;}
+  nav{display:none;}
+  main{padding:12px 20px 80px; max-width:980px; margin:0 auto;}
+  .card{background:var(--card); border:1px solid var(--border); border-radius:18px; padding:18px; margin-bottom:16px; box-shadow:0 14px 35px rgba(0,0,0,.17);}
+  .emp-grid{display:grid; grid-template-columns:repeat(auto-fill,minmax(160px,1fr)); gap:14px;}
+  .emp-tile{position:relative; min-height:166px; background:var(--card); border:2px solid var(--border); border-radius:18px; padding:20px 12px 16px; text-align:center; cursor:pointer; box-shadow:0 9px 22px rgba(0,0,0,.15); transition:transform .14s,background .14s,border-color .14s;}
+  .emp-tile:active{transform:scale(.97); background:var(--raised);}
+  .emp-tile:focus-visible,.btn:focus-visible{outline:3px solid var(--blue); outline-offset:3px;}
+  .emp-tile .avatar{display:block; width:68px; height:68px; margin:0 auto 12px; border:3px solid #293b53; border-radius:50%; background:#293b53; object-fit:cover; color:#e8f0fb;}
+  .emp-tile .name{font-weight:700; font-size:18px; margin-bottom:8px;}
+  .emp-tile .status{font-size:13px; color:var(--muted); font-weight:600; line-height:1.35;}
+  .emp-tile.in{border-color:var(--green); background:linear-gradient(160deg,#153c2a,var(--card));}
+  .emp-tile.in .avatar{border-color:var(--green);}
+  .emp-tile.in .status{color:#a7f3c0;}
+  .btn{display:inline-flex; align-items:center; justify-content:center; min-height:52px; border:none; border-radius:13px; padding:13px 20px; font-size:16px; font-weight:750; cursor:pointer; color:#07111d; background:var(--blue);}
+  .btn.green{background:var(--green); color:var(--green-ink);} .btn.red{background:var(--red); color:#500716;}
+  .btn.ghost{background:transparent; color:var(--ink); border:1px solid var(--border);}
+  .btn.small{min-height:38px; padding:8px 12px; font-size:13px; border-radius:10px;}
+  .btn:disabled{opacity:.5;}
+  #camModal, #loginModal, #adminModal{position:fixed; inset:0; background:rgba(4,9,17,.96); display:none; flex-direction:column; align-items:center; justify-content:center; z-index:100; padding:20px;}
+  #camModal.open, #loginModal.open, #adminModal.open{display:flex;}
+  #camModal h2{color:#fff; margin-bottom:8px; font-size:24px; text-align:center;}
+  .camera-help{color:var(--muted); margin-bottom:18px; text-align:center; font-size:15px;}
+  #video{width:100%; max-width:440px; border:2px solid var(--border); border-radius:20px; background:#000; transform:scaleX(-1);}
+  #camBtns{width:100%; max-width:440px; margin-top:18px; display:flex; gap:12px;}
+  #camBtns .btn{flex:1;}
+  .modal-err{color:#ffb3b3; margin-top:10px; text-align:center; font-size:14px; max-width:340px;}
+  .auth-card{background:var(--card); border:1px solid var(--border); border-radius:20px; padding:24px; width:100%; max-width:390px;}
+  .auth-card h2{font-size:18px; margin-bottom:14px;}
+  .auth-card input{margin-bottom:10px;}
+  .auth-card .modal-err{color:var(--red);}
+  table{width:100%; border-collapse:collapse; font-size:14px;}
+  th,td{padding:8px 6px; border-bottom:1px solid var(--border); text-align:left;}
+  th{color:var(--muted); font-weight:600; font-size:12px; text-transform:uppercase;}
+  td.num, th.num{text-align:right; font-variant-numeric:tabular-nums;}
+  .photo-thumb{width:44px; height:44px; object-fit:cover; border-radius:8px; cursor:pointer; background:#ddd;}
+  input[type=text], input[type=email], input[type=password], input[type=month], input[type=date]{min-height:48px; padding:10px 12px; border:1px solid var(--border); border-radius:10px; background:#0e1725; color:var(--ink); font-size:16px; width:100%;}
+  .row{display:flex; gap:10px; align-items:center; flex-wrap:wrap;}
+  .row > *{flex:0 0 auto;}
+  .grow{flex:1 1 auto !important;}
+  .muted{color:var(--muted); font-size:13px;}
+  .open-session{color:var(--green); font-weight:600;}
+  #photoView{position:fixed; inset:0; background:rgba(0,0,0,.9); display:none; align-items:center; justify-content:center; z-index:110; cursor:pointer;}
+  #photoView.open{display:flex;}
+  #photoView img{max-width:92%; max-height:92%; border-radius:12px;}
+  #reportTableWrap{overflow-x:auto;}
+  #reportTable th, #reportTable td{white-space:nowrap;}
+  .toast{position:fixed; bottom:28px; left:50%; transform:translateX(-50%); background:var(--green); color:var(--green-ink); padding:16px 24px; border-radius:14px; font-size:16px; font-weight:750; z-index:120; opacity:0; transition:opacity .25s; pointer-events:none; max-width:90%; text-align:center; box-shadow:0 12px 30px rgba(0,0,0,.35);}
+  .toast.show{opacity:1;}
+  h3{font-size:16px; margin-bottom:10px;}
+  #busy{position:fixed; top:0; left:0; right:0; height:3px; background:var(--blue); display:none; z-index:130; animation:busy 1s linear infinite;}
+  @keyframes busy{0%{transform:scaleX(.1); transform-origin:left}50%{transform:scaleX(1)}100%{transform:scaleX(.1); transform-origin:right}}
+  .kiosk-hero{text-align:center; padding:22px 0 25px;}
+  .kiosk-hero .eyebrow{color:var(--green); font-size:14px; font-weight:800; letter-spacing:.11em; text-transform:uppercase;}
+  .kiosk-hero h2{font-size:clamp(29px,6vw,42px); letter-spacing:-.04em; margin:8px 0 10px;}
+  .kiosk-hero p{color:var(--muted); font-size:17px;}
+  .admin-entry{display:block; margin:28px auto 0; color:var(--muted); font-size:14px; text-decoration:underline; background:none; border:0; padding:12px; cursor:pointer;}
+  .admin-panel{display:flex; gap:8px; padding:8px; margin-bottom:16px; overflow:auto; background:var(--raised); border-radius:14px;}
+  .admin-panel button{white-space:nowrap; min-height:40px; padding:8px 12px; border:1px solid transparent; border-radius:9px; background:transparent; color:var(--muted); cursor:pointer; font-weight:700;}
+  .admin-panel button.active{background:var(--card); color:var(--ink); border-color:var(--border);}
+  .report-top{display:flex; align-items:flex-start; justify-content:space-between; gap:14px; margin-bottom:16px;}
+  .report-top h2{font-size:25px; letter-spacing:-.03em; margin:4px 0 5px;}
+  .report-period{display:flex; align-items:center; justify-content:center; gap:9px; padding:8px; margin-bottom:16px; background:var(--raised); border-radius:14px;}
+  .month-arrow{display:grid; place-items:center; width:42px; height:42px; border:1px solid var(--border); border-radius:10px; background:var(--card); color:var(--ink); font-size:25px; cursor:pointer;}
+  #repMonth{width:150px; min-height:42px; padding:7px 9px; text-align:center; background:transparent; border:0; font-weight:750;}
+  .report-summary{display:grid; grid-template-columns:repeat(3,1fr); gap:12px; margin-bottom:16px;}
+  .metric{padding:16px; border:1px solid var(--border); border-radius:15px; background:var(--card);}
+  .metric-label{display:block; color:var(--muted); font-size:13px; font-weight:650;}
+  .metric-value{display:block; margin-top:7px; font-size:25px; letter-spacing:-.04em; font-weight:780; font-variant-numeric:tabular-nums;}
+  .metric-value.good{color:#86efac}.metric-value.warn{color:#fbbf24}
+  .review-alert{display:flex; justify-content:space-between; align-items:center; gap:14px; margin-bottom:16px; padding:14px 16px; background:#3a2c13; border:1px solid #7a5914; border-radius:15px;}
+  .review-alert strong{display:block; font-size:15px}.review-alert span{display:block; color:#f8d992; margin-top:3px; font-size:13px;}
+  .report-list{padding:0; overflow:hidden;}
+  .report-list-head{display:flex; align-items:baseline; justify-content:space-between; padding:17px; border-bottom:1px solid var(--border);}
+  .report-list-head h3{margin:0; font-size:16px}.report-list-head span{font-size:13px; color:var(--muted);}
+  .report-person{display:grid; grid-template-columns:46px minmax(110px,1.25fr) 1fr 72px 88px; align-items:center; gap:12px; padding:14px 17px; border-bottom:1px solid var(--border);}
+  .report-person:last-child{border-bottom:0}.report-avatar{width:43px; height:43px; border:2px solid #33465f; border-radius:50%; object-fit:cover;}
+  .report-name{font-size:16px; font-weight:750}.report-detail{display:block; margin-top:3px; color:var(--muted); font-size:13px;}.report-state{font-size:14px; font-weight:750;}.report-state.ok{color:#86efac}.report-state.open{color:#fbbf24}
+  .report-number{text-align:right; font-variant-numeric:tabular-nums}.report-number strong{font-size:16px}.report-number span{display:block; color:var(--muted); font-size:12px; margin-bottom:2px;}
+  .report-detail-toggle{display:block; width:max-content; margin:16px auto 0; border:0; padding:12px; background:none; color:#93c5fd; text-decoration:underline; font-size:14px; font-weight:700; cursor:pointer;}
+  #reportDetail{margin-top:16px;}
+  @media (max-width:520px){header{padding:15px 16px} main{padding:8px 16px 70px}.emp-grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:11px}.emp-tile{min-height:151px;padding-top:16px}.emp-tile .name{font-size:16px}.kiosk-hero{padding:18px 0 21px}.kiosk-hero p{font-size:15px} #clock{font-size:12px}.card{padding:14px}}
+  @media (max-width:620px){.report-summary{grid-template-columns:1fr}.report-top{align-items:stretch; flex-direction:column}.report-top .btn{width:100%}.report-person{grid-template-columns:43px 1fr 82px; gap:10px}.report-person .report-state{grid-column:2; grid-row:2}.report-person .days-worked{display:none}.report-person .report-number:last-child{grid-column:3; grid-row:1 / span 2}.review-alert{align-items:flex-start; flex-direction:column}.review-alert .btn{width:100%}}
+</style>
+</head>
+<body>
+
+<div id="busy"></div>
+
+<header>
+  <h1><span class="brand-mark">✓</span>Unitech Attendance</h1>
+  <div class="row" style="gap:8px">
+    <div id="clock"></div>
+    <button class="btn small ghost" id="btnLock" style="display:none">🔒 Lock</button>
+    <button class="btn small ghost" id="btnLogout" style="display:none">Sign out</button>
+  </div>
+</header>
+
+<nav>
+  <button data-tab="home" class="active">Clock In/Out</button>
+  <button data-tab="records">Records 🔒</button>
+  <button data-tab="report">Report 🔒</button>
+  <button data-tab="employees">Employees 🔒</button>
+</nav>
+
+<main>
+  <div id="adminTools" class="admin-panel" style="display:none">
+    <button data-tab="employees">Employees</button>
+    <button data-tab="records">Daily records</button>
+    <button data-tab="report">Monthly report</button>
+    <button id="btnReturnKiosk">Return to kiosk</button>
+  </div>
+  <!-- HOME -->
+  <section id="tab-home">
+    <div class="emp-grid" id="empGrid"></div>
+    <p class="muted" id="homeEmpty" style="display:none; margin-top:10px">No employees yet — ask the admin to add them.</p>
+    <button class="admin-entry" id="btnAdminEntry">Admin access</button>
+  </section>
+
+  <!-- RECORDS -->
+  <section id="tab-records" class="admin-tab" style="display:none">
+    <div class="card">
+      <div class="row">
+        <label class="muted">Date</label>
+        <input type="date" id="recDate" style="width:auto">
+      </div>
+    </div>
+    <div class="card">
+      <table id="recTable">
+        <thead><tr><th>Employee</th><th>In</th><th>Photo</th><th>Out</th><th>Photo</th><th class="num">Hours</th><th></th></tr></thead>
+        <tbody></tbody>
+      </table>
+      <p class="muted" id="recEmpty" style="display:none; margin-top:8px">No records for this date.</p>
+    </div>
+  </section>
+
+  <!-- REPORT -->
+  <section id="tab-report" class="admin-tab" style="display:none">
+    <div class="report-top">
+      <div>
+        <p class="muted">Attendance overview</p>
+        <h2>Monthly attendance</h2>
+        <p class="muted">See the important totals and exceptions first.</p>
+      </div>
+      <button class="btn small" id="btnExport">Download Excel</button>
+    </div>
+    <div class="report-period">
+      <button class="month-arrow" id="btnPrevMonth" aria-label="Previous month">‹</button>
+      <input type="month" id="repMonth" aria-label="Report month">
+      <button class="month-arrow" id="btnNextMonth" aria-label="Next month">›</button>
+    </div>
+    <div class="report-summary">
+      <div class="metric"><span class="metric-label">Recorded hours</span><strong class="metric-value" id="metricHours">—</strong></div>
+      <div class="metric"><span class="metric-label">Attendance days</span><strong class="metric-value good" id="metricDays">—</strong></div>
+      <div class="metric"><span class="metric-label">Needs review</span><strong class="metric-value warn" id="metricReview">—</strong></div>
+    </div>
+    <div class="review-alert" id="reviewAlert" style="display:none">
+      <div><strong id="reviewTitle"></strong><span id="reviewText"></span></div>
+      <button class="btn small" id="btnReviewRecords">Review entries</button>
+    </div>
+    <div class="card report-list">
+      <div class="report-list-head"><h3>Employee summary</h3><span id="reportMonthLabel"></span></div>
+      <div id="reportEmployeeList"></div>
+      <p class="muted" id="repEmpty" style="display:none; padding:0 17px 17px">No completed attendance for this month.</p>
+    </div>
+    <button class="report-detail-toggle" id="btnReportDetail">View detailed calendar</button>
+    <div class="card" id="reportDetail" style="display:none">
+      <table id="reportTable"><thead></thead><tbody></tbody></table>
+    </div>
+  </section>
+
+  <!-- EMPLOYEES -->
+  <section id="tab-employees" class="admin-tab" style="display:none">
+    <div class="card">
+      <h3>Add employee</h3>
+      <div class="row">
+        <input type="text" id="newEmpName" class="grow" placeholder="Employee name" maxlength="40">
+        <button class="btn green" id="btnAddEmp">Add</button>
+      </div>
+    </div>
+    <div class="card">
+      <h3>Employees</h3>
+      <table id="empTable"><tbody></tbody></table>
+      <p class="muted" id="empEmpty" style="display:none">No employees added yet.</p>
+    </div>
+  </section>
+</main>
+
+<!-- Login -->
+<div id="loginModal">
+  <div class="auth-card">
+    <h2>Sign in</h2>
+    <input type="email" id="loginEmail" placeholder="Email" autocomplete="username">
+    <input type="password" id="loginPass" placeholder="Password" autocomplete="current-password">
+    <button class="btn green" id="btnLogin" style="width:100%">Sign in</button>
+    <p class="modal-err" id="loginErr" style="margin:10px auto 0"></p>
+  </div>
+</div>
+
+<!-- Admin unlock -->
+<div id="adminModal">
+  <div class="auth-card">
+    <h2>Admin unlock</h2>
+    <p class="muted" style="margin-bottom:10px">Enter the admin password to open this section.</p>
+    <input type="password" id="adminPass" placeholder="Password">
+    <div class="row">
+      <button class="btn green grow" id="btnUnlock">Unlock</button>
+      <button class="btn red" id="btnUnlockCancel">Cancel</button>
+    </div>
+    <p class="modal-err" id="adminErr" style="margin:10px auto 0"></p>
+  </div>
+</div>
+
+<!-- Camera modal -->
+<div id="camModal">
+  <h2 id="camTitle"></h2>
+  <p class="camera-help">Look at the camera, then take your photo.</p>
+  <video id="video" autoplay playsinline muted></video>
+  <div id="camBtns">
+    <button class="btn green" id="btnCapture">📷 Take photo</button>
+    <button class="btn red" id="btnCamCancel">Cancel</button>
+  </div>
+  <p class="modal-err" id="camError"></p>
+</div>
+
+<!-- Photo viewer -->
+<div id="photoView" onclick="this.classList.remove('open')"><img id="photoViewImg" alt="attendance photo"></div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+'use strict';
+/* ================= CONFIG — paste your Supabase project values ================= */
+const SUPABASE_URL      = 'https://lmjopqzwyizzgeszhmvb.supabase.co';
+const SUPABASE_ANON_KEY = 'sb_publishable_jicKbc1u5MgBJd_XrdywpA_lRYgdN7i'; // anon/publishable key — safe to be public, protected by RLS
+// TEMPORARY: local demo mode. Set to false when connecting the real Supabase backend.
+const DEMO_MODE = true;
+/* =============================================================================== */
+
+const $ = id => document.getElementById(id);
+function toast(msg){
+  const t = $('toast');
+  t.textContent = msg; t.classList.add('show');
+  setTimeout(() => t.classList.remove('show'), 3200);
+}
+function busy(on){ $('busy').style.display = on ? 'block' : 'none'; }
+
+if(!DEMO_MODE && SUPABASE_URL.startsWith('PASTE')){
+  document.body.innerHTML = '<div style="padding:40px; font-family:sans-serif"><h2>Not configured</h2><p>Supabase URL and anon key have not been set in index.html yet.</p></div>';
+  throw new Error('Supabase not configured');
+}
+const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+/* ---------- state ---------- */
+let employees = [];         // {id, name, active}
+let openSessions = {};      // emp_id -> open record
+let adminUnlocked = false;
+const ADMIN_TABS = ['records','report','employees'];
+
+/* ---------- temporary local demo storage ---------- */
+const DEMO_EMPLOYEES_KEY = 'attendance_demo_employees';
+const DEMO_RECORDS_KEY = 'attendance_demo_records';
+const DEMO_PHOTOS_KEY = 'attendance_demo_photo:';
+function demoLoad(){
+  const sampleEmployees = [
+    {id:'demo-1', name:'Shakib', active:true, avatar:'assets/avatars/shakib.png'},
+    {id:'demo-2', name:'Jamshed', active:true, avatar:'assets/avatars/jamshed.png'},
+    {id:'demo-3', name:'Raju', active:true, avatar:'assets/avatars/raju.png'}
+  ];
+  const savedEmployees = localStorage.getItem(DEMO_EMPLOYEES_KEY);
+  employees = savedEmployees ? JSON.parse(savedEmployees) : sampleEmployees;
+  // Upgrade the original generic demo entries without deleting any names later added by an admin.
+  const genericDemo = employees.length && employees.every(e => /^Employee \d+$/.test(e.name));
+  if(genericDemo) employees = sampleEmployees;
+  employees = employees.map(e => {
+    const sample = sampleEmployees.find(x => x.id === e.id);
+    return sample ? {...e, name:sample.name, avatar:sample.avatar} : e;
+  }).filter(e => !['demo-4','demo-5'].includes(e.id));
+  localStorage.setItem(DEMO_EMPLOYEES_KEY, JSON.stringify(employees));
+  openSessions = {};
+  demoRecords().filter(r => !r.clock_out).forEach(r => { openSessions[r.emp_id] = r; });
+}
+function demoRecords(){ return JSON.parse(localStorage.getItem(DEMO_RECORDS_KEY) || '[]'); }
+function demoSaveRecords(records){ localStorage.setItem(DEMO_RECORDS_KEY, JSON.stringify(records)); }
+function demoPhotoKey(path){ return DEMO_PHOTOS_KEY + path; }
+function demoStorePhoto(path, blob){
+  return new Promise(resolve => {
+    const reader = new FileReader();
+    reader.onload = () => { localStorage.setItem(demoPhotoKey(path), reader.result); resolve(); };
+    reader.readAsDataURL(blob);
+  });
+}
+function demoPhotoUrl(path){ return localStorage.getItem(demoPhotoKey(path)); }
+
+/* ---------- helpers ---------- */
+const pad = n => String(n).padStart(2,'0');
+const dateStr = (d=new Date()) => `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`;
+const fmtTime = iso => iso
+  ? new Date(iso).toLocaleTimeString('en-IN', {hour:'numeric', minute:'2-digit', hour12:true}).replace(/am|pm/i, part => part.toUpperCase())
+  : '—';
+function fmtHours(h){
+  if(h == null) return '—';
+  const m = Math.round(h*60);
+  return `${Math.floor(m/60)}:${pad(m%60)}`;
+}
+function recHours(r){ return r.clock_out ? Math.max(0,(new Date(r.clock_out) - new Date(r.clock_in))/3600000) : null; }
+async function signedUrl(path){
+  if(!path) return null;
+  if(DEMO_MODE) return demoPhotoUrl(path);
+  const {data} = await sb.storage.from('photos').createSignedUrl(path, 3600);
+  return data ? data.signedUrl : null;
+}
+
+/* ---------- auth ---------- */
+async function initAuth(){
+  if(DEMO_MODE){
+    demoLoad();
+    adminUnlocked = true;
+    setAuthUI(true);
+    $('loginModal').classList.remove('open');
+    $('btnLogout').style.display = 'none';
+    $('btnLock').style.display = 'none';
+    renderHome();
+    return;
+  }
+  const {data:{session}} = await sb.auth.getSession();
+  setAuthUI(!!session);
+  if(session) await refreshAll();
+}
+function setAuthUI(loggedIn){
+  $('loginModal').classList.toggle('open', !loggedIn);
+  $('btnLogout').style.display = loggedIn ? '' : 'none';
+  $('btnLock').style.display = loggedIn && adminUnlocked ? '' : 'none';
+}
+$('btnLogin').onclick = async () => {
+  const email = $('loginEmail').value.trim(), pass = $('loginPass').value;
+  if(!email || !pass) return;
+  busy(true); $('loginErr').textContent = '';
+  const {error} = await sb.auth.signInWithPassword({email, password:pass});
+  busy(false);
+  if(error){ $('loginErr').textContent = error.message; return; }
+  $('loginPass').value = '';
+  setAuthUI(true);
+  await refreshAll();
+};
+$('loginPass').addEventListener('keydown', e => { if(e.key === 'Enter') $('btnLogin').click(); });
+$('btnLogout').onclick = async () => {
+  if(DEMO_MODE){
+    switchTab('home');
+    toast('Demo mode — no sign-in is required.');
+    return;
+  }
+  if(!confirm('Sign out? The tablet will need the password to use the app again.')) return;
+  await sb.auth.signOut();
+  adminUnlocked = false;
+  location.reload();
+};
+
+/* admin lock */
+let pendingTab = null;
+function requestAdmin(tab){
+  pendingTab = tab;
+  $('adminErr').textContent = ''; $('adminPass').value = '';
+  $('adminModal').classList.add('open');
+  $('adminPass').focus();
+}
+$('btnUnlockCancel').onclick = () => { $('adminModal').classList.remove('open'); pendingTab = null; };
+$('btnUnlock').onclick = async () => {
+  const pass = $('adminPass').value;
+  if(!pass) return;
+  busy(true); $('adminErr').textContent = '';
+  const {data:{user}} = await sb.auth.getUser();
+  const {error} = await sb.auth.signInWithPassword({email:user.email, password:pass});
+  busy(false);
+  if(error){ $('adminErr').textContent = 'Wrong password'; return; }
+  adminUnlocked = true;
+  $('adminModal').classList.remove('open');
+  $('btnLock').style.display = '';
+  if(pendingTab) switchTab(pendingTab);
+  pendingTab = null;
+};
+$('adminPass').addEventListener('keydown', e => { if(e.key === 'Enter') $('btnUnlock').click(); });
+$('btnLock').onclick = () => {
+  if(DEMO_MODE) return switchTab('home');
+  adminUnlocked = false;
+  $('btnLock').style.display = 'none';
+  switchTab('home');
+  toast('Admin sections locked');
+};
+
+/* ---------- tabs ---------- */
+function switchTab(tab){
+  document.querySelectorAll('nav button').forEach(x => x.classList.toggle('active', x.dataset.tab === tab));
+  ['home','records','report','employees'].forEach(t =>
+    $('tab-'+t).style.display = (t === tab) ? '' : 'none');
+  $('adminTools').style.display = tab === 'home' ? 'none' : 'flex';
+  document.querySelectorAll('#adminTools [data-tab]').forEach(x => x.classList.toggle('active', x.dataset.tab === tab));
+  if(tab === 'records') renderRecords();
+  if(tab === 'report') renderReport();
+  if(tab === 'employees') renderEmployees();
+}
+document.querySelectorAll('nav button').forEach(b => b.onclick = () => {
+  const tab = b.dataset.tab;
+  if(!DEMO_MODE && ADMIN_TABS.includes(tab) && !adminUnlocked) return requestAdmin(tab);
+  switchTab(tab);
+});
+$('btnAdminEntry').onclick = () => {
+  if(DEMO_MODE) return switchTab('employees');
+  if(!adminUnlocked) return requestAdmin('employees');
+  switchTab('employees');
+};
+$('btnReturnKiosk').onclick = () => switchTab('home');
+document.querySelectorAll('#adminTools [data-tab]').forEach(b => b.onclick = () => {
+  const tab = b.dataset.tab;
+  if(!DEMO_MODE && !adminUnlocked) return requestAdmin(tab);
+  switchTab(tab);
+});
+
+/* ---------- live clock ---------- */
+setInterval(() => {
+  $('clock').textContent = new Date().toLocaleString('en-IN', {weekday:'short', day:'numeric', month:'short', hour:'numeric', minute:'2-digit', hour12:true}).replace(/am|pm/i, part => part.toUpperCase());
+}, 1000);
+
+/* ---------- data ---------- */
+async function refreshAll(){
+  if(DEMO_MODE){
+    demoLoad();
+    renderHome();
+    return;
+  }
+  busy(true);
+  try{
+    const [empRes, openRes] = await Promise.all([
+      sb.from('employees').select('*').order('created_at'),
+      sb.from('records').select('*').is('clock_out', null)
+    ]);
+    if(empRes.error) throw empRes.error;
+    if(openRes.error) throw openRes.error;
+    employees = empRes.data;
+    openSessions = {};
+    openRes.data.forEach(r => openSessions[r.emp_id] = r);
+    renderHome();
+  }catch(err){ toast('Load failed: ' + err.message); }
+  busy(false);
+}
+
+/* ---------- home ---------- */
+function renderHome(){
+  const grid = $('empGrid');
+  grid.innerHTML = '';
+  const active = employees.filter(e => e.active);
+  $('homeEmpty').style.display = active.length ? 'none' : '';
+  active.forEach(e => {
+    const open = openSessions[e.id];
+    const div = document.createElement('div');
+    div.className = 'emp-tile' + (open ? ' in' : '');
+    div.setAttribute('role', 'button');
+    div.setAttribute('tabindex', '0');
+    div.innerHTML = '<img class="avatar" alt=""><div class="name"></div><div class="status"></div>';
+    const avatar = div.querySelector('.avatar');
+    avatar.src = e.avatar || 'assets/avatars/shakib.png';
+    avatar.alt = `${e.name} profile placeholder`;
+    div.querySelector('.name').textContent = e.name;
+    div.querySelector('.status').innerHTML = open
+      ? `● Working since ${fmtTime(open.clock_in)}<br>Touch to finish work`
+      : 'Touch to start work';
+    div.onclick = () => startCapture(e);
+    div.onkeydown = ev => { if(ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); startCapture(e); } };
+    grid.appendChild(div);
+  });
+}
+
+/* ---------- camera + clock in/out ---------- */
+let stream = null, pendingEmp = null;
+async function startCapture(emp){
+  pendingEmp = emp;
+  const open = openSessions[emp.id];
+  $('camTitle').textContent = open ? `Finish work, ${emp.name}?` : `Start work, ${emp.name}?`;
+  document.querySelector('.camera-help').textContent = open
+    ? 'Look at the camera, then take your photo to finish work.'
+    : 'Look at the camera, then take your photo to start work.';
+  $('camError').textContent = '';
+  $('camModal').classList.add('open');
+  $('btnCapture').disabled = true;
+  try{
+    stream = await navigator.mediaDevices.getUserMedia({video:{facingMode:'user', width:{ideal:640}}, audio:false});
+    $('video').srcObject = stream;
+    $('btnCapture').disabled = false;
+  }catch(err){
+    $('camError').textContent = 'Camera unavailable: ' + err.message;
+  }
+}
+function stopCam(){
+  if(stream){ stream.getTracks().forEach(t => t.stop()); stream = null; }
+  $('camModal').classList.remove('open');
+  pendingEmp = null;
+}
+$('btnCamCancel').onclick = stopCam;
+$('btnCapture').onclick = async () => {
+  if(!pendingEmp || !stream) return;
+  const video = $('video');
+  const c = document.createElement('canvas');
+  const scale = 320 / video.videoWidth;
+  c.width = 320; c.height = Math.round(video.videoHeight * scale);
+  c.getContext('2d').drawImage(video, 0, 0, c.width, c.height);
+  const blob = await new Promise(res => c.toBlob(res, 'image/jpeg', 0.7));
+  const emp = pendingEmp;
+  $('btnCapture').disabled = true;
+  busy(true);
+  try{
+    const path = `${emp.id}/${Date.now()}.jpg`;
+    const open = openSessions[emp.id];
+    const nowIso = new Date().toISOString();
+    if(DEMO_MODE){
+      await demoStorePhoto(path, blob);
+      const records = demoRecords();
+      if(open){
+        const idx = records.findIndex(r => r.id === open.id);
+        if(idx < 0) throw new Error('Demo attendance record not found');
+        records[idx].clock_out = nowIso;
+        records[idx].out_photo = path;
+        demoSaveRecords(records);
+        delete openSessions[emp.id];
+        toast(`${emp.name} clocked OUT — ${fmtHours((Date.now() - new Date(open.clock_in))/3600000)} hrs`);
+      }else{
+        const data = {id:'demo-rec-' + Date.now(), emp_id:emp.id, date:dateStr(), clock_in:nowIso, clock_out:null, in_photo:path, out_photo:null, created_at:nowIso};
+        records.push(data);
+        demoSaveRecords(records);
+        openSessions[emp.id] = data;
+        toast(`${emp.name} clocked IN at ${fmtTime(nowIso)}`);
+      }
+      stopCam();
+      renderHome();
+      busy(false);
+      return;
+    }
+    const up = await sb.storage.from('photos').upload(path, blob, {contentType:'image/jpeg'});
+    if(up.error) throw up.error;
+    if(open){
+      const {error} = await sb.from('records').update({clock_out:nowIso, out_photo:path}).eq('id', open.id);
+      if(error) throw error;
+      delete openSessions[emp.id];
+      toast(`${emp.name} clocked OUT — ${fmtHours((Date.now() - new Date(open.clock_in))/3600000)} hrs`);
+    }else{
+      const {data, error} = await sb.from('records').insert({emp_id:emp.id, date:dateStr(), clock_in:nowIso, in_photo:path}).select().single();
+      if(error) throw error;
+      openSessions[emp.id] = data;
+      toast(`${emp.name} clocked IN at ${fmtTime(nowIso)}`);
+    }
+    stopCam();
+    renderHome();
+  }catch(err){
+    $('camError').textContent = 'Failed: ' + err.message + ' — check internet and try again.';
+    $('btnCapture').disabled = false;
+  }
+  busy(false);
+};
+
+/* ---------- employees ---------- */
+$('btnAddEmp').onclick = async () => {
+  const name = $('newEmpName').value.trim();
+  if(!name) return;
+  busy(true);
+  if(DEMO_MODE){
+    employees.push({id:'demo-' + Date.now(), name, active:true});
+    localStorage.setItem(DEMO_EMPLOYEES_KEY, JSON.stringify(employees));
+    $('newEmpName').value = '';
+    busy(false);
+    renderHome();
+    renderEmployees();
+    return;
+  }
+  const {error} = await sb.from('employees').insert({name});
+  busy(false);
+  if(error) return toast('Failed: ' + error.message);
+  $('newEmpName').value = '';
+  await refreshAll();
+  renderEmployees();
+};
+function renderEmployees(){
+  const tb = document.querySelector('#empTable tbody');
+  tb.innerHTML = '';
+  $('empEmpty').style.display = employees.length ? 'none' : '';
+  employees.forEach(e => {
+    const tr = document.createElement('tr');
+    const tdName = document.createElement('td');
+    tdName.textContent = e.name + (e.active ? '' : ' (inactive)');
+    const tdBtns = document.createElement('td');
+    tdBtns.style.textAlign = 'right';
+    const bRen = document.createElement('button');
+    bRen.className = 'btn small ghost'; bRen.textContent = 'Rename';
+    bRen.onclick = async () => {
+      const n = prompt('New name', e.name);
+      if(!n || !n.trim()) return;
+      if(DEMO_MODE){
+        e.name = n.trim();
+        localStorage.setItem(DEMO_EMPLOYEES_KEY, JSON.stringify(employees));
+        renderHome(); renderEmployees();
+        return;
+      }
+      const {error} = await sb.from('employees').update({name:n.trim()}).eq('id', e.id);
+      if(error) return toast('Failed: ' + error.message);
+      await refreshAll(); renderEmployees();
+    };
+    const bTog = document.createElement('button');
+    bTog.className = 'btn small ' + (e.active ? 'red' : 'green');
+    bTog.style.marginLeft = '8px';
+    bTog.textContent = e.active ? 'Deactivate' : 'Activate';
+    bTog.onclick = async () => {
+      if(DEMO_MODE){
+        e.active = !e.active;
+        localStorage.setItem(DEMO_EMPLOYEES_KEY, JSON.stringify(employees));
+        renderHome(); renderEmployees();
+        return;
+      }
+      const {error} = await sb.from('employees').update({active: !e.active}).eq('id', e.id);
+      if(error) return toast('Failed: ' + error.message);
+      await refreshAll(); renderEmployees();
+    };
+    tdBtns.append(bRen, bTog);
+    tr.append(tdName, tdBtns);
+    tb.appendChild(tr);
+  });
+}
+
+/* ---------- records ---------- */
+const recDate = $('recDate');
+recDate.value = dateStr();
+recDate.onchange = renderRecords;
+async function showPhoto(path){
+  const url = await signedUrl(path);
+  if(!url) return toast('Photo not found');
+  $('photoViewImg').src = url;
+  $('photoView').classList.add('open');
+}
+function photoCell(path){
+  const td = document.createElement('td');
+  if(path){
+    const img = document.createElement('img');
+    img.className = 'photo-thumb';
+    signedUrl(path).then(u => { if(u) img.src = u; });
+    img.onclick = () => showPhoto(path);
+    td.appendChild(img);
+  }
+  return td;
+}
+async function renderRecords(){
+  const tb = document.querySelector('#recTable tbody');
+  tb.innerHTML = '';
+  busy(true);
+  let list;
+  if(DEMO_MODE){
+    list = demoRecords().filter(r => r.date === recDate.value).sort((a,b) => new Date(a.clock_in) - new Date(b.clock_in));
+  }else{
+    const {data, error} = await sb.from('records').select('*').eq('date', recDate.value).order('clock_in');
+    if(error){ busy(false); return toast('Load failed: ' + error.message); }
+    list = data;
+  }
+  busy(false);
+  $('recEmpty').style.display = list.length ? 'none' : '';
+  for(const r of list){
+    const emp = employees.find(e => e.id === r.emp_id);
+    const tr = document.createElement('tr');
+    const tdName = document.createElement('td'); tdName.textContent = emp ? emp.name : '?';
+    const tdIn = document.createElement('td'); tdIn.textContent = fmtTime(r.clock_in);
+    const tdOut = document.createElement('td');
+    if(r.clock_out) tdOut.textContent = fmtTime(r.clock_out); else tdOut.innerHTML = '<span class="open-session">still IN</span>';
+    const tdH = document.createElement('td'); tdH.className = 'num'; tdH.textContent = fmtHours(recHours(r));
+    const tdEdit = document.createElement('td'); tdEdit.style.textAlign = 'right';
+    const bEdit = document.createElement('button'); bEdit.className = 'btn small ghost'; bEdit.textContent = 'Edit'; bEdit.onclick = () => editRecord(r);
+    const bDel = document.createElement('button'); bDel.className = 'btn small red'; bDel.style.marginLeft = '6px'; bDel.textContent = '✕';
+    bDel.onclick = async () => {
+      if(!confirm('Delete this record?')) return;
+      if(DEMO_MODE){
+        demoSaveRecords(demoRecords().filter(x => x.id !== r.id));
+        [r.in_photo,r.out_photo].filter(Boolean).forEach(p => localStorage.removeItem(demoPhotoKey(p)));
+        await refreshAll(); renderRecords();
+        return;
+      }
+      const {error} = await sb.from('records').delete().eq('id', r.id);
+      if(error) return toast('Failed: ' + error.message);
+      sb.storage.from('photos').remove([r.in_photo,r.out_photo].filter(Boolean));
+      await refreshAll(); renderRecords();
+    };
+    tdEdit.append(bEdit, bDel);
+    tr.append(tdName, tdIn, photoCell(r.in_photo), tdOut, photoCell(r.out_photo), tdH, tdEdit);
+    tb.appendChild(tr);
+  }
+}
+async function editRecord(r){
+  const inT = prompt('IN time (HH:MM, 24h)', new Date(r.clock_in).toTimeString().slice(0,5));
+  if(inT === null) return;
+  const outCur = r.clock_out ? new Date(r.clock_out).toTimeString().slice(0,5) : '';
+  const outT = prompt('OUT time (HH:MM, 24h) — leave empty if still in', outCur);
+  if(outT === null) return;
+  const mk = (t) => {
+    const m = /^(\d{1,2}):(\d{2})$/.exec(t.trim());
+    if(!m) return null;
+    const d = new Date(r.date + 'T00:00:00');
+    d.setHours(+m[1], +m[2], 0, 0);
+    return d;
+  };
+  const inD = mk(inT);
+  if(!inD) return toast('Invalid IN time');
+  let outD = null;
+  if(outT.trim() !== ''){
+    outD = mk(outT);
+    if(!outD) return toast('Invalid OUT time');
+    if(outD < inD) outD = new Date(outD.getTime() + 86400000);
+  }
+  busy(true);
+  if(DEMO_MODE){
+    const records = demoRecords();
+    const idx = records.findIndex(x => x.id === r.id);
+    if(idx < 0){ busy(false); return toast('Record not found'); }
+    records[idx].clock_in = inD.toISOString();
+    records[idx].clock_out = outD ? outD.toISOString() : null;
+    demoSaveRecords(records);
+    busy(false);
+    await refreshAll(); renderRecords();
+    return;
+  }
+  const {error} = await sb.from('records').update({clock_in:inD.toISOString(), clock_out:outD ? outD.toISOString() : null}).eq('id', r.id);
+  busy(false);
+  if(error) return toast('Failed: ' + error.message);
+  await refreshAll(); renderRecords();
+}
+
+/* ---------- monthly report ---------- */
+const repMonth = $('repMonth');
+repMonth.value = dateStr().slice(0,7);
+repMonth.onchange = renderReport;
+let lastReportData = null;
+
+function shiftReportMonth(change){
+  const [year, month] = repMonth.value.split('-').map(Number);
+  const next = new Date(year, month - 1 + change, 1);
+  repMonth.value = `${next.getFullYear()}-${pad(next.getMonth()+1)}`;
+  renderReport();
+}
+$('btnPrevMonth').onclick = () => shiftReportMonth(-1);
+$('btnNextMonth').onclick = () => shiftReportMonth(1);
+$('btnReportDetail').onclick = () => {
+  const detail = $('reportDetail');
+  const isOpen = detail.style.display !== 'none';
+  detail.style.display = isOpen ? 'none' : '';
+  $('btnReportDetail').textContent = isOpen ? 'View detailed calendar' : 'Hide detailed calendar';
+};
+$('btnReviewRecords').onclick = () => {
+  const first = lastReportData?.openRecords?.[0];
+  if(first) recDate.value = first.date;
+  switchTab('records');
+};
+
+async function monthData(){
+  const ym = repMonth.value; // YYYY-MM
+  const [y, m] = ym.split('-').map(Number);
+  const days = new Date(y, m, 0).getDate();
+  let recs;
+  if(DEMO_MODE){
+    recs = demoRecords().filter(r => r.date >= `${ym}-01` && r.date <= `${ym}-${pad(days)}`);
+  }else{
+    const {data, error} = await sb.from('records').select('*')
+      .gte('date', `${ym}-01`).lte('date', `${ym}-${pad(days)}`);
+    if(error){ toast('Load failed: ' + error.message); return null; }
+    recs = data;
+  }
+  const emps = employees.filter(e => e.active || recs.some(r => r.emp_id === e.id));
+  const hours = {}; // hours[empId][day] = total hours (null none, -1 open session)
+  emps.forEach(e => hours[e.id] = Array(days+1).fill(null));
+  recs.forEach(r => {
+    if(!hours[r.emp_id]) return;
+    const d = Number(r.date.slice(8,10));
+    const h = recHours(r);
+    if(h === null){ if(hours[r.emp_id][d] === null) hours[r.emp_id][d] = -1; }
+    else hours[r.emp_id][d] = (hours[r.emp_id][d] === null || hours[r.emp_id][d] === -1 ? 0 : hours[r.emp_id][d]) + h;
+  });
+  return {ym, days, emps, hours, recs, openRecords:recs.filter(r => !r.clock_out), hasData: recs.length > 0};
+}
+
+async function renderReport(){
+  busy(true);
+  const md = await monthData();
+  busy(false);
+  if(!md) return;
+  lastReportData = md;
+  const {ym, days, emps, hours, openRecords, hasData} = md;
+  $('repEmpty').style.display = hasData ? 'none' : '';
+  $('reportMonthLabel').textContent = new Date(`${ym}-01T12:00:00`).toLocaleDateString('en-IN', {month:'long', year:'numeric'});
+  let totalHours = 0, attendanceDays = 0;
+  const employeeStats = emps.map(e => {
+    let total = 0, daysWorked = 0, hasOpen = false;
+    for(let d=1; d<=days; d++){
+      const v = hours[e.id][d];
+      if(v === -1) hasOpen = true;
+      else if(v !== null){ total += v; daysWorked++; }
+    }
+    totalHours += total;
+    attendanceDays += daysWorked;
+    return {employee:e, total, daysWorked, hasOpen};
+  });
+  $('metricHours').textContent = fmtHours(totalHours);
+  $('metricDays').textContent = attendanceDays;
+  $('metricReview').textContent = openRecords.length ? `${openRecords.length} ${openRecords.length === 1 ? 'entry' : 'entries'}` : 'None';
+  $('metricReview').classList.toggle('good', !openRecords.length);
+  $('metricReview').classList.toggle('warn', !!openRecords.length);
+  $('reviewAlert').style.display = openRecords.length ? '' : 'none';
+  if(openRecords.length){
+    const names = [...new Set(openRecords.map(r => employees.find(e => e.id === r.emp_id)?.name || 'An employee'))];
+    $('reviewTitle').textContent = `${openRecords.length} attendance ${openRecords.length === 1 ? 'entry needs' : 'entries need'} review`;
+    $('reviewText').textContent = `${names.join(', ')} ${names.length === 1 ? 'has' : 'have'} not clocked out yet.`;
+  }
+  const list = $('reportEmployeeList');
+  list.innerHTML = '';
+  employeeStats.forEach(({employee, total, daysWorked, hasOpen}) => {
+    const row = document.createElement('div');
+    row.className = 'report-person';
+    const avatar = document.createElement('img');
+    avatar.className = 'report-avatar'; avatar.alt = '';
+    avatar.src = employee.avatar || 'assets/avatars/shakib.png';
+    const who = document.createElement('div');
+    const name = document.createElement('div'); name.className = 'report-name'; name.textContent = employee.name;
+    const days = document.createElement('span'); days.className = 'report-detail'; days.textContent = `${daysWorked} ${daysWorked === 1 ? 'attendance day' : 'attendance days'}`;
+    who.append(name, days);
+    const state = document.createElement('div'); state.className = `report-state ${hasOpen ? 'open' : 'ok'}`; state.textContent = hasOpen ? '● Review required' : '● All clear';
+    const daysNumber = document.createElement('div'); daysNumber.className = 'report-number days-worked'; daysNumber.innerHTML = `<span>Days</span><strong>${daysWorked}</strong>`;
+    const hoursNumber = document.createElement('div'); hoursNumber.className = 'report-number'; hoursNumber.innerHTML = `<span>Total hours</span><strong>${fmtHours(total)}</strong>`;
+    row.append(avatar, who, state, daysNumber, hoursNumber);
+    list.appendChild(row);
+  });
+
+  let h = '<tr><th>Employee</th>';
+  for(let d=1; d<=days; d++) h += `<th class="num">${d}</th>`;
+  h += '<th class="num">Days</th><th class="num">Total hrs</th></tr>';
+  document.querySelector('#reportTable thead').innerHTML = h;
+  const tbody = document.querySelector('#reportTable tbody');
+  tbody.innerHTML = '';
+  emps.forEach(e => {
+    let total = 0, daysWorked = 0, row = '';
+    for(let d=1; d<=days; d++){
+      const v = hours[e.id][d];
+      if(v === null) row += '<td class="num muted">·</td>';
+      else if(v === -1) row += '<td class="num open-session">IN</td>';
+      else { total += v; daysWorked++; row += `<td class="num">${fmtHours(v)}</td>`; }
+    }
+    const tr = document.createElement('tr');
+    const tdN = document.createElement('td'); tdN.textContent = e.name;
+    tr.appendChild(tdN);
+    tr.insertAdjacentHTML('beforeend', row + `<td class="num"><b>${daysWorked}</b></td><td class="num"><b>${fmtHours(total)}</b></td>`);
+    tbody.appendChild(tr);
+  });
+}
+
+$('btnExport').onclick = async () => {
+  busy(true);
+  const md = await monthData();
+  busy(false);
+  if(!md) return;
+  const {ym, days, emps, hours} = md;
+  const header = ['Employee', ...Array.from({length:days}, (_,i) => `${ym}-${pad(i+1)}`), 'Days worked', 'Total hours'];
+  const rows = emps.map(e => {
+    let total = 0, daysWorked = 0;
+    const cells = [];
+    for(let d=1; d<=days; d++){
+      const v = hours[e.id][d];
+      if(v === null) cells.push('');
+      else if(v === -1) cells.push('IN (no out)');
+      else { total += v; daysWorked++; cells.push(Number(v.toFixed(2))); }
+    }
+    return [e.name, ...cells, daysWorked, Number(total.toFixed(2))];
+  });
+  const ws = XLSX.utils.aoa_to_sheet([header, ...rows]);
+  ws['!cols'] = [{wch:18}, ...Array(days).fill({wch:10}), {wch:11}, {wch:11}];
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, ym);
+  XLSX.writeFile(wb, `attendance-${ym}.xlsx`);
+};
+
+/* ---------- init ---------- */
+initAuth();
+</script>
+</body>
+</html>

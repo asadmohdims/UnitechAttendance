@@ -1,0 +1,632 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>Shop Attendance Tracker</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<style>
+  :root{
+    --bg:#f4f6f8; --card:#fff; --ink:#1a2733; --muted:#6b7a89;
+    --green:#1e9e5a; --red:#d64545; --blue:#2a6fdb; --border:#e2e8ee;
+  }
+  *{box-sizing:border-box; margin:0; padding:0; -webkit-tap-highlight-color:transparent;}
+  body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif; background:var(--bg); color:var(--ink);}
+  header{background:var(--card); padding:14px 16px; display:flex; align-items:center; justify-content:space-between; border-bottom:1px solid var(--border); position:sticky; top:0; z-index:10; gap:10px;}
+  header h1{font-size:18px;}
+  #clock{font-size:13px; color:var(--muted); font-variant-numeric:tabular-nums;}
+  nav{display:flex; background:var(--card); border-bottom:1px solid var(--border);}
+  nav button{flex:1; padding:12px 4px; border:none; background:none; font-size:14px; color:var(--muted); border-bottom:3px solid transparent; cursor:pointer;}
+  nav button.active{color:var(--blue); border-bottom-color:var(--blue); font-weight:600;}
+  main{padding:16px; max-width:900px; margin:0 auto;}
+  .card{background:var(--card); border:1px solid var(--border); border-radius:12px; padding:16px; margin-bottom:14px;}
+  .emp-grid{display:grid; grid-template-columns:repeat(auto-fill,minmax(150px,1fr)); gap:12px;}
+  .emp-tile{background:var(--card); border:1px solid var(--border); border-radius:12px; padding:16px 12px; text-align:center; cursor:pointer; box-shadow:0 1px 3px rgba(0,0,0,.05);}
+  .emp-tile:active{transform:scale(.97);}
+  .emp-tile .name{font-weight:600; font-size:16px; margin-bottom:6px;}
+  .emp-tile .status{font-size:13px; color:var(--muted);}
+  .emp-tile.in{border-color:var(--green);}
+  .emp-tile.in .status{color:var(--green); font-weight:600;}
+  .btn{display:inline-block; border:none; border-radius:10px; padding:12px 20px; font-size:15px; font-weight:600; cursor:pointer; color:#fff; background:var(--blue);}
+  .btn.green{background:var(--green);} .btn.red{background:var(--red);}
+  .btn.ghost{background:none; color:var(--blue); border:1px solid var(--blue);}
+  .btn.small{padding:6px 12px; font-size:13px; border-radius:8px;}
+  .btn:disabled{opacity:.5;}
+  #camModal, #loginModal, #adminModal{position:fixed; inset:0; background:rgba(0,0,0,.85); display:none; flex-direction:column; align-items:center; justify-content:center; z-index:100; padding:16px;}
+  #camModal.open, #loginModal.open, #adminModal.open{display:flex;}
+  #camModal h2{color:#fff; margin-bottom:12px; font-size:18px; text-align:center;}
+  #video{width:100%; max-width:420px; border-radius:12px; background:#000; transform:scaleX(-1);}
+  #camBtns{margin-top:16px; display:flex; gap:12px;}
+  .modal-err{color:#ffb3b3; margin-top:10px; text-align:center; font-size:14px; max-width:340px;}
+  .auth-card{background:var(--card); border-radius:14px; padding:24px; width:100%; max-width:360px;}
+  .auth-card h2{font-size:18px; margin-bottom:14px;}
+  .auth-card input{margin-bottom:10px;}
+  .auth-card .modal-err{color:var(--red);}
+  table{width:100%; border-collapse:collapse; font-size:14px;}
+  th,td{padding:8px 6px; border-bottom:1px solid var(--border); text-align:left;}
+  th{color:var(--muted); font-weight:600; font-size:12px; text-transform:uppercase;}
+  td.num, th.num{text-align:right; font-variant-numeric:tabular-nums;}
+  .photo-thumb{width:44px; height:44px; object-fit:cover; border-radius:8px; cursor:pointer; background:#ddd;}
+  input[type=text], input[type=email], input[type=password], input[type=month], input[type=date]{padding:10px; border:1px solid var(--border); border-radius:8px; font-size:15px; width:100%;}
+  .row{display:flex; gap:10px; align-items:center; flex-wrap:wrap;}
+  .row > *{flex:0 0 auto;}
+  .grow{flex:1 1 auto !important;}
+  .muted{color:var(--muted); font-size:13px;}
+  .open-session{color:var(--green); font-weight:600;}
+  #photoView{position:fixed; inset:0; background:rgba(0,0,0,.9); display:none; align-items:center; justify-content:center; z-index:110; cursor:pointer;}
+  #photoView.open{display:flex;}
+  #photoView img{max-width:92%; max-height:92%; border-radius:12px;}
+  #reportTableWrap{overflow-x:auto;}
+  #reportTable th, #reportTable td{white-space:nowrap;}
+  .toast{position:fixed; bottom:24px; left:50%; transform:translateX(-50%); background:var(--ink); color:#fff; padding:12px 22px; border-radius:10px; font-size:15px; z-index:120; opacity:0; transition:opacity .25s; pointer-events:none; max-width:90%;}
+  .toast.show{opacity:1;}
+  h3{font-size:16px; margin-bottom:10px;}
+  #busy{position:fixed; top:0; left:0; right:0; height:3px; background:var(--blue); display:none; z-index:130; animation:busy 1s linear infinite;}
+  @keyframes busy{0%{transform:scaleX(.1); transform-origin:left}50%{transform:scaleX(1)}100%{transform:scaleX(.1); transform-origin:right}}
+</style>
+</head>
+<body>
+
+<div id="busy"></div>
+
+<header>
+  <h1>Shop Attendance</h1>
+  <div class="row" style="gap:8px">
+    <div id="clock"></div>
+    <button class="btn small ghost" id="btnLock" style="display:none">🔒 Lock</button>
+    <button class="btn small ghost" id="btnLogout" style="display:none">Sign out</button>
+  </div>
+</header>
+
+<nav>
+  <button data-tab="home" class="active">Clock In/Out</button>
+  <button data-tab="records">Records 🔒</button>
+  <button data-tab="report">Report 🔒</button>
+  <button data-tab="employees">Employees 🔒</button>
+</nav>
+
+<main>
+  <!-- HOME -->
+  <section id="tab-home">
+    <p class="muted" style="margin-bottom:12px">Tap your name to clock in or out. Your photo will be captured.</p>
+    <div class="emp-grid" id="empGrid"></div>
+    <p class="muted" id="homeEmpty" style="display:none; margin-top:10px">No employees yet — ask the admin to add them.</p>
+  </section>
+
+  <!-- RECORDS -->
+  <section id="tab-records" style="display:none">
+    <div class="card">
+      <div class="row">
+        <label class="muted">Date</label>
+        <input type="date" id="recDate" style="width:auto">
+      </div>
+    </div>
+    <div class="card">
+      <table id="recTable">
+        <thead><tr><th>Employee</th><th>In</th><th>Photo</th><th>Out</th><th>Photo</th><th class="num">Hours</th><th></th></tr></thead>
+        <tbody></tbody>
+      </table>
+      <p class="muted" id="recEmpty" style="display:none; margin-top:8px">No records for this date.</p>
+    </div>
+  </section>
+
+  <!-- REPORT -->
+  <section id="tab-report" style="display:none">
+    <div class="card">
+      <div class="row">
+        <label class="muted">Month</label>
+        <input type="month" id="repMonth" style="width:auto">
+        <button class="btn small" id="btnExport">Download Excel</button>
+      </div>
+    </div>
+    <div class="card" id="reportTableWrap">
+      <table id="reportTable"><thead></thead><tbody></tbody></table>
+      <p class="muted" id="repEmpty" style="display:none; margin-top:8px">No data for this month.</p>
+    </div>
+  </section>
+
+  <!-- EMPLOYEES -->
+  <section id="tab-employees" style="display:none">
+    <div class="card">
+      <h3>Add employee</h3>
+      <div class="row">
+        <input type="text" id="newEmpName" class="grow" placeholder="Employee name" maxlength="40">
+        <button class="btn green" id="btnAddEmp">Add</button>
+      </div>
+    </div>
+    <div class="card">
+      <h3>Employees</h3>
+      <table id="empTable"><tbody></tbody></table>
+      <p class="muted" id="empEmpty" style="display:none">No employees added yet.</p>
+    </div>
+  </section>
+</main>
+
+<!-- Login -->
+<div id="loginModal">
+  <div class="auth-card">
+    <h2>Sign in</h2>
+    <input type="email" id="loginEmail" placeholder="Email" autocomplete="username">
+    <input type="password" id="loginPass" placeholder="Password" autocomplete="current-password">
+    <button class="btn green" id="btnLogin" style="width:100%">Sign in</button>
+    <p class="modal-err" id="loginErr" style="margin:10px auto 0"></p>
+  </div>
+</div>
+
+<!-- Admin unlock -->
+<div id="adminModal">
+  <div class="auth-card">
+    <h2>Admin unlock</h2>
+    <p class="muted" style="margin-bottom:10px">Enter the admin password to open this section.</p>
+    <input type="password" id="adminPass" placeholder="Password">
+    <div class="row">
+      <button class="btn green grow" id="btnUnlock">Unlock</button>
+      <button class="btn red" id="btnUnlockCancel">Cancel</button>
+    </div>
+    <p class="modal-err" id="adminErr" style="margin:10px auto 0"></p>
+  </div>
+</div>
+
+<!-- Camera modal -->
+<div id="camModal">
+  <h2 id="camTitle"></h2>
+  <video id="video" autoplay playsinline muted></video>
+  <div id="camBtns">
+    <button class="btn green" id="btnCapture">📷 Capture</button>
+    <button class="btn red" id="btnCamCancel">Cancel</button>
+  </div>
+  <p class="modal-err" id="camError"></p>
+</div>
+
+<!-- Photo viewer -->
+<div id="photoView" onclick="this.classList.remove('open')"><img id="photoViewImg" alt="attendance photo"></div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+'use strict';
+/* ================= CONFIG — paste your Supabase project values ================= */
+const SUPABASE_URL      = 'https://lmjopqzwyizzgeszhmvb.supabase.co';
+const SUPABASE_ANON_KEY = 'sb_publishable_jicKbc1u5MgBJd_XrdywpA_lRYgdN7i'; // anon/publishable key — safe to be public, protected by RLS
+/* =============================================================================== */
+
+const $ = id => document.getElementById(id);
+function toast(msg){
+  const t = $('toast');
+  t.textContent = msg; t.classList.add('show');
+  setTimeout(() => t.classList.remove('show'), 3200);
+}
+function busy(on){ $('busy').style.display = on ? 'block' : 'none'; }
+
+if(SUPABASE_URL.startsWith('PASTE')){
+  document.body.innerHTML = '<div style="padding:40px; font-family:sans-serif"><h2>Not configured</h2><p>Supabase URL and anon key have not been set in index.html yet.</p></div>';
+  throw new Error('Supabase not configured');
+}
+const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+/* ---------- state ---------- */
+let employees = [];         // {id, name, active}
+let openSessions = {};      // emp_id -> open record
+let adminUnlocked = false;
+const ADMIN_TABS = ['records','report','employees'];
+
+/* ---------- helpers ---------- */
+const pad = n => String(n).padStart(2,'0');
+const dateStr = (d=new Date()) => `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`;
+const fmtTime = iso => iso ? new Date(iso).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'}) : '—';
+function fmtHours(h){
+  if(h == null) return '—';
+  const m = Math.round(h*60);
+  return `${Math.floor(m/60)}:${pad(m%60)}`;
+}
+function recHours(r){ return r.clock_out ? Math.max(0,(new Date(r.clock_out) - new Date(r.clock_in))/3600000) : null; }
+async function signedUrl(path){
+  if(!path) return null;
+  const {data} = await sb.storage.from('photos').createSignedUrl(path, 3600);
+  return data ? data.signedUrl : null;
+}
+
+/* ---------- auth ---------- */
+async function initAuth(){
+  const {data:{session}} = await sb.auth.getSession();
+  setAuthUI(!!session);
+  if(session) await refreshAll();
+}
+function setAuthUI(loggedIn){
+  $('loginModal').classList.toggle('open', !loggedIn);
+  $('btnLogout').style.display = loggedIn ? '' : 'none';
+  $('btnLock').style.display = loggedIn && adminUnlocked ? '' : 'none';
+}
+$('btnLogin').onclick = async () => {
+  const email = $('loginEmail').value.trim(), pass = $('loginPass').value;
+  if(!email || !pass) return;
+  busy(true); $('loginErr').textContent = '';
+  const {error} = await sb.auth.signInWithPassword({email, password:pass});
+  busy(false);
+  if(error){ $('loginErr').textContent = error.message; return; }
+  $('loginPass').value = '';
+  setAuthUI(true);
+  await refreshAll();
+};
+$('loginPass').addEventListener('keydown', e => { if(e.key === 'Enter') $('btnLogin').click(); });
+$('btnLogout').onclick = async () => {
+  if(!confirm('Sign out? The tablet will need the password to use the app again.')) return;
+  await sb.auth.signOut();
+  adminUnlocked = false;
+  location.reload();
+};
+
+/* admin lock */
+let pendingTab = null;
+function requestAdmin(tab){
+  pendingTab = tab;
+  $('adminErr').textContent = ''; $('adminPass').value = '';
+  $('adminModal').classList.add('open');
+  $('adminPass').focus();
+}
+$('btnUnlockCancel').onclick = () => { $('adminModal').classList.remove('open'); pendingTab = null; };
+$('btnUnlock').onclick = async () => {
+  const pass = $('adminPass').value;
+  if(!pass) return;
+  busy(true); $('adminErr').textContent = '';
+  const {data:{user}} = await sb.auth.getUser();
+  const {error} = await sb.auth.signInWithPassword({email:user.email, password:pass});
+  busy(false);
+  if(error){ $('adminErr').textContent = 'Wrong password'; return; }
+  adminUnlocked = true;
+  $('adminModal').classList.remove('open');
+  $('btnLock').style.display = '';
+  if(pendingTab) switchTab(pendingTab);
+  pendingTab = null;
+};
+$('adminPass').addEventListener('keydown', e => { if(e.key === 'Enter') $('btnUnlock').click(); });
+$('btnLock').onclick = () => {
+  adminUnlocked = false;
+  $('btnLock').style.display = 'none';
+  switchTab('home');
+  toast('Admin sections locked');
+};
+
+/* ---------- tabs ---------- */
+function switchTab(tab){
+  document.querySelectorAll('nav button').forEach(x => x.classList.toggle('active', x.dataset.tab === tab));
+  ['home','records','report','employees'].forEach(t =>
+    $('tab-'+t).style.display = (t === tab) ? '' : 'none');
+  if(tab === 'records') renderRecords();
+  if(tab === 'report') renderReport();
+  if(tab === 'employees') renderEmployees();
+}
+document.querySelectorAll('nav button').forEach(b => b.onclick = () => {
+  const tab = b.dataset.tab;
+  if(ADMIN_TABS.includes(tab) && !adminUnlocked) return requestAdmin(tab);
+  switchTab(tab);
+});
+
+/* ---------- live clock ---------- */
+setInterval(() => {
+  $('clock').textContent = new Date().toLocaleString([], {weekday:'short', day:'numeric', month:'short', hour:'2-digit', minute:'2-digit'});
+}, 1000);
+
+/* ---------- data ---------- */
+async function refreshAll(){
+  busy(true);
+  try{
+    const [empRes, openRes] = await Promise.all([
+      sb.from('employees').select('*').order('created_at'),
+      sb.from('records').select('*').is('clock_out', null)
+    ]);
+    if(empRes.error) throw empRes.error;
+    if(openRes.error) throw openRes.error;
+    employees = empRes.data;
+    openSessions = {};
+    openRes.data.forEach(r => openSessions[r.emp_id] = r);
+    renderHome();
+  }catch(err){ toast('Load failed: ' + err.message); }
+  busy(false);
+}
+
+/* ---------- home ---------- */
+function renderHome(){
+  const grid = $('empGrid');
+  grid.innerHTML = '';
+  const active = employees.filter(e => e.active);
+  $('homeEmpty').style.display = active.length ? 'none' : '';
+  active.forEach(e => {
+    const open = openSessions[e.id];
+    const div = document.createElement('div');
+    div.className = 'emp-tile' + (open ? ' in' : '');
+    div.innerHTML = `<div class="name"></div><div class="status">${open ? 'IN since ' + fmtTime(open.clock_in) + '<br>Tap to clock OUT' : 'Tap to clock IN'}</div>`;
+    div.querySelector('.name').textContent = e.name;
+    div.onclick = () => startCapture(e);
+    grid.appendChild(div);
+  });
+}
+
+/* ---------- camera + clock in/out ---------- */
+let stream = null, pendingEmp = null;
+async function startCapture(emp){
+  pendingEmp = emp;
+  const open = openSessions[emp.id];
+  $('camTitle').textContent = `${emp.name} — Clock ${open ? 'OUT' : 'IN'}`;
+  $('camError').textContent = '';
+  $('camModal').classList.add('open');
+  $('btnCapture').disabled = true;
+  try{
+    stream = await navigator.mediaDevices.getUserMedia({video:{facingMode:'user', width:{ideal:640}}, audio:false});
+    $('video').srcObject = stream;
+    $('btnCapture').disabled = false;
+  }catch(err){
+    $('camError').textContent = 'Camera unavailable: ' + err.message;
+  }
+}
+function stopCam(){
+  if(stream){ stream.getTracks().forEach(t => t.stop()); stream = null; }
+  $('camModal').classList.remove('open');
+  pendingEmp = null;
+}
+$('btnCamCancel').onclick = stopCam;
+$('btnCapture').onclick = async () => {
+  if(!pendingEmp || !stream) return;
+  const video = $('video');
+  const c = document.createElement('canvas');
+  const scale = 320 / video.videoWidth;
+  c.width = 320; c.height = Math.round(video.videoHeight * scale);
+  c.getContext('2d').drawImage(video, 0, 0, c.width, c.height);
+  const blob = await new Promise(res => c.toBlob(res, 'image/jpeg', 0.7));
+  const emp = pendingEmp;
+  $('btnCapture').disabled = true;
+  busy(true);
+  try{
+    const path = `${emp.id}/${Date.now()}.jpg`;
+    const up = await sb.storage.from('photos').upload(path, blob, {contentType:'image/jpeg'});
+    if(up.error) throw up.error;
+
+    const open = openSessions[emp.id];
+    const nowIso = new Date().toISOString();
+    if(open){
+      const {error} = await sb.from('records')
+        .update({clock_out: nowIso, out_photo: path})
+        .eq('id', open.id);
+      if(error) throw error;
+      delete openSessions[emp.id];
+      toast(`${emp.name} clocked OUT — ${fmtHours((Date.now() - new Date(open.clock_in))/3600000)} hrs`);
+    }else{
+      const {data, error} = await sb.from('records')
+        .insert({emp_id: emp.id, date: dateStr(), clock_in: nowIso, in_photo: path})
+        .select().single();
+      if(error) throw error;
+      openSessions[emp.id] = data;
+      toast(`${emp.name} clocked IN at ${fmtTime(nowIso)}`);
+    }
+    stopCam();
+    renderHome();
+  }catch(err){
+    $('camError').textContent = 'Failed: ' + err.message + ' — check internet and try again.';
+    $('btnCapture').disabled = false;
+  }
+  busy(false);
+};
+
+/* ---------- employees ---------- */
+$('btnAddEmp').onclick = async () => {
+  const name = $('newEmpName').value.trim();
+  if(!name) return;
+  busy(true);
+  const {error} = await sb.from('employees').insert({name});
+  busy(false);
+  if(error) return toast('Failed: ' + error.message);
+  $('newEmpName').value = '';
+  await refreshAll();
+  renderEmployees();
+};
+function renderEmployees(){
+  const tb = document.querySelector('#empTable tbody');
+  tb.innerHTML = '';
+  $('empEmpty').style.display = employees.length ? 'none' : '';
+  employees.forEach(e => {
+    const tr = document.createElement('tr');
+    const tdName = document.createElement('td');
+    tdName.textContent = e.name + (e.active ? '' : ' (inactive)');
+    const tdBtns = document.createElement('td');
+    tdBtns.style.textAlign = 'right';
+    const bRen = document.createElement('button');
+    bRen.className = 'btn small ghost'; bRen.textContent = 'Rename';
+    bRen.onclick = async () => {
+      const n = prompt('New name', e.name);
+      if(!n || !n.trim()) return;
+      const {error} = await sb.from('employees').update({name:n.trim()}).eq('id', e.id);
+      if(error) return toast('Failed: ' + error.message);
+      await refreshAll(); renderEmployees();
+    };
+    const bTog = document.createElement('button');
+    bTog.className = 'btn small ' + (e.active ? 'red' : 'green');
+    bTog.style.marginLeft = '8px';
+    bTog.textContent = e.active ? 'Deactivate' : 'Activate';
+    bTog.onclick = async () => {
+      const {error} = await sb.from('employees').update({active: !e.active}).eq('id', e.id);
+      if(error) return toast('Failed: ' + error.message);
+      await refreshAll(); renderEmployees();
+    };
+    tdBtns.append(bRen, bTog);
+    tr.append(tdName, tdBtns);
+    tb.appendChild(tr);
+  });
+}
+
+/* ---------- records ---------- */
+const recDate = $('recDate');
+recDate.value = dateStr();
+recDate.onchange = renderRecords;
+async function showPhoto(path){
+  const url = await signedUrl(path);
+  if(!url) return toast('Photo not found');
+  $('photoViewImg').src = url;
+  $('photoView').classList.add('open');
+}
+function photoCell(path){
+  const td = document.createElement('td');
+  if(path){
+    const img = document.createElement('img');
+    img.className = 'photo-thumb';
+    signedUrl(path).then(u => { if(u) img.src = u; });
+    img.onclick = () => showPhoto(path);
+    td.appendChild(img);
+  }
+  return td;
+}
+async function renderRecords(){
+  const tb = document.querySelector('#recTable tbody');
+  tb.innerHTML = '';
+  busy(true);
+  const {data:list, error} = await sb.from('records').select('*')
+    .eq('date', recDate.value).order('clock_in');
+  busy(false);
+  if(error) return toast('Load failed: ' + error.message);
+  $('recEmpty').style.display = list.length ? 'none' : '';
+  for(const r of list){
+    const emp = employees.find(e => e.id === r.emp_id);
+    const tr = document.createElement('tr');
+
+    const tdName = document.createElement('td');
+    tdName.textContent = emp ? emp.name : '?';
+    const tdIn = document.createElement('td'); tdIn.textContent = fmtTime(r.clock_in);
+    const tdOut = document.createElement('td');
+    if(r.clock_out) tdOut.textContent = fmtTime(r.clock_out);
+    else tdOut.innerHTML = '<span class="open-session">still IN</span>';
+    const tdH = document.createElement('td');
+    tdH.className = 'num'; tdH.textContent = fmtHours(recHours(r));
+
+    const tdEdit = document.createElement('td');
+    tdEdit.style.textAlign = 'right';
+    const bEdit = document.createElement('button');
+    bEdit.className = 'btn small ghost'; bEdit.textContent = 'Edit';
+    bEdit.onclick = () => editRecord(r);
+    const bDel = document.createElement('button');
+    bDel.className = 'btn small red'; bDel.style.marginLeft = '6px'; bDel.textContent = '✕';
+    bDel.onclick = async () => {
+      if(!confirm('Delete this record?')) return;
+      const {error} = await sb.from('records').delete().eq('id', r.id);
+      if(error) return toast('Failed: ' + error.message);
+      sb.storage.from('photos').remove([r.in_photo, r.out_photo].filter(Boolean));
+      await refreshAll(); renderRecords();
+    };
+    tdEdit.append(bEdit, bDel);
+    tr.append(tdName, tdIn, photoCell(r.in_photo), tdOut, photoCell(r.out_photo), tdH, tdEdit);
+    tb.appendChild(tr);
+  }
+}
+async function editRecord(r){
+  const inT = prompt('IN time (HH:MM, 24h)', new Date(r.clock_in).toTimeString().slice(0,5));
+  if(inT === null) return;
+  const outCur = r.clock_out ? new Date(r.clock_out).toTimeString().slice(0,5) : '';
+  const outT = prompt('OUT time (HH:MM, 24h) — leave empty if still in', outCur);
+  if(outT === null) return;
+  const mk = (t) => {
+    const m = /^(\d{1,2}):(\d{2})$/.exec(t.trim());
+    if(!m) return null;
+    const d = new Date(r.date + 'T00:00:00');
+    d.setHours(+m[1], +m[2], 0, 0);
+    return d;
+  };
+  const inD = mk(inT);
+  if(!inD) return toast('Invalid IN time');
+  let outD = null;
+  if(outT.trim() !== ''){
+    outD = mk(outT);
+    if(!outD) return toast('Invalid OUT time');
+    if(outD < inD) outD = new Date(outD.getTime() + 86400000); // overnight shift
+  }
+  busy(true);
+  const {error} = await sb.from('records')
+    .update({clock_in: inD.toISOString(), clock_out: outD ? outD.toISOString() : null})
+    .eq('id', r.id);
+  busy(false);
+  if(error) return toast('Failed: ' + error.message);
+  await refreshAll(); renderRecords();
+}
+
+/* ---------- monthly report ---------- */
+const repMonth = $('repMonth');
+repMonth.value = dateStr().slice(0,7);
+repMonth.onchange = renderReport;
+
+async function monthData(){
+  const ym = repMonth.value; // YYYY-MM
+  const [y, m] = ym.split('-').map(Number);
+  const days = new Date(y, m, 0).getDate();
+  const {data:recs, error} = await sb.from('records').select('*')
+    .gte('date', `${ym}-01`).lte('date', `${ym}-${pad(days)}`);
+  if(error){ toast('Load failed: ' + error.message); return null; }
+  const emps = employees.filter(e => e.active || recs.some(r => r.emp_id === e.id));
+  const hours = {}; // hours[empId][day] = total hours (null none, -1 open session)
+  emps.forEach(e => hours[e.id] = Array(days+1).fill(null));
+  recs.forEach(r => {
+    if(!hours[r.emp_id]) return;
+    const d = Number(r.date.slice(8,10));
+    const h = recHours(r);
+    if(h === null){ if(hours[r.emp_id][d] === null) hours[r.emp_id][d] = -1; }
+    else hours[r.emp_id][d] = (hours[r.emp_id][d] === null || hours[r.emp_id][d] === -1 ? 0 : hours[r.emp_id][d]) + h;
+  });
+  return {ym, days, emps, hours, hasData: recs.length > 0};
+}
+
+async function renderReport(){
+  busy(true);
+  const md = await monthData();
+  busy(false);
+  if(!md) return;
+  const {days, emps, hours, hasData} = md;
+  $('repEmpty').style.display = hasData ? 'none' : '';
+  let h = '<tr><th>Employee</th>';
+  for(let d=1; d<=days; d++) h += `<th class="num">${d}</th>`;
+  h += '<th class="num">Days</th><th class="num">Total hrs</th></tr>';
+  document.querySelector('#reportTable thead').innerHTML = h;
+  const tbody = document.querySelector('#reportTable tbody');
+  tbody.innerHTML = '';
+  emps.forEach(e => {
+    let total = 0, daysWorked = 0, row = '';
+    for(let d=1; d<=days; d++){
+      const v = hours[e.id][d];
+      if(v === null) row += '<td class="num muted">·</td>';
+      else if(v === -1) row += '<td class="num open-session">IN</td>';
+      else { total += v; daysWorked++; row += `<td class="num">${fmtHours(v)}</td>`; }
+    }
+    const tr = document.createElement('tr');
+    const tdN = document.createElement('td'); tdN.textContent = e.name;
+    tr.appendChild(tdN);
+    tr.insertAdjacentHTML('beforeend', row + `<td class="num"><b>${daysWorked}</b></td><td class="num"><b>${fmtHours(total)}</b></td>`);
+    tbody.appendChild(tr);
+  });
+}
+
+$('btnExport').onclick = async () => {
+  busy(true);
+  const md = await monthData();
+  busy(false);
+  if(!md) return;
+  const {ym, days, emps, hours} = md;
+  const header = ['Employee', ...Array.from({length:days}, (_,i) => `${ym}-${pad(i+1)}`), 'Days worked', 'Total hours'];
+  const rows = emps.map(e => {
+    let total = 0, daysWorked = 0;
+    const cells = [];
+    for(let d=1; d<=days; d++){
+      const v = hours[e.id][d];
+      if(v === null) cells.push('');
+      else if(v === -1) cells.push('IN (no out)');
+      else { total += v; daysWorked++; cells.push(Number(v.toFixed(2))); }
+    }
+    return [e.name, ...cells, daysWorked, Number(total.toFixed(2))];
+  });
+  const ws = XLSX.utils.aoa_to_sheet([header, ...rows]);
+  ws['!cols'] = [{wch:18}, ...Array(days).fill({wch:10}), {wch:11}, {wch:11}];
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, ym);
+  XLSX.writeFile(wb, `attendance-${ym}.xlsx`);
+};
+
+/* ---------- init ---------- */
+initAuth();
+</script>
+</body>
+</html>

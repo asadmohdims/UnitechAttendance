@@ -4,6 +4,7 @@ import { dateStr } from '../utils.js';
 const DEMO_EMPLOYEES_KEY = 'attendance_demo_employees';
 const DEMO_RECORDS_KEY = 'attendance_demo_records';
 const DEMO_PHOTOS_KEY = 'attendance_demo_photo:';
+const DEMO_SALARY_KEY = 'attendance_demo_salary_rates';
 
 function loadEmployeesRaw(){
   const sampleEmployees = [
@@ -17,8 +18,9 @@ function loadEmployeesRaw(){
   const genericDemo = employees.length && employees.every(e => /^Employee \d+$/.test(e.name));
   if(genericDemo) employees = sampleEmployees;
   employees = employees.map(e => {
+    if(e.avatar) return e;
     const sample = sampleEmployees.find(x => x.id === e.id);
-    return sample ? {...e, name:sample.name, avatar:sample.avatar} : e;
+    return sample ? {...e, avatar:sample.avatar} : e;
   }).filter(e => !['demo-4','demo-5'].includes(e.id));
   saveEmployees(employees);
   return employees;
@@ -113,6 +115,21 @@ function deleteRecord(record){
   [record.in_photo, record.out_photo].filter(Boolean).forEach(p => localStorage.removeItem(photoKey(p)));
 }
 
+function loadSalaryRates(){ return JSON.parse(localStorage.getItem(DEMO_SALARY_KEY) || '[]'); }
+function saveSalaryRates(rates){ localStorage.setItem(DEMO_SALARY_KEY, JSON.stringify(rates)); }
+
+function listSalaryRates(empId){
+  return loadSalaryRates().filter(r => r.emp_id === empId).sort((a, b) => b.effective_from.localeCompare(a.effective_from));
+}
+
+function setSalaryRate(empId, {monthlySalary, effectiveFrom, note}){
+  const rates = loadSalaryRates();
+  const row = {id:'demo-rate-' + Date.now(), emp_id:empId, monthly_salary:monthlySalary, effective_from:effectiveFrom, note:note || null, created_at:new Date().toISOString()};
+  rates.push(row);
+  saveSalaryRates(rates);
+  return row;
+}
+
 function uploadPhoto(path, blob){
   return new Promise(resolve => {
     const reader = new FileReader();
@@ -130,5 +147,6 @@ export const demoStore = {
   listEmployees, addEmployee, renameEmployee, setEmployeeActive, setEmployeeAvatar,
   listOpenSessions, clockIn, clockOut,
   listRecordsForDate, listRecordsForRange, updateRecordTimes, deleteRecord,
-  uploadPhoto, getPhotoUrl, getSyncStatus
+  uploadPhoto, getPhotoUrl, getSyncStatus,
+  listSalaryRates, setSalaryRate
 };

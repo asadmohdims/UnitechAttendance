@@ -6,4 +6,4 @@ export const state = {
   adminUnlocked: false
 };
 
-export const ADMIN_TABS = ['records', 'report', 'employees'];
+export const ADMIN_TABS = ['records', 'report', 'employees', 'salary'];

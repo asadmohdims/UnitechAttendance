@@ -143,6 +143,20 @@ async function deleteRecord(record){
   sb.storage.from('photos').remove([record.in_photo, record.out_photo].filter(Boolean));
 }
 
+async function listSalaryRates(empId){
+  const {data, error} = await sb.from('salary_rates').select('*').eq('emp_id', empId).order('effective_from', {ascending:false});
+  if(error) throw error;
+  return data;
+}
+
+async function setSalaryRate(empId, {monthlySalary, effectiveFrom, note}){
+  const {data, error} = await sb.from('salary_rates')
+    .insert({emp_id:empId, monthly_salary:monthlySalary, effective_from:effectiveFrom, note:note || null})
+    .select().single();
+  if(error) throw error;
+  return data;
+}
+
 async function uploadPhoto(path, blob, {upsert = false} = {}){
   const {error} = await sb.storage.from('photos').upload(path, blob, {contentType:'image/jpeg', upsert});
   if(error) throw error;
@@ -235,5 +249,6 @@ export const supabaseStore = {
   listEmployees, addEmployee, renameEmployee, setEmployeeActive, setEmployeeAvatar,
   listOpenSessions, clockIn, clockOut,
   listRecordsForDate, listRecordsForRange, updateRecordTimes, deleteRecord,
-  uploadPhoto, getPhotoUrl, getSyncStatus
+  uploadPhoto, getPhotoUrl, getSyncStatus,
+  listSalaryRates, setSalaryRate
 };

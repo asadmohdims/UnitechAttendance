@@ -4,6 +4,7 @@ import { store } from '../store/index.js';
 import { applyAvatar } from '../avatars.js';
 import { captureFor } from '../camera.js';
 import { refreshAll, renderHome } from './kiosk.js';
+import { promptModal } from './modal.js';
 
 $('btnAddEmp').onclick = async () => {
   const name = $('newEmpName').value.trim();
@@ -49,11 +50,11 @@ export function renderEmployees(){
     const bRen = document.createElement('button');
     bRen.className = 'btn small ghost'; bRen.style.marginLeft = '8px'; bRen.textContent = 'Rename';
     bRen.onclick = async () => {
-      const n = prompt('New name', e.name);
-      if(!n || !n.trim()) return;
+      const result = await promptModal({title: 'Rename employee', fields: [{name:'name', label:'Employee name', value:e.name}]});
+      if(!result) return;
       busy(true);
       try{
-        await store.renameEmployee(e.id, n.trim());
+        await store.renameEmployee(e.id, result.name);
         await refreshAll();
         renderEmployees();
       }catch(err){ toast('Failed: ' + err.message); }

@@ -31,8 +31,7 @@ $('btnReviewRecords').onclick = () => {
   switchTab('records');
 };
 
-async function monthData(){
-  const ym = repMonth.value; // YYYY-MM
+export async function monthData(ym){ // ym: 'YYYY-MM'
   const [y, m] = ym.split('-').map(Number);
   const days = new Date(y, m, 0).getDate();
   let recs;
@@ -55,9 +54,21 @@ async function monthData(){
   return {ym, days, emps, hours, recs, openRecords:recs.filter(r => !r.clock_out), hasData: recs.length > 0};
 }
 
+// Sums one employee's per-day hours array (as produced by monthData) into a period total.
+// Shared with the Salary tab so both read the exact same hours a given month's pay is based on.
+export function summarizeHours(hoursArr, days){
+  let total = 0, daysWorked = 0, hasOpen = false;
+  for(let d=1; d<=days; d++){
+    const v = hoursArr[d];
+    if(v === -1) hasOpen = true;
+    else if(v !== null){ total += v; daysWorked++; }
+  }
+  return {total, daysWorked, hasOpen};
+}
+
 export async function renderReport(){
   busy(true);
-  const md = await monthData();
+  const md = await monthData(repMonth.value);
   busy(false);
   if(!md) return;
   lastReportData = md;
@@ -66,12 +77,7 @@ export async function renderReport(){
   $('reportMonthLabel').textContent = new Date(`${ym}-01T12:00:00`).toLocaleDateString('en-IN', {month:'long', year:'numeric'});
   let totalHours = 0, attendanceDays = 0;
   const employeeStats = emps.map(e => {
-    let total = 0, daysWorked = 0, hasOpen = false;
-    for(let d=1; d<=days; d++){
-      const v = hours[e.id][d];
-      if(v === -1) hasOpen = true;
-      else if(v !== null){ total += v; daysWorked++; }
-    }
+    const {total, daysWorked, hasOpen} = summarizeHours(hours[e.id], days);
     totalHours += total;
     attendanceDays += daysWorked;
     return {employee:e, total, daysWorked, hasOpen};
@@ -130,7 +136,7 @@ export async function renderReport(){
 
 $('btnExport').onclick = async () => {
   busy(true);
-  const md = await monthData();
+  const md = await monthData(repMonth.value);
   busy(false);
   if(!md) return;
   const {ym, days, emps, hours} = md;

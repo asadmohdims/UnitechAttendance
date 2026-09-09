@@ -46,3 +46,21 @@ create policy "authenticated delete photos" on storage.objects
 
 -- Avatar photo per employee (path in the 'photos' bucket, like records.in_photo/out_photo)
 alter table employees add column if not exists avatar text;
+
+-- Salary rates: one row per amendment, never edited in place. To price a given pay period,
+-- the app picks the row with the latest effective_from that is <= that period's end date —
+-- so a new rate applies retroactively to the whole current period, but never reaches back
+-- into an already-elapsed month.
+create table if not exists salary_rates (
+  id uuid primary key default gen_random_uuid(),
+  emp_id uuid not null references employees(id) on delete cascade,
+  monthly_salary numeric not null,
+  effective_from date not null,
+  note text,
+  created_at timestamptz not null default now()
+);
+create index if not exists salary_rates_emp_idx on salary_rates(emp_id);
+
+alter table salary_rates enable row level security;
+create policy "authenticated full access" on salary_rates
+  for all to authenticated using (true) with check (true);

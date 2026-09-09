@@ -29,6 +29,7 @@
   <button data-tab="records">Records 🔒</button>
   <button data-tab="report">Report 🔒</button>
   <button data-tab="employees">Employees 🔒</button>
+  <button data-tab="salary">Salary 🔒</button>
 </nav>
 
 <!-- HOME (its own fixed-viewport screen, kept outside <main> so hiding <main> in kiosk mode can't hide it too) -->
@@ -54,6 +55,7 @@
     <button data-tab="employees">Employees</button>
     <button data-tab="records">Daily records</button>
     <button data-tab="report">Monthly report</button>
+    <button data-tab="salary">Salary</button>
     <button id="btnReturnKiosk">Return to kiosk</button>
   </div>
   <!-- RECORDS -->
@@ -123,43 +125,80 @@
       <p class="muted" id="empEmpty" style="display:none">No employees added yet.</p>
     </div>
   </section>
+
+  <!-- SALARY -->
+  <section id="tab-salary" class="admin-tab" style="display:none">
+    <div class="report-top">
+      <div>
+        <p class="muted">Pay estimate</p>
+        <h2>Salary</h2>
+        <p class="muted">Prorated from hours worked. Amend a rate any time — past months keep their old rate.</p>
+      </div>
+    </div>
+    <div class="report-period">
+      <button class="month-arrow" id="btnSalPrevMonth" aria-label="Previous month">‹</button>
+      <input type="month" id="salMonth" aria-label="Salary month">
+      <button class="month-arrow" id="btnSalNextMonth" aria-label="Next month">›</button>
+    </div>
+    <div class="card report-list">
+      <div class="report-list-head"><h3>Employee salary</h3><span id="salMonthLabel"></span></div>
+      <div id="salaryList"></div>
+      <p class="muted" id="salEmpty" style="display:none; padding:0 17px 17px">No employees yet.</p>
+    </div>
+  </section>
 </main>
 
 <!-- Login -->
-<div id="loginModal">
+<div id="loginModal" class="modal-overlay">
   <div class="auth-card">
     <h2>Sign in</h2>
-    <input type="email" id="loginEmail" placeholder="Email" autocomplete="username">
-    <input type="password" id="loginPass" placeholder="Password" autocomplete="current-password">
+    <label class="modal-field-label" for="loginEmail">Email</label>
+    <input type="email" id="loginEmail" placeholder="you@example.com" autocomplete="username">
+    <label class="modal-field-label" for="loginPass">Password</label>
+    <input type="password" id="loginPass" autocomplete="current-password">
     <button class="btn green" id="btnLogin" style="width:100%">Sign in</button>
     <p class="modal-err" id="loginErr" style="margin:10px auto 0"></p>
   </div>
 </div>
 
 <!-- Admin unlock -->
-<div id="adminModal">
+<div id="adminModal" class="modal-overlay">
   <div class="auth-card">
     <h2>Admin unlock</h2>
     <p class="muted" style="margin-bottom:10px">Enter the admin password to open this section.</p>
-    <input type="password" id="adminPass" placeholder="Password">
+    <label class="modal-field-label" for="adminPass">Password</label>
+    <input type="password" id="adminPass">
     <div class="row">
       <button class="btn green grow" id="btnUnlock">Unlock</button>
-      <button class="btn red" id="btnUnlockCancel">Cancel</button>
+      <button class="btn ghost" id="btnUnlockCancel">Cancel</button>
     </div>
     <p class="modal-err" id="adminErr" style="margin:10px auto 0"></p>
   </div>
 </div>
 
 <!-- Camera modal -->
-<div id="camModal">
+<div id="camModal" class="modal-overlay">
   <h2 id="camTitle"></h2>
   <p class="camera-help">Look at the camera, then take your photo.</p>
   <video id="video" autoplay playsinline muted></video>
   <div id="camBtns">
     <button class="btn green" id="btnCapture">📷 Take photo</button>
-    <button class="btn red" id="btnCamCancel">Cancel</button>
+    <button class="btn ghost" id="btnCamCancel">Cancel</button>
   </div>
   <p class="modal-err" id="camError"></p>
+</div>
+
+<!-- Generic prompt modal (Rename, Amend salary, etc.) -->
+<div id="promptModal" class="modal-overlay">
+  <div class="auth-card">
+    <h2 id="promptTitle"></h2>
+    <div id="promptFields"></div>
+    <div class="row">
+      <button class="btn green grow" id="promptSubmit">Save</button>
+      <button class="btn ghost" id="promptCancel">Cancel</button>
+    </div>
+    <p class="modal-err" id="promptErr" style="margin:10px auto 0"></p>
+  </div>
 </div>
 
 <!-- Punch confirmation -->

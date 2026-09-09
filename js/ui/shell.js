@@ -6,6 +6,7 @@ import { refreshAll } from './kiosk.js';
 import { renderRecords } from './records.js';
 import { renderReport } from './report.js';
 import { renderEmployees } from './employees.js';
+import { renderSalary } from './salary.js';
 
 /* ---------- auth ---------- */
 export async function initAuth(){
@@ -86,7 +87,7 @@ $('btnLock').onclick = () => {
 /* ---------- tabs ---------- */
 export function switchTab(tab){
   document.querySelectorAll('nav button').forEach(x => x.classList.toggle('active', x.dataset.tab === tab));
-  ['home','records','report','employees'].forEach(t =>
+  ['home','records','report','employees','salary'].forEach(t =>
     $('tab-'+t).style.display = (t === tab) ? '' : 'none');
   document.body.classList.toggle('kiosk-active', tab === 'home');
   $('topHeader').style.display = tab === 'home' ? 'none' : '';
@@ -95,6 +96,7 @@ export function switchTab(tab){
   if(tab === 'records') renderRecords();
   if(tab === 'report') renderReport();
   if(tab === 'employees') renderEmployees();
+  if(tab === 'salary') renderSalary();
 }
 document.querySelectorAll('nav button').forEach(b => b.onclick = () => {
   const tab = b.dataset.tab;

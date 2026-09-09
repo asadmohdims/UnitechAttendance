@@ -60,18 +60,22 @@ body.kiosk-active{overflow:hidden;}
 .btn.ghost{background:transparent; color:var(--ink); border:1px solid var(--border);}
 .btn.small{min-height:38px; padding:8px 12px; font-size:13px; border-radius:10px;}
 .btn:disabled{opacity:.5;}
-#camModal, #loginModal, #adminModal{position:fixed; inset:0; background:rgba(4,9,17,.96); display:none; flex-direction:column; align-items:center; justify-content:center; z-index:100; padding:20px;}
-#camModal.open, #loginModal.open, #adminModal.open{display:flex;}
+.modal-overlay{position:fixed; inset:0; background:rgba(4,9,17,.96); display:flex; flex-direction:column; align-items:center; justify-content:center; z-index:100; padding:20px; opacity:0; visibility:hidden; pointer-events:none; transition:opacity .18s ease;}
+.modal-overlay.open{opacity:1; visibility:visible; pointer-events:auto;}
 #camModal h2{color:#fff; margin-bottom:8px; font-size:24px; text-align:center;}
 .camera-help{color:var(--muted); margin-bottom:18px; text-align:center; font-size:15px;}
 #video{width:100%; max-width:440px; border:2px solid var(--border); border-radius:20px; background:#000; transform:scaleX(-1);}
 #camBtns{width:100%; max-width:440px; margin-top:18px; display:flex; gap:12px;}
 #camBtns .btn{flex:1;}
 .modal-err{color:#ffb3b3; margin-top:10px; text-align:center; font-size:14px; max-width:340px;}
-.auth-card{background:var(--card); border:1px solid var(--border); border-radius:20px; padding:24px; width:100%; max-width:390px;}
-.auth-card h2{font-size:18px; margin-bottom:14px;}
+.auth-card{background:var(--card); border:1px solid var(--border); border-radius:20px; padding:24px; width:100%; max-width:390px; transform:scale(.96); transition:transform .18s ease;}
+.modal-overlay.open .auth-card{transform:scale(1);}
+.auth-card h2{font-size:20px; letter-spacing:-.02em; margin-bottom:14px;}
 .auth-card input{margin-bottom:10px;}
 .auth-card .modal-err{color:var(--red);}
+.modal-field-label{display:block; color:var(--muted); font-size:13px; font-weight:650; margin:0 0 6px;}
+.modal-field-label ~ .modal-field-label{margin-top:14px;}
+input:focus-visible{outline:2px solid var(--blue); outline-offset:1px; border-color:var(--blue);}
 table{width:100%; border-collapse:collapse; font-size:14px;}
 th,td{padding:8px 6px; border-bottom:1px solid var(--border); text-align:left;}
 th{color:var(--muted); font-weight:600; font-size:12px; text-transform:uppercase;}
@@ -117,5 +121,14 @@ h3{font-size:16px; margin-bottom:10px;}
 .report-number{text-align:right; font-variant-numeric:tabular-nums}.report-number strong{font-size:16px}.report-number span{display:block; color:var(--muted); font-size:12px; margin-bottom:2px;}
 .report-detail-toggle{display:block; width:max-content; margin:16px auto 0; border:0; padding:12px; background:none; color:#93c5fd; text-decoration:underline; font-size:14px; font-weight:700; cursor:pointer;}
 #reportDetail{margin-top:16px;}
+.salary-person{display:grid; grid-template-columns:46px minmax(110px,1.2fr) 1fr auto; align-items:center; gap:12px; padding:14px 17px; border-bottom:1px solid var(--border);}
+.salary-who{min-width:0;}
+.salary-amount{text-align:right; font-variant-numeric:tabular-nums;}
+.salary-amount span{display:block; color:var(--muted); font-size:12px; margin-bottom:2px;}
+.salary-amount strong{font-size:18px;}
+.salary-actions{display:flex; gap:8px;}
+.salary-calc-detail{padding:0 17px 16px; margin-top:-6px; font-size:13px; color:var(--muted); line-height:1.6;}
+.salary-calc-detail p{margin:2px 0;}
+.salary-calc-detail b{color:var(--ink);}
 @media (max-width:520px){header{padding:15px 16px} main{padding:8px 16px 70px} #clock{font-size:12px}.card{padding:14px}}
-@media (max-width:620px){.report-summary{grid-template-columns:1fr}.report-top{align-items:stretch; flex-direction:column}.report-top .btn{width:100%}.report-person{grid-template-columns:43px 1fr 82px; gap:10px}.report-person .report-state{grid-column:2; grid-row:2}.report-person .days-worked{display:none}.report-person .report-number:last-child{grid-column:3; grid-row:1 / span 2}.review-alert{align-items:flex-start; flex-direction:column}.review-alert .btn{width:100%}}
+@media (max-width:620px){.report-summary{grid-template-columns:1fr}.report-top{align-items:stretch; flex-direction:column}.report-top .btn{width:100%}.report-person{grid-template-columns:43px 1fr 82px; gap:10px}.report-person .report-state{grid-column:2; grid-row:2}.report-person .days-worked{display:none}.report-person .report-number:last-child{grid-column:3; grid-row:1 / span 2}.review-alert{align-items:flex-start; flex-direction:column}.review-alert .btn{width:100%}.salary-person{grid-template-columns:43px 1fr; row-gap:8px}.salary-amount,.salary-actions{grid-column:2}.salary-amount{text-align:left}}

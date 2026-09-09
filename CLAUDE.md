@@ -114,11 +114,36 @@ look — they haven't been redesigned yet (see Stage 2 below).
   2026-09-09): the offline-resilient outbox described above, plus a small sync-status
   indicator on the kiosk screen (amber "Syncing…" / red "check Wi-Fi", hidden the rest of
   the time — which is nearly always, since syncs usually finish before the next 5s poll).
-- ⬜ **Stage 2 (not started) — admin UX**, from the original audit: a short PIN for daily
-  admin unlock instead of retyping the full account password; replace the native
-  `prompt()`/`confirm()` dialogs in `js/ui/records.js` (edit time, delete) and
-  `js/ui/employees.js` (rename) with in-app modals and a real time picker; guard against
-  deactivating a currently-clocked-in employee (orphans their open session today).
+- ⬜ **Stage 2 (partially started) — admin UX**, from the original audit: a short PIN for
+  daily admin unlock instead of retyping the full account password; replace the remaining
+  native `prompt()`/`confirm()` dialogs in `js/ui/records.js` (edit time, delete) with the
+  same `promptModal()` component now used by Rename/Amend — see `js/ui/modal.js` — and add a
+  real time picker; guard against deactivating a currently-clocked-in employee (orphans their
+  open session today).
+
+## Testing
+
+Some of this codebase's pure logic has automated coverage via Node's **built-in** test runner
+(`node:test` + `node:assert`) — zero npm installs, zero config file, zero build step, so this
+doesn't conflict with the "no build step, no npm, no bundler" constraint above (it's testing,
+not bundling).
+
+- Run everything: `node --test js/` from the project root.
+- Test files are co-located with the code they cover, named `*.test.mjs` — the `.mjs`
+  extension is what lets Node treat them as ES modules with zero config, no `package.json`
+  needed.
+- Covered so far: `js/salary.js` (the money math — proration, the retroactive rate-selection
+  rule, boundary/leap-year dates) and `js/store/demoStore.js` (a regression suite for a real
+  bug found 2026-09-09: the employee loader was silently reverting any rename back to the
+  hardcoded seed name on every subsequent read — see the "rename survives a subsequent read"
+  test, which fails against the old code and passes against the fix).
+- Deliberately **not** covered by automated tests: `supabaseStore.js` (touches the real
+  network/DB — a proper test would need a mocked client or a disposable test project; keep
+  verifying it via the console against the live project, per the working conventions below)
+  and the UI layer (no headless-browser test tool is set up — that would be new tooling, ask
+  first). Because both stores share the same pure `salary.js` logic rather than duplicating
+  it, testing that logic once covers correctness for both the demo and production data paths
+  — `supabaseStore.js` itself is thin CRUD with little logic of its own left to break.
 
 ## Working conventions established on this project
 

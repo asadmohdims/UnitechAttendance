@@ -1,7 +1,12 @@
 // Pure day-hours accumulation for report.js's monthData() — no store/DOM access, so it's
 // testable in isolation the same way js/salary.js is.
 import { recHours, dateStr } from './utils.js';
-import { WEEKLY_HOLIDAY_DAY } from './config.js';
+import { WEEKLY_HOLIDAY_DAY, STANDARD_DAY_HOURS } from './config.js';
+
+// A single session's hours below which it reads as attendance for only part of the day, rather
+// than a full day worked straight through with no break — see isHalfDay() below. 6 of 8 standard
+// hours (75%) is the working default; revisit if it misclassifies real days either direction.
+const HALF_DAY_HOUR_THRESHOLD = STANDARD_DAY_HOURS * 0.75;
 
 // A day's chronologically-sorted sessions, collapsing any run chained by `lunch_paid` (a flag
 // on the earlier session in a pair, set when the owner opts to pay through that lunch gap)
@@ -94,13 +99,16 @@ export function dayOffStatus({date, weekday, employeeSince, today = dateStr()}){
   return 'off';
 }
 
-// A day with exactly one session — as opposed to the two-session morning+afternoon pattern a
-// full day normally has now that lunch breaks are routinely punched separately (see the
-// Lunch-break section in CLAUDE.md) — reads as attendance for only one half of the day, worth
-// its own calendar color rather than blending into a normal full day.
-// Caveat worth knowing: this can't tell "only worked the morning" apart from "worked a full
-// day in one continuous punch with no lunch break taken" — both are a single session. It's a
-// literal session-count rule, not an hours-based one; flag it if that misclassifies real days.
-export function isHalfDay(sessions){
-  return !!sessions && sessions.length === 1;
+// A day with exactly one session AND notably fewer hours than a full day — as opposed to the
+// two-session morning+afternoon pattern a full day normally has now that lunch breaks are
+// routinely punched separately (see the Lunch-break section in CLAUDE.md) — reads as attendance
+// for only part of the day, worth its own calendar color rather than blending into a normal
+// full day. The hours check is what tells "only worked the morning" (a real half day) apart
+// from "worked a full day in one continuous punch with no lunch break taken" (still a full
+// day's work, just not chained into two sessions) — session count alone can't distinguish them.
+// `hoursWorked` is the day's already-computed total (buildDayHours' `hours[empId][day]`), not
+// re-derived here, so this never disagrees with what the day's own hours figure says.
+export function isHalfDay(sessions, hoursWorked){
+  if(!sessions || sessions.length !== 1) return false;
+  return hoursWorked != null && hoursWorked < HALF_DAY_HOUR_THRESHOLD;
 }

@@ -191,17 +191,34 @@ describe('dayOffStatus', () => {
 describe('isHalfDay', () => {
   const morning = { clock_in: '2026-09-11T09:00:00.000Z', clock_out: '2026-09-11T13:00:00.000Z' };
   const afternoon = { clock_in: '2026-09-11T13:00:00.000Z', clock_out: '2026-09-11T17:00:00.000Z' };
+  const noBreak = { clock_in: '2026-09-11T09:00:00.000Z', clock_out: '2026-09-11T18:00:00.000Z' };
 
-  test('a single session is a half day', () => {
-    assert.equal(isHalfDay([morning]), true);
+  test('a single short session (4h, well under the 6h threshold) is a half day', () => {
+    assert.equal(isHalfDay([morning], 4), true);
   });
 
-  test('a morning + afternoon pair (a full lunch-break day) is not a half day', () => {
-    assert.equal(isHalfDay([morning, afternoon]), false);
+  // The regression this guards: a real single-session day worked from 9-6 (9h) was showing as
+  // a half day before hoursWorked was factored in — indistinguishable from someone who only
+  // worked a 4h morning, purely because both are "one session."
+  test('a single session with close to a full day\'s hours (worked straight through, no break) is NOT a half day', () => {
+    assert.equal(isHalfDay([noBreak], 9), false);
+  });
+
+  test('a single session right at the threshold (6h, not below it) is not a half day', () => {
+    assert.equal(isHalfDay([morning], 6), false);
+  });
+
+  test('a morning + afternoon pair (a full lunch-break day) is not a half day, regardless of hours', () => {
+    assert.equal(isHalfDay([morning, afternoon], 8), false);
   });
 
   test('no sessions is not a half day', () => {
-    assert.equal(isHalfDay([]), false);
-    assert.equal(isHalfDay(undefined), false);
+    assert.equal(isHalfDay([], 4), false);
+    assert.equal(isHalfDay(undefined, 4), false);
+  });
+
+  test('hoursWorked missing (e.g. a still-open session) is not treated as a half day', () => {
+    assert.equal(isHalfDay([morning], null), false);
+    assert.equal(isHalfDay([morning], undefined), false);
   });
 });

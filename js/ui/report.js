@@ -195,10 +195,10 @@ function renderDetailCalendar({days, emps, hours, openFlags, reviewFlags, gapSta
       // Only reached with no punches at all (not open, no hours) — 'holiday' or 'off', see
       // dayOffStatus() in reportMath.js for what decides which, or null for nothing to show.
       const gap = !open && !hasHours ? gapStatus[e.id][d] : null;
-      // A single-session day (only a morning or only an afternoon punch) gets its own color
-      // instead of blending into a normal two-session full day — see isHalfDay()'s caveat in
-      // reportMath.js about what this can't distinguish.
-      const half = hasHours && isHalfDay(sessions);
+      // A single-session day with notably fewer hours than a full day (only a morning or only
+      // an afternoon punch) gets its own color — a single session with close to a full day's
+      // hours (worked straight through, no break) stays 'full'. See isHalfDay() in reportMath.js.
+      const half = hasHours && isHalfDay(sessions, hours[e.id][d]);
       const pill = document.createElement('div');
       pill.className = 'daypill' + (open ? ' review' : hasHours ? (half ? ' half' : ' full') : gap ? ` ${gap}` : '')
         + (flagged ? ' flagged' : '') + (autoInfo ? ' auto' : '');

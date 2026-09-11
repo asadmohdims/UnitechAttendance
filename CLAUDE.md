@@ -217,10 +217,15 @@ deduction shares the same number instead of a second hardcoded `8`.
 - **Half day** (added 2026-09-11 on owner feedback after seeing Phase 1 live): a day with
   exactly one session — as opposed to the two-session morning+afternoon pattern a full day
   normally has now that lunch breaks are routinely punched separately — gets its own
-  `.daypill.half` color (new `--teal` token) instead of blending into `.full`. `isHalfDay()`
-  in `js/reportMath.js` is a literal session-count rule, not an hours-based one — it can't tell
-  "only worked the morning" apart from "worked a full day in one continuous punch with no lunch
-  break taken." Flagged to the owner as a known caveat; revisit if it misclassifies real days.
+  `.daypill.half` color (new `--teal` token) instead of blending into `.full`.
+  `isHalfDay(sessions, hoursWorked)` in `js/reportMath.js` originally used session count alone,
+  which the owner correctly flagged as confusing once real-looking data hit it: a genuine
+  9-hour single-session day (worked straight through, no break) read identically to a real
+  4-hour half day. Fixed the same day by also checking hours — a single session needs to fall
+  under `HALF_DAY_HOUR_THRESHOLD` (75% of `STANDARD_DAY_HOURS`, so 6 of 8) to count as half;
+  a single session close to a full day's hours now correctly stays `.full`. `hoursWorked` is
+  the day's already-computed total from `buildDayHours` (not re-derived), so this can never
+  disagree with the hours figure shown elsewhere on the same day.
 - **"Split for lunch" (added 2026-09-11)** is the owner's chosen way to handle that caveat: for
   a genuinely worked-straight-through day, `js/ui/records.js`'s `singleSessionRow` gets a "Split
   for lunch" action (any closed single session) that turns it into two sessions around a chosen
@@ -428,7 +433,9 @@ not bundling).
   merging under a rounding `hoursFn`, and a still-open session after a flagged one; and
   `dayOffStatus`'s holiday/off/nothing-to-show classification, including the Friday-before-hire
   precedence regression and the "no `employeeSince`" demo-mode case; and `isHalfDay`'s
-  single-vs-two-session distinction), and `js/rounding.js` (both
+  session-count-plus-hours distinction, including the regression this guards against — a
+  single session with close to a full day's hours must NOT read as a half day), and
+  `js/rounding.js` (both
   sides of the 10/11-minute grace-window cutover, the exact 10:30 tie, hour/day rollovers, and
   `recHoursRounded`'s open-session and zero-length cases).
 - Deliberately **not** covered by automated tests: `supabaseStore.js` (touches the real

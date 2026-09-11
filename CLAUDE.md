@@ -264,6 +264,43 @@ deduction shares the same number instead of a second hardcoded `8`.
   already used for the *first* flagged entry — now available from *any* day's detail panel, not
   just the first flagged one.
 
+## Kiosk "on lunch" tile state (2026-09-11)
+
+Prompted by the owner walking through the employee-facing tap flow and finding it confusing —
+a deep-dive (see chat history around this date) found the real issue wasn't the number of
+taps, it was an asymmetry: an employee who **manually** tapped out for lunch got no distinct
+tile state at all (identical to "never showed up" or "done for the whole day"), while only an
+employee the auto-close safety net caught got the amber "On lunch" treatment. Backwards — the
+person who did the right thing was the one left with no feedback.
+
+- **Fixed by deriving "on lunch" from data instead of a separately-mutated flag.** The old
+  `state.onLunch` (`js/state.js`) was only ever set by the auto-close path
+  (`checkLunchAutoClose()`) and cleared on the next clock-in — a manual clock-out never touched
+  it, which was the actual bug. Replaced with `state.sessionsToday[empId]` (count of today's
+  records, open or closed, built in `refreshPunchedToday()` in `js/ui/kiosk.js`).
+  `tileStatus(e)` now computes `onLunch = !open && sessionsToday[e.id] === 1` — true whenever
+  exactly one session is done and none is open, **regardless of whether that session ended
+  itself (manual tap) or was closed by the safety net** — so the two cases can no longer
+  disagree on what the tile shows.
+- **Why exactly 1, not "any odd number" or ">= 1"**: a day with 2+ completed sessions already
+  has its normal full-day shape done — showing "on lunch" past that point would invite a stray
+  extra tap that creates a spurious 3rd session. Verified live: a genuinely-completed
+  two-session day correctly falls through to the plain idle tile, not amber.
+- `state.sessionsToday` is bumped directly at clock-in time in `handlePunchCapture()`
+  (matching the existing pattern for `openSessions`/`punchedToday` — mutate immediately for
+  latency, don't wait for the next `refreshAll()`), otherwise a stale in-memory count would
+  re-label a genuine end-of-day clock-out as "on lunch" again for the rest of that session.
+- **Resume gets its own badge glyph** (`↻`, distinct from the plain `▶` used for "tap to
+  start") — a tap here means "continue where you left off," not "begin," and that shouldn't
+  depend on the employee reading the status text or noticing the border color.
+- `tileStatus()` is now exported and reused by Daily records' missed-clock-in banner
+  (`js/ui/records.js`), replacing that screen's own inline reimplementation of the same
+  open/on-lunch/missed rule — one source of truth instead of two copies that could drift.
+- **Deliberately not changed**: the underlying 2-session-per-lunch-break data model, the
+  auto-close safety net itself, and how pay is calculated — this was scoped as a UI-only fix
+  after the owner explicitly chose it over a bigger "true 2-taps-a-day, pay in full by
+  default" redesign, which would have been a payroll-policy change, not a UI one.
+
 ## Design system (kiosk/home screen)
 
 Landscape layout: a fixed side panel + a centered, wrapping grid of ID-badge-shaped employee

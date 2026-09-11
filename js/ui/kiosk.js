@@ -21,13 +21,18 @@ export async function refreshAll(){
   busy(false);
 }
 
-// Rebuilds the set of employees who have any attendance record at all today (open or
-// closed) — the source for the missed-clock-in flag, since neither openSessions nor onLunch
-// alone can tell "already completed a shift" apart from "never showed up."
+// Rebuilds today's per-employee record count. `punchedToday` (any record at all) is the
+// source for the missed-clock-in flag; `sessionsToday` (how many) is what tileStatus() below
+// uses to tell "on a break, expected back" (exactly 1 so far) apart from "already completed
+// the whole day" (2 or more) — see the comment on state.sessionsToday in js/state.js.
 async function refreshPunchedToday(){
   const todays = await store.listRecordsForDate(dateStr());
   state.punchedToday = {};
-  todays.forEach(r => { state.punchedToday[r.emp_id] = true; });
+  state.sessionsToday = {};
+  todays.forEach(r => {
+    state.punchedToday[r.emp_id] = true;
+    state.sessionsToday[r.emp_id] = (state.sessionsToday[r.emp_id] || 0) + 1;
+  });
 }
 
 // Safety net for someone who forgets to tap out for lunch entirely: anyone still clocked in
@@ -44,7 +49,9 @@ async function checkLunchAutoClose(){
     try{
       await store.clockOut(rec.id, null, atIso);
       delete state.openSessions[rec.emp_id];
-      state.onLunch[rec.emp_id] = true;
+      // No separate "on lunch" flag to set here — tileStatus() derives that from
+      // sessionsToday, which already counted this record when it was created. Closing it
+      // (open -> not open) is the only state change this needs to make.
     }catch(err){
       // Don't let one record's failure (e.g. genuinely deleted from the admin panel in the
       // meantime) stop the rest of this tick's tiles from updating, or block the next tick's
@@ -58,10 +65,15 @@ async function checkLunchAutoClose(){
 }
 
 // A tile's in/lunch/missed status, purely from current state — shared by the full rebuild
-// below and the lightweight periodic refresh, so the two can never disagree on the rule.
-function tileStatus(e){
+// below, the lightweight periodic refresh, and Daily records' missed-clock-in banner, so all
+// three can never disagree on the rule. "On lunch" means exactly one session recorded today
+// and none currently open — deliberately the same whether that first session ended because
+// the employee tapped out themselves or because the auto-close safety net closed it for
+// them; a day with 2+ sessions already done doesn't count, so the tile doesn't keep inviting
+// a "resume" tap once the day's normal shape is already complete.
+export function tileStatus(e){
   const open = state.openSessions[e.id];
-  const onLunch = !open && state.onLunch[e.id];
+  const onLunch = !open && state.sessionsToday[e.id] === 1;
   const missed = !open && !onLunch && isMissedClockIn(state.punchedToday[e.id]);
   return {open, onLunch, missed};
 }
@@ -99,7 +111,10 @@ export function renderHome(){
     const avatar = div.querySelector('.avatar');
     applyAvatar(avatar, e);
     avatar.alt = e.name;
-    div.querySelector('.state-badge').textContent = open ? '■' : missed ? '!' : '▶';
+    // '↻' (resume) is deliberately its own glyph, not the plain '▶' used for a fresh start —
+    // a tap here means "continue where you left off," not "begin," and that distinction
+    // shouldn't rely on the employee reading the status text or the tile's border color.
+    div.querySelector('.state-badge').textContent = open ? '■' : onLunch ? '↻' : missed ? '!' : '▶';
     div.querySelector('.name').textContent = e.name;
     div.querySelector('.status').innerHTML = open
       ? `Working since ${fmtTime(open.clock_in)}<br>Tap to finish`
@@ -124,7 +139,7 @@ function refreshTileStates(){
     if(!tile) return;
     const {open, onLunch, missed} = tileStatus(e);
     tile.className = 'badge-tile' + (open ? ' in' : onLunch ? ' lunch' : missed ? ' missed' : '');
-    tile.querySelector('.state-badge').textContent = open ? '■' : missed ? '!' : '▶';
+    tile.querySelector('.state-badge').textContent = open ? '■' : onLunch ? '↻' : missed ? '!' : '▶';
     tile.querySelector('.status').innerHTML = open
       ? `Working since ${fmtTime(open.clock_in)}<br>Tap to finish`
       : onLunch ? 'On lunch — tap to resume'
@@ -146,8 +161,12 @@ async function handlePunchCapture(emp, blob){
   }else{
     const rec = await store.clockIn(emp.id, blob);
     state.openSessions[emp.id] = rec;
-    delete state.onLunch[emp.id];
     state.punchedToday[emp.id] = true; // avoid a stale "missed" flash until the next refreshAll
+    // Same reasoning as punchedToday above: bump this now rather than waiting for the next
+    // refreshAll, so tileStatus() doesn't miscount and show "on lunch" again once THIS new
+    // session eventually closes (e.g. immediately turning a genuine end-of-day tap back into
+    // an apparent "back from lunch" invitation).
+    state.sessionsToday[emp.id] = (state.sessionsToday[emp.id] || 0) + 1;
     action = 'in';
   }
   renderHome();

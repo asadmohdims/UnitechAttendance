@@ -2,9 +2,8 @@ import { $, busy, toast, dateStr, fmtTime, fmtHours, recHours } from '../utils.j
 import { state } from '../state.js';
 import { store } from '../store/index.js';
 import { applyAvatar } from '../avatars.js';
-import { refreshAll } from './kiosk.js';
+import { refreshAll, tileStatus } from './kiosk.js';
 import { promptModal } from './modal.js';
-import { isMissedClockIn } from '../missedClockIn.js';
 import { recHoursRounded, roundToQuarterHour, wasRounded } from '../rounding.js';
 import { dayHoursFromSessions } from '../reportMath.js';
 
@@ -266,14 +265,13 @@ export async function renderRecords(){
 
 // Only meaningful for today's date — "missed clock-in" isn't a retroactive judgment about a
 // past day, so browsing history never shows it. Reads shared `state` directly rather than
-// fetching: js/ui/kiosk.js's periodicCheck() keeps openSessions/onLunch/punchedToday live
-// regardless of which admin tab is active.
+// fetching: js/ui/kiosk.js's periodicCheck() keeps openSessions/sessionsToday/punchedToday
+// live regardless of which admin tab is active. Reuses tileStatus() (same function the kiosk
+// tiles use) rather than re-deriving the same open/on-lunch/missed rule here a second time.
 function renderMissedAlert(){
   const el = $('missedAlert');
   if(recDate.value !== dateStr()){ el.style.display = 'none'; return; }
-  const missed = state.employees.filter(e =>
-    e.active && !state.openSessions[e.id] && !state.onLunch[e.id] && isMissedClockIn(state.punchedToday[e.id])
-  );
+  const missed = state.employees.filter(e => e.active && tileStatus(e).missed);
   el.style.display = missed.length ? '' : 'none';
   if(missed.length){
     $('missedTitle').textContent = `${missed.length} ${missed.length === 1 ? "employee hasn't" : "employees haven't"} clocked in today`;

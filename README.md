@@ -8,8 +8,15 @@ A web app to track employee attendance for a small shop (< 10 employees).
 - Punches are captured instantly and sync to the server in the background, so a brief
   internet drop at the shop doesn't lose a clock-in/out — it just syncs a little later.
 - Daily hours are calculated automatically (supports overnight shifts and fixing missed punches).
-- Records view per day with in/out photos, editable times.
-- Monthly report: hours per day per employee, days worked, total hours — downloadable as Excel (.xlsx).
+- Lunch breaks are just a normal second clock-in/out — no separate button to learn. If someone
+  forgets to tap back in, the kiosk closes their session automatically at a configurable cutoff
+  and flags it for the admin to double-check, instead of silently paying them through it.
+- Records view per day with in/out photos, editable times, grouped by session when someone has
+  more than one that day (with the lunch gap shown between them).
+- Monthly report: a status-grid calendar (not just a number per day) shows at a glance who
+  worked, who's still clocked in, and whose lunch needs a second look — click any day for the
+  full session breakdown. Hours per day per employee, days worked, total hours — downloadable
+  as Excel (.xlsx).
 - Salary: prorates a monthly rate against hours actually worked, with a full calculation
   breakdown shown per employee. Rate changes are amendments (never edited in place), so past
   months keep the rate that was actually in effect at the time.

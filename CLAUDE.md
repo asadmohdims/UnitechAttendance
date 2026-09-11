@@ -35,11 +35,13 @@ css/styles.css        -- all styles
 js/
   config.js             -- SUPABASE_URL, SUPABASE_ANON_KEY, DEMO_MODE
   supabaseClient.js      -- creates `sb`, the Supabase client
-  state.js               -- shared mutable `state = {employees, openSessions, adminUnlocked}`
+  state.js               -- shared mutable `state = {employees, openSessions, onLunch, adminUnlocked}`
   utils.js                -- $, toast, busy, pad, dateStr, fmtTime, fmtHours, recHours
   avatars.js               -- initials-fallback avatar rendering (never shows the wrong photo)
   camera.js                 -- captureFor(emp, mode, onCapture) — owns the camera modal
   salary.js                  -- pure salary math (proration, rate selection) — no store/DOM access
+  lunch.js                    -- pure lunch auto-close predicate (cutoff time, shouldAutoCloseForLunch)
+  reportMath.js                -- pure per-day hours/review-flag/session-grouping math for the report
   store/
     index.js                  -- `store = DEMO_MODE ? demoStore : supabaseStore`
     demoStore.js                -- localStorage-backed
@@ -50,8 +52,8 @@ js/
     kiosk.js                     -- home screen, punch flow, refreshAll(), punch confirmation
     modal.js                     -- promptModal() — styled stand-in for prompt()
     employees.js                  -- admin Employees tab
-    records.js                     -- admin Daily records tab
-    report.js                       -- admin Monthly report + Excel export
+    records.js                     -- admin Daily records tab (same-day session grouping/dividers)
+    report.js                       -- admin Monthly report: status-grid calendar + Excel export
     salary.js                       -- admin Salary tab (uses js/salary.js's math + report.js's monthData)
   main.js                            -- entry point
 ```
@@ -95,6 +97,50 @@ network hiccup was treated as the one unacceptable failure mode — this is why 
   localStorage, so its `clockIn`/`clockOut` just changed signature (blob instead of a
   pre-computed photo path) to match the shared interface, no offline logic.
 
+## Lunch-break support (2026-09-11, branch `feature/lunch-break-support`)
+
+Employees punch multiple in/out sessions per day now instead of one — this needed **no schema
+change**: `records` already had no per-day uniqueness constraint (its own comment says "one row
+per in/out session"), so a lunch break is just an ordinary second clock-in/out pair. Worked
+hours are simply Σ(session durations) — the lunch gap is whatever falls *between* sessions,
+never an inferred or separately-deducted amount.
+
+- **Auto-close safety net** (`js/lunch.js`): the one real gap the multi-session model doesn't
+  cover by itself — an employee who forgets to tap out for lunch would otherwise sit in one
+  long open session and get paid through it. `LUNCH_CUTOFF_HOUR`/`LUNCH_CUTOFF_MINUTE` in
+  `js/config.js` (default 1:00pm — a placeholder pending the shop owner, same status as
+  `STANDARD_MONTHLY_HOURS`) mark the cutoff; anyone still clocked in on a session that started
+  *today* and before the cutoff gets auto-closed at the cutoff time. Deliberately
+  **client-side and opportunistic** (`checkLunchAutoClose()` in `js/ui/kiosk.js`, run once on
+  load and again on the same 5s tick as the sync-status poll — not a server-side cron), so it
+  reuses the existing offline-resilient outbox write path instead of a separate mechanism.
+- **No new column needed to mark "this was an auto-close":** a manual punch always has a real
+  camera-captured photo (`js/camera.js`'s `captureFor` is the only path to a blob). An
+  auto-close is therefore the *only* way `clock_out` gets set while `out_photo` stays `null` —
+  that absence alone is the signal. `clockOut(recordId, blob, atIso)` in both stores only sets
+  `out_photo`/`out_photo_blob` when a real blob is passed, and takes an explicit `atIso` so an
+  auto-close records the exact cutoff instant rather than whenever the periodic check happened
+  to run.
+- **Abandoned-lunch review flag** (`needsReview()` in `js/reportMath.js`): an auto-close firing
+  isn't the same as the situation being resolved — if the employee never taps back in, nothing
+  else would ever flag that day, and it would silently read as a clean, unremarkable partial
+  shift. `needsReview(sessions)` catches this with one check: a day's *last* session having no
+  `out_photo` means either it's genuinely still open (forgot to clock out) or it was
+  auto-closed and nothing followed it (forgot to resume) — both get the same "Review required"
+  treatment already used for open sessions: the Report summary cards, the top review
+  banner/count (wording distinguishes the two cases), the calendar's status pills, and a
+  matching "● Lunch not resumed" indicator in `js/ui/records.js` next to the existing
+  "● Still in".
+- **Daily records grouping**: `renderRecords()` in `js/ui/records.js` re-groups a date's raw
+  records by employee before rendering — `listRecordsForDate` sorts by `clock_in` **globally
+  across every employee**, which interleaves different people's sessions on a lunch-break day
+  — so a same-day second session always renders directly under its first, with a
+  "Lunch: Xh Ym" divider between them (`(auto)` appended only when the closing session had no
+  photo).
+- **Not yet merged to `main`** — code-complete, unit-tested, and manually verified (including
+  live in a real browser against seeded multi-day data), but still sitting on
+  `feature/lunch-break-support`, pushed to origin.
+
 ## Design system (kiosk/home screen)
 
 Landscape layout: a fixed side panel + a centered, wrapping grid of ID-badge-shaped employee
@@ -102,7 +148,10 @@ tiles (not circles — deliberate, ties to the "punch clock" identity). Palette 
 own existing tokens (`--bg`, `--blue`, `--ink`, `--muted` etc. in `css/styles.css`) — no
 separate palette was introduced. `--green` is reserved specifically for the "currently clocked
 in" signal (border glow + lift on `.badge-tile.in`), kept distinct from `--blue` (the one
-UI/brand accent) so the two don't compete.
+UI/brand accent) so the two don't compete. A third tile state, `.badge-tile.lunch`, was added
+for the lunch-break feature (auto-closed, hasn't tapped back in) — it uses `--amber`, which
+today is otherwise only a small transient "Syncing…" text color, so claiming it for a third
+persistent tile state doesn't blur what `.in`/`--blue` already mean.
 
 The side panel's wordmark and the live clock both use Bebas Neue — one display face carries the
 brand and the big number, so they read as one "signage" identity instead of a small label next
@@ -127,6 +176,24 @@ language as of the Stage 2 work below. On mobile, `.emp-row`'s action buttons wr
 own row instead of stacking one-per-line, and `.rec-row` uses `grid-template-areas` to
 regroup avatar/name/hours onto one line and in/out/actions onto a second.
 
+The Report tab's detailed calendar was redesigned (2026-09-11) from a plain number-per-day
+table into a status grid — the old design had no room for what a day can now contain (more
+than one session, a lunch gap, whether it was auto-closed), and had no horizontal scroll
+container at all, so `Total hrs` was clipped off-screen entirely at the app's own 980px width.
+`Employee` stays pinned left and `Days`/`Total hrs` stay pinned right via `position:sticky`
+(`#reportTable .col-emp`/`.col-days`/`.col-total`), so those columns are never what scrolls —
+only the day columns are. Each day is a `.daypill` (green "full", amber "!" "review", or an
+amber-bordered "full" with a corner dot for "flagged") rather than a number/IN/dot — a small
+corner-dot decorator distinguishes an auto-close that resolved fine (blue, informational, see
+`.daypill.auto`) from one that never got resumed (amber, folded into the same review flag as a
+genuinely-open session, see `.daypill.flagged`). A `.calendar-legend` below the table explains
+the states by reusing the exact `.daypill` markup at a smaller scale, so it can't visually
+drift out of sync with the real cells. Clicking a day expands an inline row with that day's
+actual session times/lunch gap (`toggleDayDetail()` in `js/ui/report.js`) — the expanded panel
+is itself `position:sticky; left:0` so it stays in view regardless of horizontal scroll
+position, and a document-level click listener closes it on any click outside a pill or the
+open row itself.
+
 Pinch-zoom (`user-scalable`) is toggled dynamically on the single `<meta name=viewport>` tag
 in `switchTab()` (`js/ui/shell.js`) — locked only on the kiosk home tab (stops an employee
 mid-queue from accidentally zooming the shared tablet), unlocked on every admin tab so an
@@ -147,7 +214,7 @@ admin isn't blocked from zooming Records/Report/Employees/Salary on their own ph
   rate-selection rule, tested), the `salary_rates` table, and the Salary admin tab
   (`js/ui/salary.js`) built on the same grid-list design as Report. `STANDARD_MONTHLY_HOURS`
   in `js/config.js` is a placeholder pending confirmation with the shop owner; no overtime cap
-  yet (see Planned features #4 below).
+  yet (see Planned features #2 below).
 - ✅ **Stage 2 — admin UX** (from the original audit, done 2026-09-11): `js/ui/records.js`'s
   edit/delete now go through `promptModal()` (see `js/ui/modal.js`, which gained `danger`
   styling for destructive confirms and optional/`required:false` fields) instead of native
@@ -167,33 +234,30 @@ admin isn't blocked from zooming Records/Report/Employees/Salary on their own ph
   above); kiosk panel restructured into `.kiosk-top`/`.kiosk-footer` for deterministic spacing;
   added the live roster status line; the admin date/greeting area's date bumped from muted to
   bold full-ink for more presence without competing with the clock's size-driven dominance.
+- ✅ **Lunch-break support + Report calendar redesign** (2026-09-11) — see the dedicated
+  "Lunch-break support" section above and the Design system paragraph on the status-grid
+  calendar. Supersedes Planned feature #3 below, done out of the original stated sequence
+  (explicitly chosen). **Code-complete and tested but not yet merged to `main`** — lives on
+  `feature/lunch-break-support`, pushed to origin; the next session picks up from there.
 
-## Planned features — time & attendance accuracy (not started, discussed 2026-09-10)
+## Planned features — time & attendance accuracy (discussed 2026-09-10)
 
-Four features, sequenced by dependency — don't reorder without reconsidering, since #2 and #3
-both feed the numbers #4 depends on. Working one at a time, ticking off in this order unless
-Asad says otherwise.
+Originally four features, sequenced by dependency. **Lunch break (was #3 here) shipped
+2026-09-11** — see "Lunch-break support" above — done out of the original stated order,
+explicitly chosen over working strictly 1→2→3→4. Remaining two, renumbered:
 
 1. **Missed clock-in highlight** — flag on the home/admin screen when someone hasn't clocked
    in. Intent still undecided — open question before starting: is "missed" evaluated against a
    fixed expected shift-start time (needs a schedule concept that doesn't exist yet) or just
-   "not currently clocked in as of now" (no schedule needed)? Independent of the other three —
-   can be done in any order, whenever that conversation happens.
-2. **15-minute rounding on clock in/out** (e.g. 9:13 → 9:15) — do this before #4, since overtime
-   should be computed on rounded hours, not raw punch times. Open decision needed: rounding
-   direction — nearest-15 (symmetric), always-favor-shop (in↑/out↓), or nearest-with-grace-window
-   (more payroll-standard, more rules to encode). Pure function; belongs in `js/salary.js`
-   alongside the existing money math, testable with `node --test` like the rest of that file.
-3. **Lunch break (pre-lunch / post-lunch shifts)** — schema change, not just math. `records`
-   today is one clock_in/clock_out pair per day (see `supabase-setup.sql`). Two options: (a) two
-   `records` rows per employee per day, reusing the existing session model and outbox pattern
-   as-is, or (b) one row plus `lunch_out`/`lunch_in` columns — smaller migration, but both
-   `salary.js` and the kiosk UI then need to understand a 4-state day instead of 2. Decide
-   together before touching the live schema — see the RLS decision precedent below on treating
-   schema/data changes to the live project as decisions, not just code changes.
-4. **Overtime calculation** — depends on #2 (rounded hours) and probably #3 (net-of-lunch
-   hours). Needs a decision on basis (daily >8h, weekly >40h, or both) and whether it's a
-   separate line in `calcSalary`'s output or folded into the ratio.
+   "not currently clocked in as of now" (no schedule needed)? Independent of #2 below.
+2. **15-minute rounding on clock in/out** (e.g. 9:13 → 9:15), then **overtime calculation** on
+   top of the rounded, lunch-net hours. Rounding's open decision: direction — nearest-15
+   (symmetric), always-favor-shop (in↑/out↓), or nearest-with-grace-window (more
+   payroll-standard, more rules to encode); pure function, belongs in `js/salary.js` alongside
+   the existing money math, testable with `node --test`. Overtime needs a decision on basis
+   (daily >8h, weekly >40h, or both) and whether it's a separate line in `calcSalary`'s output
+   or folded into the ratio — can now also draw on the real lunch-break data from the feature
+   above rather than raw punch times.
 
 ## Testing
 
@@ -207,10 +271,16 @@ not bundling).
   extension is what lets Node treat them as ES modules with zero config, no `package.json`
   needed.
 - Covered so far: `js/salary.js` (the money math — proration, the retroactive rate-selection
-  rule, boundary/leap-year dates) and `js/store/demoStore.js` (a regression suite for a real
+  rule, boundary/leap-year dates), `js/store/demoStore.js` (a regression suite for a real
   bug found 2026-09-09: the employee loader was silently reverting any rename back to the
   hardcoded seed name on every subsequent read — see the "rename survives a subsequent read"
-  test, which fails against the old code and passes against the fix).
+  test, which fails against the old code and passes against the fix), `js/lunch.js` (the
+  auto-close cutoff predicate — before/after the cutoff, the today-only guard against
+  force-closing a stale prior-day open session, a session that started after the cutoff), and
+  `js/reportMath.js` (per-day hours/open-flag accumulation, including the regression test for
+  an order-dependent bug where a closed session's hours could mask a same-day still-open
+  session; the session-grouping behind the calendar's click-through detail; and `needsReview`'s
+  logic for both "still open" and "auto-closed, never resumed").
 - Deliberately **not** covered by automated tests: `supabaseStore.js` (touches the real
   network/DB — a proper test would need a mocked client or a disposable test project; keep
   verifying it via the console against the live project, per the working conventions below)

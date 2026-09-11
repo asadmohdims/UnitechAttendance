@@ -85,11 +85,22 @@ $('btnLock').onclick = () => {
 };
 
 /* ---------- tabs ---------- */
+// Pinch-zoom is disabled only on the kiosk home screen (stops an employee mid-queue from
+// accidentally zooming the shared tablet) — every admin tab re-enables it, since an admin
+// reviewing Records/Report/Salary on their own phone shouldn't be blocked from zooming in.
+const viewportMeta = document.querySelector('meta[name=viewport]');
+function setKioskZoomLock(locked){
+  viewportMeta.setAttribute('content', locked
+    ? 'width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no'
+    : 'width=device-width, initial-scale=1');
+}
+
 export function switchTab(tab){
   document.querySelectorAll('nav button').forEach(x => x.classList.toggle('active', x.dataset.tab === tab));
   ['home','records','report','employees','salary'].forEach(t =>
     $('tab-'+t).style.display = (t === tab) ? '' : 'none');
   document.body.classList.toggle('kiosk-active', tab === 'home');
+  setKioskZoomLock(tab === 'home');
   $('topHeader').style.display = tab === 'home' ? 'none' : '';
   $('adminTools').style.display = tab === 'home' ? 'none' : 'flex';
   document.querySelectorAll('#adminTools [data-tab]').forEach(x => x.classList.toggle('active', x.dataset.tab === tab));

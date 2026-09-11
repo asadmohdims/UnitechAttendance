@@ -23,3 +23,12 @@ export function fmtHours(h){
 }
 
 export function recHours(r){ return r.clock_out ? Math.max(0,(new Date(r.clock_out) - new Date(r.clock_in))/3600000) : null; }
+
+// Moves a <input type="month"> value by `change` months (±1 for prev/next arrows) and re-renders.
+// Shared by the Report and Salary tabs' identical month-picker pattern.
+export function shiftMonthInput(input, change, onChange){
+  const [year, month] = input.value.split('-').map(Number);
+  const next = new Date(year, month - 1 + change, 1);
+  input.value = `${next.getFullYear()}-${pad(next.getMonth() + 1)}`;
+  onChange();
+}

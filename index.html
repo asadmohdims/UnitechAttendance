@@ -16,7 +16,7 @@
 <div id="busy"></div>
 
 <header id="topHeader" style="display:none">
-  <h1><span class="brand-mark">✓</span>Unitech Attendance</h1>
+  <h1>Unitech Attendance</h1>
   <div class="row" style="gap:8px">
     <div id="clock"></div>
     <button class="btn small ghost" id="btnLock" style="display:none">🔒 Lock</button>
@@ -35,14 +35,21 @@
 <!-- HOME (its own fixed-viewport screen, kept outside <main> so hiding <main> in kiosk mode can't hide it too) -->
 <section id="tab-home">
   <div class="kiosk-side">
-    <div class="kiosk-brand">Unitech Attendance</div>
-    <div class="kiosk-hero">
-      <div class="kiosk-greet" id="kioskGreet"></div>
-      <div class="kiosk-time" id="kioskTime"></div>
-      <div class="kiosk-date" id="kioskDate"></div>
+    <div class="kiosk-top">
+      <div class="kiosk-identity">
+        <div class="kiosk-brand">Unitech Attendance</div>
+        <div class="kiosk-roster" id="kioskRoster"></div>
+      </div>
+      <div class="kiosk-hero">
+        <div class="kiosk-greet" id="kioskGreet"></div>
+        <div class="kiosk-time" id="kioskTime"></div>
+        <div class="kiosk-date" id="kioskDate"></div>
+      </div>
     </div>
-    <div id="syncStatus" class="sync-status"></div>
-    <button class="kiosk-admin-link" id="btnAdminEntry">Admin access</button>
+    <div class="kiosk-footer">
+      <div id="syncStatus" class="sync-status"></div>
+      <button class="kiosk-admin-link" id="btnAdminEntry">Admin access</button>
+    </div>
   </div>
   <div class="kiosk-main">
     <div class="kiosk-badges" id="empGrid"></div>
@@ -66,12 +73,10 @@
         <input type="date" id="recDate" style="width:auto">
       </div>
     </div>
-    <div class="card">
-      <table id="recTable">
-        <thead><tr><th>Employee</th><th>In</th><th>Photo</th><th>Out</th><th>Photo</th><th class="num">Hours</th><th></th></tr></thead>
-        <tbody></tbody>
-      </table>
-      <p class="muted" id="recEmpty" style="display:none; margin-top:8px">No records for this date.</p>
+    <div class="card report-list">
+      <div class="report-list-head"><h3>Records</h3><span id="recCountLabel"></span></div>
+      <div id="recList"></div>
+      <p class="muted" id="recEmpty" style="display:none; padding:0 17px 17px">No records for this date.</p>
     </div>
   </section>
 
@@ -119,10 +124,10 @@
         <button class="btn green" id="btnAddEmp">Add</button>
       </div>
     </div>
-    <div class="card">
-      <h3>Employees</h3>
-      <table id="empTable"><tbody></tbody></table>
-      <p class="muted" id="empEmpty" style="display:none">No employees added yet.</p>
+    <div class="card report-list">
+      <div class="report-list-head"><h3>Employees</h3><span id="empCountLabel"></span></div>
+      <div id="empList"></div>
+      <p class="muted" id="empEmpty" style="display:none; padding:0 17px 17px">No employees added yet.</p>
     </div>
   </section>
 

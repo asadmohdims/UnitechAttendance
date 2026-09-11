@@ -1,4 +1,4 @@
-import { $, busy, toast, pad, fmtHours, dateStr } from '../utils.js';
+import { $, busy, toast, fmtHours, dateStr, shiftMonthInput } from '../utils.js';
 import { store } from '../store/index.js';
 import { applyAvatar } from '../avatars.js';
 import { monthData, summarizeHours } from './report.js';
@@ -10,14 +10,8 @@ const salMonth = $('salMonth');
 salMonth.value = dateStr().slice(0, 7);
 salMonth.onchange = renderSalary;
 
-function shiftSalaryMonth(change){
-  const [year, month] = salMonth.value.split('-').map(Number);
-  const next = new Date(year, month - 1 + change, 1);
-  salMonth.value = `${next.getFullYear()}-${pad(next.getMonth() + 1)}`;
-  renderSalary();
-}
-$('btnSalPrevMonth').onclick = () => shiftSalaryMonth(-1);
-$('btnSalNextMonth').onclick = () => shiftSalaryMonth(1);
+$('btnSalPrevMonth').onclick = () => shiftMonthInput(salMonth, -1, renderSalary);
+$('btnSalNextMonth').onclick = () => shiftMonthInput(salMonth, 1, renderSalary);
 
 export async function renderSalary(){
   busy(true);

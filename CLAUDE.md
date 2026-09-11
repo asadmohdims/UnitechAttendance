@@ -39,6 +39,7 @@ js/
   utils.js                -- $, toast, busy, pad, dateStr, fmtTime, fmtHours, recHours
   avatars.js               -- initials-fallback avatar rendering (never shows the wrong photo)
   camera.js                 -- captureFor(emp, mode, onCapture) — owns the camera modal
+  salary.js                  -- pure salary math (proration, rate selection) — no store/DOM access
   store/
     index.js                  -- `store = DEMO_MODE ? demoStore : supabaseStore`
     demoStore.js                -- localStorage-backed
@@ -47,9 +48,11 @@ js/
   ui/
     shell.js                    -- tabs, nav, login/logout, admin lock/unlock, live clock
     kiosk.js                     -- home screen, punch flow, refreshAll(), punch confirmation
+    modal.js                     -- promptModal() — styled stand-in for prompt()
     employees.js                  -- admin Employees tab
     records.js                     -- admin Daily records tab
     report.js                       -- admin Monthly report + Excel export
+    salary.js                       -- admin Salary tab (uses js/salary.js's math + report.js's monthData)
   main.js                            -- entry point
 ```
 
@@ -94,14 +97,40 @@ network hiccup was treated as the one unacceptable failure mode — this is why 
 
 ## Design system (kiosk/home screen)
 
-Landscape layout: a fixed side panel (wordmark, greeting, live clock in Bebas Neue, admin
-link) + a centered, wrapping grid of ID-badge-shaped employee tiles (not circles — deliberate,
-ties to the "punch clock" identity). Palette reuses the app's own existing tokens
-(`--bg`, `--blue`, `--ink`, `--muted` etc. in `css/styles.css`) — no separate palette was
-introduced. `--green` is reserved specifically for the "currently clocked in" signal (border
-glow + lift on `.badge-tile.in`), kept distinct from `--blue` (the one UI/brand accent) so the
-two don't compete. Admin screens (Employees/Records/Report) still use the original card-based
-look — they haven't been redesigned yet (see Stage 2 below).
+Landscape layout: a fixed side panel + a centered, wrapping grid of ID-badge-shaped employee
+tiles (not circles — deliberate, ties to the "punch clock" identity). Palette reuses the app's
+own existing tokens (`--bg`, `--blue`, `--ink`, `--muted` etc. in `css/styles.css`) — no
+separate palette was introduced. `--green` is reserved specifically for the "currently clocked
+in" signal (border glow + lift on `.badge-tile.in`), kept distinct from `--blue` (the one
+UI/brand accent) so the two don't compete.
+
+The side panel's wordmark and the live clock both use Bebas Neue — one display face carries the
+brand and the big number, so they read as one "signage" identity instead of a small label next
+to an unrelated number. There's no logo mark/badge icon anywhere (kiosk panel or the admin
+`<header>`'s `<h1>`, which shares this same Bebas Neue treatment) — considered and dropped,
+the wordmark alone carries the identity. The panel is structured as two flex groups —
+`.kiosk-top` (wordmark + a live "N of M clocked in now" roster line + the clock/date) and
+`.kiosk-footer` (admin link) — so `justify-content:space-between` on `.kiosk-side` has exactly
+one gap to distribute, at the bottom; spacing within `.kiosk-top` is a fixed, deliberate gap,
+not auto-margin centering. In portrait/mobile, `.kiosk-top`/`.kiosk-footer` become
+`display:contents` so their children flatten back into `.kiosk-side`'s row layout — the roster
+line lives *inside* the wordmark's wrapper (`.kiosk-identity`), not as a sibling, specifically
+so it doesn't become a third flex participant and break the row's `space-between` spacing (this
+broke once already — see git history around 2026-09-11 if this area gets touched again). The
+roster line hides entirely when there are no active employees, matching the tile grid's own
+empty state. Report and Salary got a further redesign on top of that: a metrics/summary
+row, a review-alert callout for open sessions, and a grid-based employee list
+(`.report-person`/`.salary-person` in `css/styles.css`) with its own mobile breakpoint — this is
+the "modern" look going forward. Employees and Daily records now share that same grid-list
+pattern (`.emp-row` and `.rec-row` in `css/styles.css`) — every admin screen is on one visual
+language as of the Stage 2 work below. On mobile, `.emp-row`'s action buttons wrap onto their
+own row instead of stacking one-per-line, and `.rec-row` uses `grid-template-areas` to
+regroup avatar/name/hours onto one line and in/out/actions onto a second.
+
+Pinch-zoom (`user-scalable`) is toggled dynamically on the single `<meta name=viewport>` tag
+in `switchTab()` (`js/ui/shell.js`) — locked only on the kiosk home tab (stops an employee
+mid-queue from accidentally zooming the shared tablet), unlocked on every admin tab so an
+admin isn't blocked from zooming Records/Report/Employees/Salary on their own phone.
 
 ## Status / what's done vs. pending
 
@@ -114,12 +143,57 @@ look — they haven't been redesigned yet (see Stage 2 below).
   2026-09-09): the offline-resilient outbox described above, plus a small sync-status
   indicator on the kiosk screen (amber "Syncing…" / red "check Wi-Fi", hidden the rest of
   the time — which is nearly always, since syncs usually finish before the next 5s poll).
-- ⬜ **Stage 2 (partially started) — admin UX**, from the original audit: a short PIN for
-  daily admin unlock instead of retyping the full account password; replace the remaining
-  native `prompt()`/`confirm()` dialogs in `js/ui/records.js` (edit time, delete) with the
-  same `promptModal()` component now used by Rename/Amend — see `js/ui/modal.js` — and add a
-  real time picker; guard against deactivating a currently-clocked-in employee (orphans their
-  open session today).
+- ✅ Salary v1 (commit `a770548`): pure proration math in `js/salary.js` (retroactive
+  rate-selection rule, tested), the `salary_rates` table, and the Salary admin tab
+  (`js/ui/salary.js`) built on the same grid-list design as Report. `STANDARD_MONTHLY_HOURS`
+  in `js/config.js` is a placeholder pending confirmation with the shop owner; no overtime cap
+  yet (see Planned features #4 below).
+- ✅ **Stage 2 — admin UX** (from the original audit, done 2026-09-11): `js/ui/records.js`'s
+  edit/delete now go through `promptModal()` (see `js/ui/modal.js`, which gained `danger`
+  styling for destructive confirms and optional/`required:false` fields) instead of native
+  `prompt()`/`confirm()`, with a real `<input type=time>` picker for edit; deactivating a
+  currently-clocked-in employee is now blocked with a toast instead of silently orphaning
+  their open session; Employees and Daily records were brought up to the Report/Salary
+  grid-list design (see Design system above). A short-PIN admin unlock was considered and
+  dropped from scope — full password re-entry stays as the daily admin-unlock mechanism.
+- ✅ Two smaller items from the same review, done alongside Stage 2: Report's per-employee
+  "days worked" figure was shown twice (a text sub-label and a numbered tile) — the sub-label
+  is now mobile-only (`.report-days-inline` in `css/styles.css`), where it's the only copy
+  since the numbered tile hides there; `.github/workflows/deploy.yml` now stages the site into
+  `_site/` excluding `archive/` before uploading to Pages, so the old pre-restructure draft no
+  longer ships to the public site alongside the real app.
+- ✅ Kiosk/admin typography pass (2026-09-11): removed the checkmark logo mark from both the
+  kiosk panel and the admin `<header>`; both wordmarks now set in Bebas Neue (see Design system
+  above); kiosk panel restructured into `.kiosk-top`/`.kiosk-footer` for deterministic spacing;
+  added the live roster status line; the admin date/greeting area's date bumped from muted to
+  bold full-ink for more presence without competing with the clock's size-driven dominance.
+
+## Planned features — time & attendance accuracy (not started, discussed 2026-09-10)
+
+Four features, sequenced by dependency — don't reorder without reconsidering, since #2 and #3
+both feed the numbers #4 depends on. Working one at a time, ticking off in this order unless
+Asad says otherwise.
+
+1. **Missed clock-in highlight** — flag on the home/admin screen when someone hasn't clocked
+   in. Intent still undecided — open question before starting: is "missed" evaluated against a
+   fixed expected shift-start time (needs a schedule concept that doesn't exist yet) or just
+   "not currently clocked in as of now" (no schedule needed)? Independent of the other three —
+   can be done in any order, whenever that conversation happens.
+2. **15-minute rounding on clock in/out** (e.g. 9:13 → 9:15) — do this before #4, since overtime
+   should be computed on rounded hours, not raw punch times. Open decision needed: rounding
+   direction — nearest-15 (symmetric), always-favor-shop (in↑/out↓), or nearest-with-grace-window
+   (more payroll-standard, more rules to encode). Pure function; belongs in `js/salary.js`
+   alongside the existing money math, testable with `node --test` like the rest of that file.
+3. **Lunch break (pre-lunch / post-lunch shifts)** — schema change, not just math. `records`
+   today is one clock_in/clock_out pair per day (see `supabase-setup.sql`). Two options: (a) two
+   `records` rows per employee per day, reusing the existing session model and outbox pattern
+   as-is, or (b) one row plus `lunch_out`/`lunch_in` columns — smaller migration, but both
+   `salary.js` and the kiosk UI then need to understand a 4-state day instead of 2. Decide
+   together before touching the live schema — see the RLS decision precedent below on treating
+   schema/data changes to the live project as decisions, not just code changes.
+4. **Overtime calculation** — depends on #2 (rounded hours) and probably #3 (net-of-lunch
+   hours). Needs a decision on basis (daily >8h, weekly >40h, or both) and whether it's a
+   separate line in `calcSalary`'s output or folded into the ratio.
 
 ## Testing
 

@@ -1,7 +1,9 @@
 import { $, busy, toast, dateStr, fmtTime, fmtHours, recHours } from '../utils.js';
 import { state } from '../state.js';
 import { store } from '../store/index.js';
+import { applyAvatar } from '../avatars.js';
 import { refreshAll } from './kiosk.js';
+import { promptModal } from './modal.js';
 
 const recDate = $('recDate');
 recDate.value = dateStr();
@@ -16,44 +18,70 @@ async function showPhoto(path){
   $('photoView').classList.add('open');
 }
 
-function photoCell(path){
-  const td = document.createElement('td');
-  if(path){
+function punchCell(label, iso, photoPath){
+  const cell = document.createElement('div');
+  cell.className = 'rec-punch';
+  const lbl = document.createElement('span'); lbl.className = 'lbl'; lbl.textContent = label;
+  const val = document.createElement('span'); val.className = 'val';
+  val.append(document.createTextNode(fmtTime(iso)));
+  if(photoPath){
     const img = document.createElement('img');
     img.className = 'photo-thumb';
-    store.getPhotoUrl(path).then(u => { if(u) img.src = u; });
-    img.onclick = () => showPhoto(path);
-    td.appendChild(img);
+    store.getPhotoUrl(photoPath).then(u => { if(u) img.src = u; });
+    img.onclick = () => showPhoto(photoPath);
+    val.appendChild(img);
   }
-  return td;
+  cell.append(lbl, val);
+  return cell;
 }
 
 export async function renderRecords(){
-  const tb = document.querySelector('#recTable tbody');
-  tb.innerHTML = '';
+  const list = $('recList');
+  list.innerHTML = '';
   busy(true);
-  let list;
+  let records;
   try{
-    list = await store.listRecordsForDate(recDate.value);
+    records = await store.listRecordsForDate(recDate.value);
   }catch(err){
     busy(false);
     return toast('Load failed: ' + err.message);
   }
   busy(false);
-  $('recEmpty').style.display = list.length ? 'none' : '';
-  for(const r of list){
+  $('recEmpty').style.display = records.length ? 'none' : '';
+  $('recCountLabel').textContent = records.length ? `${records.length} ${records.length === 1 ? 'entry' : 'entries'}` : '';
+
+  for(const r of records){
     const emp = state.employees.find(e => e.id === r.emp_id);
-    const tr = document.createElement('tr');
-    const tdName = document.createElement('td'); tdName.textContent = emp ? emp.name : '?';
-    const tdIn = document.createElement('td'); tdIn.textContent = fmtTime(r.clock_in);
-    const tdOut = document.createElement('td');
-    if(r.clock_out) tdOut.textContent = fmtTime(r.clock_out); else tdOut.innerHTML = '<span class="open-session">still IN</span>';
-    const tdH = document.createElement('td'); tdH.className = 'num'; tdH.textContent = fmtHours(recHours(r));
-    const tdEdit = document.createElement('td'); tdEdit.style.textAlign = 'right';
-    const bEdit = document.createElement('button'); bEdit.className = 'btn small ghost'; bEdit.textContent = 'Edit'; bEdit.onclick = () => editRecord(r);
-    const bDel = document.createElement('button'); bDel.className = 'btn small red'; bDel.style.marginLeft = '6px'; bDel.textContent = '✕';
+    const row = document.createElement('div');
+    row.className = 'rec-row';
+
+    const avatar = document.createElement('img');
+    avatar.className = 'report-avatar rec-avatar'; avatar.alt = '';
+    if(emp) applyAvatar(avatar, emp);
+
+    const who = document.createElement('div'); who.className = 'rec-who';
+    const name = document.createElement('div'); name.className = 'report-name'; name.textContent = emp ? emp.name : '?';
+    who.appendChild(name);
+    if(!r.clock_out){
+      const live = document.createElement('div'); live.className = 'open-session'; live.style.fontSize = '13px';
+      live.textContent = '● Still in';
+      who.appendChild(live);
+    }
+
+    const punches = document.createElement('div'); punches.className = 'rec-punches';
+    punches.append(punchCell('In', r.clock_in, r.in_photo), punchCell('Out', r.clock_out, r.out_photo));
+
+    const hours = document.createElement('div'); hours.className = 'rec-hours'; hours.textContent = fmtHours(recHours(r));
+
+    const actions = document.createElement('div'); actions.className = 'rec-actions';
+    const bEdit = document.createElement('button'); bEdit.className = 'btn small ghost'; bEdit.textContent = 'Edit'; bEdit.onclick = () => editRecord(r, emp);
+    const bDel = document.createElement('button'); bDel.className = 'btn small red'; bDel.textContent = 'Delete';
     bDel.onclick = async () => {
-      if(!confirm('Delete this record?')) return;
+      const confirmed = await promptModal({
+        title: `Delete this record for ${emp ? emp.name : 'this employee'}?`,
+        submitLabel: 'Delete', danger: true, fields: []
+      });
+      if(!confirmed) return;
       busy(true);
       try{
         await store.deleteRecord(r);
@@ -62,32 +90,33 @@ export async function renderRecords(){
       }catch(err){ toast('Failed: ' + err.message); }
       busy(false);
     };
-    tdEdit.append(bEdit, bDel);
-    tr.append(tdName, tdIn, photoCell(r.in_photo), tdOut, photoCell(r.out_photo), tdH, tdEdit);
-    tb.appendChild(tr);
+    actions.append(bEdit, bDel);
+
+    row.append(avatar, who, punches, hours, actions);
+    list.appendChild(row);
   }
 }
 
-async function editRecord(r){
-  const inT = prompt('IN time (HH:MM, 24h)', new Date(r.clock_in).toTimeString().slice(0,5));
-  if(inT === null) return;
-  const outCur = r.clock_out ? new Date(r.clock_out).toTimeString().slice(0,5) : '';
-  const outT = prompt('OUT time (HH:MM, 24h) — leave empty if still in', outCur);
-  if(outT === null) return;
-  const mk = (t) => {
-    const m = /^(\d{1,2}):(\d{2})$/.exec(t.trim());
-    if(!m) return null;
+async function editRecord(r, emp){
+  const result = await promptModal({
+    title: `Edit — ${emp ? emp.name : 'record'}`,
+    fields: [
+      {name:'clockIn', label:'Clock in', type:'time', value: new Date(r.clock_in).toTimeString().slice(0,5)},
+      {name:'clockOut', label:'Clock out (leave empty if still in)', type:'time', value: r.clock_out ? new Date(r.clock_out).toTimeString().slice(0,5) : '', required:false}
+    ]
+  });
+  if(!result) return;
+  const mk = hhmm => {
+    const [h, m] = hhmm.split(':').map(Number);
     const d = new Date(r.date + 'T00:00:00');
-    d.setHours(+m[1], +m[2], 0, 0);
+    d.setHours(h, m, 0, 0);
     return d;
   };
-  const inD = mk(inT);
-  if(!inD) return toast('Invalid IN time');
+  const inD = mk(result.clockIn);
   let outD = null;
-  if(outT.trim() !== ''){
-    outD = mk(outT);
-    if(!outD) return toast('Invalid OUT time');
-    if(outD < inD) outD = new Date(outD.getTime() + 86400000);
+  if(result.clockOut){
+    outD = mk(result.clockOut);
+    if(outD < inD) outD = new Date(outD.getTime() + 86400000); // crossed midnight
   }
   busy(true);
   try{

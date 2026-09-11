@@ -30,25 +30,36 @@ async function handleAvatarCapture(emp, blob){
 }
 
 export function renderEmployees(){
-  const tb = document.querySelector('#empTable tbody');
-  tb.innerHTML = '';
+  const list = $('empList');
+  list.innerHTML = '';
   $('empEmpty').style.display = state.employees.length ? 'none' : '';
+  const inactive = state.employees.filter(e => !e.active).length;
+  $('empCountLabel').textContent = state.employees.length
+    ? `${state.employees.length} total${inactive ? ` · ${inactive} inactive` : ''}`
+    : '';
+
   state.employees.forEach(e => {
-    const tr = document.createElement('tr');
-    const tdAvatar = document.createElement('td');
+    const row = document.createElement('div');
+    row.className = 'emp-row';
+
     const avatarImg = document.createElement('img');
-    avatarImg.className = 'photo-thumb'; avatarImg.style.borderRadius = '50%'; avatarImg.alt = '';
+    avatarImg.className = 'report-avatar'; avatarImg.alt = '';
     applyAvatar(avatarImg, e);
-    tdAvatar.appendChild(avatarImg);
-    const tdName = document.createElement('td');
-    tdName.textContent = e.name + (e.active ? '' : ' (inactive)');
-    const tdBtns = document.createElement('td');
-    tdBtns.style.textAlign = 'right';
+
+    const who = document.createElement('div');
+    const name = document.createElement('div'); name.className = 'report-name'; name.textContent = e.name;
+    const status = document.createElement('div');
+    status.className = 'emp-status' + (e.active ? ' active' : '');
+    status.innerHTML = `<span class="dot"></span>${e.active ? 'Active' : 'Inactive'}`;
+    who.append(name, status);
+
+    const actions = document.createElement('div');
+    actions.className = 'emp-actions';
     const bPhoto = document.createElement('button');
     bPhoto.className = 'btn small ghost'; bPhoto.textContent = e.avatar ? 'Retake photo' : 'Add photo';
     bPhoto.onclick = () => captureFor(e, 'avatar', blob => handleAvatarCapture(e, blob));
     const bRen = document.createElement('button');
-    bRen.className = 'btn small ghost'; bRen.style.marginLeft = '8px'; bRen.textContent = 'Rename';
+    bRen.className = 'btn small ghost'; bRen.textContent = 'Rename';
     bRen.onclick = async () => {
       const result = await promptModal({title: 'Rename employee', fields: [{name:'name', label:'Employee name', value:e.name}]});
       if(!result) return;
@@ -62,9 +73,14 @@ export function renderEmployees(){
     };
     const bTog = document.createElement('button');
     bTog.className = 'btn small ' + (e.active ? 'red' : 'green');
-    bTog.style.marginLeft = '8px';
     bTog.textContent = e.active ? 'Deactivate' : 'Activate';
     bTog.onclick = async () => {
+      // Deactivating someone mid-shift would orphan their open session — today's clock-in
+      // would have no way to clock out, since the kiosk only shows active employees.
+      if(e.active && state.openSessions[e.id]){
+        toast(`${e.name} is currently clocked in — clock them out before deactivating.`);
+        return;
+      }
       busy(true);
       try{
         await store.setEmployeeActive(e.id, !e.active);
@@ -73,8 +89,9 @@ export function renderEmployees(){
       }catch(err){ toast('Failed: ' + err.message); }
       busy(false);
     };
-    tdBtns.append(bPhoto, bRen, bTog);
-    tr.append(tdAvatar, tdName, tdBtns);
-    tb.appendChild(tr);
+    actions.append(bPhoto, bRen, bTog);
+
+    row.append(avatarImg, who, actions);
+    list.appendChild(row);
   });
 }

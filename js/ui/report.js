@@ -1,8 +1,7 @@
-import { $, busy, toast, pad, fmtHours, recHours } from '../utils.js';
+import { $, busy, toast, pad, fmtHours, recHours, dateStr, shiftMonthInput } from '../utils.js';
 import { state } from '../state.js';
 import { store } from '../store/index.js';
 import { applyAvatar } from '../avatars.js';
-import { dateStr } from '../utils.js';
 import { switchTab } from './shell.js';
 import { setRecordsDate } from './records.js';
 
@@ -11,14 +10,8 @@ repMonth.value = dateStr().slice(0,7);
 repMonth.onchange = renderReport;
 let lastReportData = null;
 
-function shiftReportMonth(change){
-  const [year, month] = repMonth.value.split('-').map(Number);
-  const next = new Date(year, month - 1 + change, 1);
-  repMonth.value = `${next.getFullYear()}-${pad(next.getMonth()+1)}`;
-  renderReport();
-}
-$('btnPrevMonth').onclick = () => shiftReportMonth(-1);
-$('btnNextMonth').onclick = () => shiftReportMonth(1);
+$('btnPrevMonth').onclick = () => shiftMonthInput(repMonth, -1, renderReport);
+$('btnNextMonth').onclick = () => shiftMonthInput(repMonth, 1, renderReport);
 $('btnReportDetail').onclick = () => {
   const detail = $('reportDetail');
   const isOpen = detail.style.display !== 'none';
@@ -103,7 +96,7 @@ export async function renderReport(){
     applyAvatar(avatar, employee);
     const who = document.createElement('div');
     const name = document.createElement('div'); name.className = 'report-name'; name.textContent = employee.name;
-    const days = document.createElement('span'); days.className = 'report-detail'; days.textContent = `${daysWorked} ${daysWorked === 1 ? 'attendance day' : 'attendance days'}`;
+    const days = document.createElement('span'); days.className = 'report-detail report-days-inline'; days.textContent = `${daysWorked} ${daysWorked === 1 ? 'attendance day' : 'attendance days'}`;
     who.append(name, days);
     const stateEl = document.createElement('div'); stateEl.className = `report-state ${hasOpen ? 'open' : 'ok'}`; stateEl.textContent = hasOpen ? '● Review required' : '● All clear';
     const daysNumber = document.createElement('div'); daysNumber.className = 'report-number days-worked'; daysNumber.innerHTML = `<span>Days</span><strong>${daysWorked}</strong>`;

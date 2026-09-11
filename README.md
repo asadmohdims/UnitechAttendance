@@ -10,6 +10,9 @@ A web app to track employee attendance for a small shop (< 10 employees).
 - Daily hours are calculated automatically (supports overnight shifts and fixing missed punches).
 - Records view per day with in/out photos, editable times.
 - Monthly report: hours per day per employee, days worked, total hours — downloadable as Excel (.xlsx).
+- Salary: prorates a monthly rate against hours actually worked, with a full calculation
+  breakdown shown per employee. Rate changes are amendments (never edited in place), so past
+  months keep the rate that was actually in effect at the time.
 
 ## Usage
 

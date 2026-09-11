@@ -22,6 +22,12 @@ export function renderHome(){
   grid.innerHTML = '';
   const active = state.employees.filter(e => e.active);
   $('homeEmpty').style.display = active.length ? 'none' : '';
+
+  const roster = $('kioskRoster');
+  const inCount = active.filter(e => state.openSessions[e.id]).length;
+  roster.style.display = active.length ? '' : 'none';
+  roster.innerHTML = active.length ? `<span class="dot"></span>${inCount} of ${active.length} clocked in now` : '';
+
   active.forEach(e => {
     const open = state.openSessions[e.id];
     const div = document.createElement('div');

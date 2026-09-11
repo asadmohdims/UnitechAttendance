@@ -198,6 +198,15 @@ function toggleDayDetail(tr, sessions){
   row.classList.add('open');
 }
 
+// A click anywhere outside an open detail row — and outside the pill that opens one — closes
+// it. Clicks on a pill are excluded so this never fights toggleDayDetail's own open/close
+// logic, and clicks inside an open row (e.g. on a chip) are excluded so the row doesn't
+// immediately close itself while you're still looking at it.
+document.addEventListener('click', e => {
+  if(e.target.closest('.daypill') || e.target.closest('.detail-row')) return;
+  document.querySelectorAll('.detail-row.open').forEach(row => row.classList.remove('open'));
+});
+
 $('btnExport').onclick = async () => {
   busy(true);
   const md = await monthData(repMonth.value);

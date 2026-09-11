@@ -4,6 +4,7 @@ import { store } from '../store/index.js';
 import { applyAvatar } from '../avatars.js';
 import { refreshAll } from './kiosk.js';
 import { promptModal } from './modal.js';
+import { isMissedClockIn } from '../missedClockIn.js';
 
 const recDate = $('recDate');
 recDate.value = dateStr();
@@ -49,6 +50,7 @@ export async function renderRecords(){
   busy(false);
   $('recEmpty').style.display = records.length ? 'none' : '';
   $('recCountLabel').textContent = records.length ? `${records.length} ${records.length === 1 ? 'entry' : 'entries'}` : '';
+  renderMissedAlert();
 
   // listRecordsForDate sorts by clock_in globally, which can interleave different employees'
   // sessions on a lunch-break day (A-in, B-in, A-lunch-out, B-lunch-out, ...) — re-group by
@@ -121,6 +123,23 @@ export async function renderRecords(){
 
     row.append(avatar, who, punches, hours, actions);
     list.appendChild(row);
+  }
+}
+
+// Only meaningful for today's date — "missed clock-in" isn't a retroactive judgment about a
+// past day, so browsing history never shows it. Reads shared `state` directly rather than
+// fetching: js/ui/kiosk.js's periodicCheck() keeps openSessions/onLunch/punchedToday live
+// regardless of which admin tab is active.
+function renderMissedAlert(){
+  const el = $('missedAlert');
+  if(recDate.value !== dateStr()){ el.style.display = 'none'; return; }
+  const missed = state.employees.filter(e =>
+    e.active && !state.openSessions[e.id] && !state.onLunch[e.id] && isMissedClockIn(state.punchedToday[e.id])
+  );
+  el.style.display = missed.length ? '' : 'none';
+  if(missed.length){
+    $('missedTitle').textContent = `${missed.length} ${missed.length === 1 ? "employee hasn't" : "employees haven't"} clocked in today`;
+    $('missedText').textContent = missed.map(e => e.name).join(', ');
   }
 }
 

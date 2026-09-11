@@ -6,6 +6,10 @@ export const state = {
   onLunch: {},         // emp_id -> true while auto-closed for lunch and not yet clocked back in
                         // (openSessions[id] is absent for both "never punched" and "on lunch",
                         // so this is what disambiguates the two for the kiosk tile)
+  punchedToday: {},    // emp_id -> true if ANY record exists for today, open or closed —
+                        // disambiguates "already completed a shift" from "never showed up"
+                        // (both look like "no open session, not on lunch" otherwise), source
+                        // for the missed-clock-in flag
   adminUnlocked: false
 };
 

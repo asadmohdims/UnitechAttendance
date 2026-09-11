@@ -13,4 +13,12 @@ export const STANDARD_MONTHLY_HOURS = 208; // 8 hrs/day × 26 days (6-day week)
 // the shop owner before treating this as final.
 export const LUNCH_CUTOFF_HOUR = 13;   // 1:00 PM
 export const LUNCH_CUTOFF_MINUTE = 0;
+// Active employees with no attendance record at all for today (no open session, not on
+// lunch, no completed shift) are flagged as a missed clock-in past this hour — kiosk tile
+// + admin Daily records banner. Not tied to a per-employee expected shift-start time (no
+// scheduling concept exists in this app) — just "hasn't shown up at all yet today, and it's
+// now late enough to notice." Placeholder — confirm the real cutoff with the shop owner
+// before treating this as final.
+export const MISSED_CLOCKIN_HOUR = 10;   // 10:00 AM
+export const MISSED_CLOCKIN_MINUTE = 0;
 /* =============================================================================== */

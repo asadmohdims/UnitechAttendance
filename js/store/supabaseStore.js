@@ -178,6 +178,49 @@ async function setLunchPaid(recordId, paid){
   if(error) throw error;
 }
 
+// Splits one continuous session into two around a lunch gap — the original record becomes the
+// morning half (its real in_photo, but no out_photo — the split point itself was never
+// photographed) and a new record covers the afternoon half, carrying the ORIGINAL out_photo/
+// out_photo_blob (the one real "end of day" photo, moved rather than duplicated or lost) so
+// the day's last session still keeps a genuine out_photo. Defaults lunch_paid: true on the
+// morning half so splitting doesn't change total pay unless the owner deliberately un-marks it.
+async function splitSessionForLunch(recordId, lunchStartIso, lunchEndIso){
+  const rec = await outbox.getItem(recordId);
+  if(rec){
+    const afternoon = {
+      clientId: crypto.randomUUID(), emp_id: rec.emp_id, date: rec.date,
+      clock_in: lunchEndIso, clock_out: rec.clock_out,
+      in_photo: null, out_photo: rec.out_photo,
+      in_photo_blob: null, out_photo_blob: rec.out_photo_blob,
+      attempts: 0, last_error: null, created_at: new Date().toISOString(), lunch_paid: false
+    };
+    rec.clock_out = lunchStartIso;
+    rec.out_photo = null;
+    rec.out_photo_blob = null;
+    rec.lunch_paid = true;
+    await outbox.putItem(rec);
+    await outbox.putItem(afternoon);
+    outbox.kick();
+    return;
+  }
+
+  // Not in this browser's local outbox — same "write straight to Postgres" fallback
+  // clockOut/updateRecordTimes/setLunchPaid/deleteRecord already use for this case.
+  const {data: existing, error: fetchError} = await sb.from('records').select('*').eq('id', recordId).maybeSingle();
+  if(fetchError) throw fetchError;
+  if(!existing) throw new Error('This session could not be found — it may have already been edited or deleted from the admin panel.');
+  const {error: insertError} = await sb.from('records').insert({
+    emp_id: existing.emp_id, date: existing.date,
+    clock_in: lunchEndIso, clock_out: existing.clock_out,
+    in_photo: null, out_photo: existing.out_photo, lunch_paid: false
+  });
+  if(insertError) throw insertError;
+  const {error: updateError} = await sb.from('records')
+    .update({clock_out: lunchStartIso, out_photo: null, lunch_paid: true})
+    .eq('id', recordId);
+  if(updateError) throw updateError;
+}
+
 async function deleteRecord(record){
   const rec = await outbox.getItem(record.id);
   if(rec){
@@ -296,6 +339,7 @@ export const supabaseStore = {
   listEmployees, addEmployee, renameEmployee, setEmployeeActive, setEmployeeAvatar,
   listOpenSessions, clockIn, clockOut,
   listRecordsForDate, listRecordsForRange, updateRecordTimes, setLunchPaid, deleteRecord,
+  splitSessionForLunch,
   uploadPhoto, getPhotoUrl, getSyncStatus,
   listSalaryRates, setSalaryRate
 };

@@ -125,6 +125,27 @@ function setLunchPaid(recordId, paid){
   saveRecords(records);
 }
 
+// Splits one continuous session into two around a lunch gap — the original record becomes the
+// morning half (its real in_photo, but no out_photo — the split point itself was never
+// photographed) and a new record covers the afternoon half, carrying the ORIGINAL out_photo
+// (the one real "end of day" photo, moved rather than duplicated or lost) so the day's last
+// session still has a genuine out_photo. Defaults lunch_paid: true on the morning half so
+// splitting doesn't change total pay unless the owner deliberately un-marks it afterward.
+function splitSessionForLunch(recordId, lunchStartIso, lunchEndIso){
+  const records = loadRecords();
+  const idx = records.findIndex(x => x.id === recordId);
+  if(idx < 0) throw new Error('Record not found');
+  const original = records[idx];
+  const afternoon = {
+    id: 'demo-rec-' + Date.now(), emp_id: original.emp_id, date: original.date,
+    clock_in: lunchEndIso, clock_out: original.clock_out,
+    in_photo: null, out_photo: original.out_photo, created_at: new Date().toISOString()
+  };
+  records[idx] = {...original, clock_out: lunchStartIso, out_photo: null, lunch_paid: true};
+  records.push(afternoon);
+  saveRecords(records);
+}
+
 function deleteRecord(record){
   saveRecords(loadRecords().filter(x => x.id !== record.id));
   [record.in_photo, record.out_photo].filter(Boolean).forEach(p => localStorage.removeItem(photoKey(p)));
@@ -162,6 +183,7 @@ export const demoStore = {
   listEmployees, addEmployee, renameEmployee, setEmployeeActive, setEmployeeAvatar,
   listOpenSessions, clockIn, clockOut,
   listRecordsForDate, listRecordsForRange, updateRecordTimes, setLunchPaid, deleteRecord,
+  splitSessionForLunch,
   uploadPhoto, getPhotoUrl, getSyncStatus,
   listSalaryRates, setSalaryRate
 };

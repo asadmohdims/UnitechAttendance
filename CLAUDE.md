@@ -221,6 +221,22 @@ deduction shares the same number instead of a second hardcoded `8`.
   in `js/reportMath.js` is a literal session-count rule, not an hours-based one — it can't tell
   "only worked the morning" apart from "worked a full day in one continuous punch with no lunch
   break taken." Flagged to the owner as a known caveat; revisit if it misclassifies real days.
+- **"Split for lunch" (added 2026-09-11)** is the owner's chosen way to handle that caveat: for
+  a genuinely worked-straight-through day, `js/ui/records.js`'s `singleSessionRow` gets a "Split
+  for lunch" action (any closed single session) that turns it into two sessions around a chosen
+  gap — `store.splitSessionForLunch(recordId, lunchStartIso, lunchEndIso)` in both
+  `demoStore.js`/`supabaseStore.js`. Needed **no schema change** (`lunch_paid` already existed):
+  the new later session inherits the original record's real `out_photo` (moved, not duplicated),
+  so the day's last session always keeps a genuine photo and never misreads as an unresolved
+  auto-close (`needsReview()` in `reportMath.js`); the earlier (new-shape) session's `out_photo`
+  is null at the split point since nothing was actually photographed there — same as any
+  auto-close, which is also why its lunch divider reads "(auto)" in Daily records even though
+  a human did this, not the cutoff safety net. Cosmetic only (no functional effect), flagged as
+  a known label overlap rather than fixed, since disambiguating would need a new column for a
+  minor wording issue. The split defaults `lunch_paid: true` on the earlier session so the
+  day's total pay is unchanged unless the owner deliberately un-marks it afterward — the point
+  is reclassifying the calendar pill, not accidentally docking pay for a break that was never
+  actually taken.
 - **Employee summary**: an always-visible "● N days off" line under the employee's name
   (`.report-daysoff` — muted, bold) is the actually-prominent surface for this, per the owner's
   "very clearly" ask; the calendar pill alone is small enough to miss when scanning.

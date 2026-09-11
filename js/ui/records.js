@@ -148,8 +148,54 @@ function singleSessionRow(r, emp){
   appendBadge(who, [r]);
 
   const {punches, hours, actions} = sessionContent(r, emp);
+  // Only offered on a closed single session — this is how a genuine "worked straight through,
+  // no break" day (currently a .half pill in Report, see reportMath.js's isHalfDay) gets turned
+  // into the normal two-session shape everywhere else already reads as a full day.
+  if(r.clock_out){
+    const bSplit = document.createElement('button');
+    bSplit.className = 'btn small ghost'; bSplit.textContent = 'Split for lunch';
+    bSplit.onclick = () => splitForLunch(r, emp);
+    actions.appendChild(bSplit);
+  }
   row.append(avatar, who, punches, hours, actions);
   return row;
+}
+
+// Turns one continuous session into two around a lunch gap, for a day that was actually
+// worked straight through with no break. Defaults the gap to "paid as work" (lunch_paid) so
+// splitting doesn't silently dock pay for a break that was never really taken — the owner can
+// un-mark it afterward via the existing lunch-paid toggle if they do want that time excluded.
+// The original clock_out's real photo moves to the new, later session rather than being
+// duplicated or dropped — the day's last session keeps a genuine out_photo, so it never misreads
+// as an unresolved auto-close (see needsReview() in reportMath.js).
+async function splitForLunch(r, emp){
+  const result = await promptModal({
+    title: `Split for lunch — ${emp ? emp.name : 'record'}`,
+    submitLabel: 'Split',
+    fields: [
+      {name:'lunchStart', label:'Lunch start', type:'time'},
+      {name:'lunchEnd', label:'Lunch end', type:'time'}
+    ]
+  });
+  if(!result) return;
+  const mk = hhmm => {
+    const [h, m] = hhmm.split(':').map(Number);
+    const d = new Date(r.date + 'T00:00:00');
+    d.setHours(h, m, 0, 0);
+    return d;
+  };
+  const lunchStart = mk(result.lunchStart), lunchEnd = mk(result.lunchEnd);
+  const clockIn = new Date(r.clock_in), clockOut = new Date(r.clock_out);
+  if(!(clockIn < lunchStart && lunchStart < lunchEnd && lunchEnd < clockOut)){
+    return toast('Lunch must fall strictly between the clock-in and clock-out times.');
+  }
+  busy(true);
+  try{
+    await store.splitSessionForLunch(r.id, lunchStart.toISOString(), lunchEnd.toISOString());
+    await refreshAll();
+    await renderRecords();
+  }catch(err){ toast('Failed: ' + err.message); }
+  busy(false);
 }
 
 // A lunch-break day: sessions share one header (avatar, name, status badge, and the day's

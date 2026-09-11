@@ -108,9 +108,13 @@ export async function renderReport(){
     let total = 0, daysWorked = 0, row = '';
     for(let d=1; d<=days; d++){
       const v = hours[e.id][d];
+      // Accumulation and display are separate on purpose: a day can be BOTH already-banked
+      // hours (a closed morning session) AND still open (an afternoon session in progress) —
+      // the IN badge must never cause those banked hours to silently drop from the total.
+      if(v !== null){ total += v; daysWorked++; }
       if(openFlags[e.id][d]) row += '<td class="num open-session">IN</td>';
       else if(v === null) row += '<td class="num muted">·</td>';
-      else { total += v; daysWorked++; row += `<td class="num">${fmtHours(v)}</td>`; }
+      else row += `<td class="num">${fmtHours(v)}</td>`;
     }
     const tr = document.createElement('tr');
     const tdN = document.createElement('td'); tdN.textContent = e.name;
@@ -132,9 +136,11 @@ $('btnExport').onclick = async () => {
     const cells = [];
     for(let d=1; d<=days; d++){
       const v = hours[e.id][d];
+      // See the same accumulation-vs-display split in renderReport()'s calendar loop above.
+      if(v !== null){ total += v; daysWorked++; }
       if(openFlags[e.id][d]) cells.push('IN (no out)');
       else if(v === null) cells.push('');
-      else { total += v; daysWorked++; cells.push(Number(v.toFixed(2))); }
+      else cells.push(Number(v.toFixed(2)));
     }
     return [e.name, ...cells, daysWorked, Number(total.toFixed(2))];
   });

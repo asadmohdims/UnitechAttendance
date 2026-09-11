@@ -234,8 +234,11 @@ h3{font-size:16px; margin-bottom:10px;}
    fixed pixel values rather than `auto`/1fr-content-based — otherwise a row with a longer
    "paid" annotation sizes its own punches/hours columns wider than a plain row, and the
    columns drift out of alignment down the list. Only `who` (names vary in length anyway,
-   never needs to align to a grid) is left flexible. */
-.rec-row{display:grid; grid-template-columns:44px minmax(110px,1fr) 300px 120px auto; align-items:center; gap:14px; padding:13px 17px;}
+   never needs to align to a grid) is left flexible. The actions column is capped
+   (`minmax(90px,180px)`, not `auto`) with `.rec-actions` set to wrap — a 3rd action ("Split
+   for lunch") no longer just grows the row past the card and gets clipped by
+   `.report-list`'s `overflow:hidden`; it wraps onto a second line instead. */
+.rec-row{display:grid; grid-template-columns:44px minmax(110px,1fr) 300px 120px minmax(90px,180px); align-items:center; gap:14px; padding:13px 17px;}
 .rec-row, .rec-group{border-bottom:1px solid var(--border);}
 #recList > *:last-child{border-bottom:0;}
 /* A lunch-break day's two (or more) sessions share one header — avatar, name, status, and the
@@ -260,7 +263,7 @@ h3{font-size:16px; margin-bottom:10px;}
 .rec-hours-stat{font-weight:700; font-size:14.5px; white-space:nowrap;}
 .rec-hours-stat .lbl{color:var(--muted); font-size:10.5px; font-weight:650; text-transform:uppercase; letter-spacing:.03em; margin-right:5px;}
 .rec-hours-stat.paid{font-size:12.5px; font-weight:650; color:var(--muted);}
-.rec-actions{display:flex; gap:6px; justify-content:flex-end;}
+.rec-actions{display:flex; gap:6px; flex-wrap:wrap; justify-content:flex-end; align-content:center;}
 .rec-lunch-divider{display:flex; align-items:center; justify-content:space-between; gap:12px; padding:6px 17px; font-size:12px; font-weight:650; color:var(--muted); background:var(--raised); border-bottom:1px dashed var(--border);}
 /* Reuses --blue (the one brand accent, already used for lunch chips elsewhere) rather than
    --green/--amber, which the design system reserves for the kiosk tile's clocked-in and

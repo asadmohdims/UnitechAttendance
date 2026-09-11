@@ -48,27 +48,41 @@ async function checkLunchAutoClose(){
   return true;
 }
 
+// A tile's in/lunch/missed status, purely from current state — shared by the full rebuild
+// below and the lightweight periodic refresh, so the two can never disagree on the rule.
+function tileStatus(e){
+  const open = state.openSessions[e.id];
+  const onLunch = !open && state.onLunch[e.id];
+  const missed = !open && !onLunch && isMissedClockIn(state.punchedToday[e.id]);
+  return {open, onLunch, missed};
+}
+
+function renderRoster(active){
+  const roster = $('kioskRoster');
+  const inCount = active.filter(e => state.openSessions[e.id]).length;
+  const missedCount = active.filter(e => tileStatus(e).missed).length;
+  roster.style.display = active.length ? '' : 'none';
+  roster.innerHTML = active.length
+    ? `<span class="dot"></span>${inCount} of ${active.length} clocked in now${missedCount ? ` · ${missedCount} ${missedCount > 1 ? "haven't" : "hasn't"} shown up` : ''}`
+    : '';
+}
+
+// Full rebuild — employee list, avatars and all. Only call this when the underlying data
+// actually changed (refreshAll, a punch): rebuilding re-fetches every avatar via applyAvatar(),
+// which for a real captured photo hits Supabase Storage for a fresh signed URL — fine on a
+// genuine data load, wasteful (and visibly flickery) if done on a timer. See refreshTileStates()
+// for the time-only path used by periodicCheck().
 export function renderHome(){
   const grid = $('empGrid');
   grid.innerHTML = '';
   const active = state.employees.filter(e => e.active);
   $('homeEmpty').style.display = active.length ? 'none' : '';
-
-  const roster = $('kioskRoster');
-  const inCount = active.filter(e => state.openSessions[e.id]).length;
-  const missedCount = active.filter(e =>
-    !state.openSessions[e.id] && !state.onLunch[e.id] && isMissedClockIn(state.punchedToday[e.id])
-  ).length;
-  roster.style.display = active.length ? '' : 'none';
-  roster.innerHTML = active.length
-    ? `<span class="dot"></span>${inCount} of ${active.length} clocked in now${missedCount ? ` · ${missedCount} ${missedCount > 1 ? "haven't" : "hasn't"} shown up` : ''}`
-    : '';
+  renderRoster(active);
 
   active.forEach(e => {
-    const open = state.openSessions[e.id];
-    const onLunch = !open && state.onLunch[e.id];
-    const missed = !open && !onLunch && isMissedClockIn(state.punchedToday[e.id]);
+    const {open, onLunch, missed} = tileStatus(e);
     const div = document.createElement('div');
+    div.dataset.empId = e.id;
     div.className = 'badge-tile' + (open ? ' in' : onLunch ? ' lunch' : missed ? ' missed' : '');
     div.setAttribute('role', 'button');
     div.setAttribute('tabindex', '0');
@@ -85,6 +99,27 @@ export function renderHome(){
     div.onclick = () => punchTap(e);
     div.onkeydown = ev => { if(ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); punchTap(e); } };
     grid.appendChild(div);
+  });
+}
+
+// Time-only refresh for periodicCheck(): updates each existing tile's class/badge/status text
+// (the missed-clock-in flag can flip purely from time passing the cutoff, with no data change
+// to react to) without touching .avatar — so it never re-fetches a photo URL. Silently no-ops
+// on a tile that isn't in the DOM yet (e.g. the very first tick, before refreshAll's initial
+// renderHome() has run).
+function refreshTileStates(){
+  const active = state.employees.filter(e => e.active);
+  renderRoster(active);
+  active.forEach(e => {
+    const tile = $('empGrid').querySelector(`[data-emp-id="${e.id}"]`);
+    if(!tile) return;
+    const {open, onLunch, missed} = tileStatus(e);
+    tile.className = 'badge-tile' + (open ? ' in' : onLunch ? ' lunch' : missed ? ' missed' : '');
+    tile.querySelector('.state-badge').textContent = open ? '■' : missed ? '!' : '▶';
+    tile.querySelector('.status').innerHTML = open
+      ? `Working since ${fmtTime(open.clock_in)}<br>Tap to finish`
+      : onLunch ? 'On lunch — tap to resume'
+      : missed ? "Hasn't clocked in yet" : 'Tap to start work';
   });
 }
 
@@ -134,12 +169,13 @@ async function updateSyncIndicator(){
   el.className = 'sync-status' + (pending ? (stuck ? ' stuck' : ' pending') : '');
   el.textContent = pending ? (stuck ? `${pending} punch${pending > 1 ? 'es' : ''} pending — check Wi-Fi` : `Syncing ${pending}…`) : '';
 }
-// Same 5s cadence covers both checks — no separate timer for the lunch auto-close. renderHome()
-// runs unconditionally (not just when lunch auto-close fires) because the missed-clock-in flag
-// can flip purely from time passing the cutoff hour, with no underlying state change to react to.
+// Same 5s cadence covers both checks — no separate timer for the lunch auto-close.
+// refreshTileStates() (not renderHome()) runs unconditionally, since the missed-clock-in flag
+// can flip purely from time passing the cutoff hour — a full renderHome() rebuild here would
+// re-fetch every employee's avatar from the network on every tick (see refreshTileStates()).
 async function periodicCheck(){
   await checkLunchAutoClose();
-  renderHome();
+  refreshTileStates();
   await updateSyncIndicator();
 }
 periodicCheck();

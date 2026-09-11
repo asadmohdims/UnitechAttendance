@@ -46,6 +46,10 @@ body.kiosk-active{overflow:hidden;}
 .badge-tile.in .status{color:#a7f3c0;}
 .badge-tile .state-badge{position:absolute; top:-9px; right:-9px; width:24px; height:24px; border-radius:50%; display:grid; place-items:center; font-size:11px; font-weight:800; background:var(--raised); color:var(--muted); border:2px solid var(--bg);}
 .badge-tile.in .state-badge{background:var(--green); color:var(--green-ink);}
+.badge-tile.lunch{border-color:var(--amber); background:linear-gradient(160deg,#3a2a0f,var(--card)); box-shadow:0 10px 26px rgba(245,158,11,.28); transform:translateY(-3px);}
+.badge-tile.lunch .avatar{border-color:var(--amber);}
+.badge-tile.lunch .status{color:#fcd34d;}
+.badge-tile.lunch .state-badge{background:var(--amber); color:#3a2a0f;}
 @media (max-width:760px), (orientation:portrait){
   #tab-home{flex-direction:column;}
   .kiosk-side{width:auto; flex-direction:row; align-items:center; justify-content:space-between; padding:16px 18px; border-right:0; border-bottom:1px solid var(--border); position:relative;}
@@ -171,6 +175,7 @@ h3{font-size:16px; margin-bottom:10px;}
 .rec-punch .photo-thumb{width:26px; height:26px; border-radius:6px; cursor:pointer;}
 .rec-hours{text-align:right; font-variant-numeric:tabular-nums; font-weight:700; font-size:14.5px;}
 .rec-actions{display:flex; gap:6px; justify-content:flex-end;}
+.rec-lunch-divider{padding:6px 17px; font-size:12px; font-weight:650; color:var(--muted); text-align:center; background:var(--raised); border-bottom:1px dashed var(--border);}
 
 @media (max-width:520px){header{padding:15px 16px} main{padding:8px 16px 70px} #clock{font-size:12px}.card{padding:14px}}
 @media (max-width:620px){.report-summary{grid-template-columns:1fr}.report-top{align-items:stretch; flex-direction:column}.report-top .btn{width:100%}.report-person{grid-template-columns:43px 1fr 82px; gap:10px}.report-person .report-state{grid-column:2; grid-row:2}.report-person .days-worked{display:none}.report-days-inline{display:block;}.report-person .report-number:last-child{grid-column:3; grid-row:1 / span 2}.review-alert{align-items:flex-start; flex-direction:column}.review-alert .btn{width:100%}.salary-person{grid-template-columns:43px 1fr; row-gap:8px}.salary-amount,.salary-actions{grid-column:2}.salary-amount{text-align:left}}

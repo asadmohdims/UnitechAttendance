@@ -3,6 +3,7 @@ import { state } from '../state.js';
 import { store } from '../store/index.js';
 import { applyAvatar } from '../avatars.js';
 import { captureFor } from '../camera.js';
+import { shouldAutoCloseForLunch, cutoffTimeFor } from '../lunch.js';
 
 // Reloads employees + open sessions from the store into shared state and re-renders the kiosk.
 // Called after every mutation (add/rename/deactivate employee, punch in/out) so both store
@@ -12,9 +13,28 @@ export async function refreshAll(){
   try{
     state.employees = await store.listEmployees();
     state.openSessions = await store.listOpenSessions();
+    await checkLunchAutoClose();
     renderHome();
   }catch(err){ toast('Load failed: ' + err.message); }
   busy(false);
+}
+
+// Safety net for someone who forgets to tap out for lunch entirely: anyone still clocked in
+// past the configured cutoff gets closed out at that time client-side, so they don't silently
+// stay paid through lunch. Opportunistic, not a server-side job — runs once here on load, and
+// again on every periodicCheck() tick below, so it self-heals even if the kiosk was offline or
+// reloaded well after the cutoff. Manual out-taps never go through this path.
+async function checkLunchAutoClose(){
+  const now = new Date();
+  const toClose = Object.values(state.openSessions).filter(r => shouldAutoCloseForLunch(r, now));
+  if(!toClose.length) return false;
+  const atIso = cutoffTimeFor(now).toISOString();
+  for(const rec of toClose){
+    await store.clockOut(rec.id, null, atIso);
+    delete state.openSessions[rec.emp_id];
+    state.onLunch[rec.emp_id] = true;
+  }
+  return true;
 }
 
 export function renderHome(){
@@ -30,8 +50,9 @@ export function renderHome(){
 
   active.forEach(e => {
     const open = state.openSessions[e.id];
+    const onLunch = !open && state.onLunch[e.id];
     const div = document.createElement('div');
-    div.className = 'badge-tile' + (open ? ' in' : '');
+    div.className = 'badge-tile' + (open ? ' in' : onLunch ? ' lunch' : '');
     div.setAttribute('role', 'button');
     div.setAttribute('tabindex', '0');
     div.innerHTML = '<span class="state-badge"></span><img class="avatar" alt=""><div class="name"></div><div class="status"></div>';
@@ -42,7 +63,7 @@ export function renderHome(){
     div.querySelector('.name').textContent = e.name;
     div.querySelector('.status').innerHTML = open
       ? `Working since ${fmtTime(open.clock_in)}<br>Tap to finish`
-      : 'Tap to start work';
+      : onLunch ? 'On lunch — tap to resume' : 'Tap to start work';
     div.onclick = () => punchTap(e);
     div.onkeydown = ev => { if(ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); punchTap(e); } };
     grid.appendChild(div);
@@ -63,6 +84,7 @@ async function handlePunchCapture(emp, blob){
   }else{
     const rec = await store.clockIn(emp.id, blob);
     state.openSessions[emp.id] = rec;
+    delete state.onLunch[emp.id];
     action = 'in';
   }
   renderHome();
@@ -93,5 +115,10 @@ async function updateSyncIndicator(){
   el.className = 'sync-status' + (pending ? (stuck ? ' stuck' : ' pending') : '');
   el.textContent = pending ? (stuck ? `${pending} punch${pending > 1 ? 'es' : ''} pending — check Wi-Fi` : `Syncing ${pending}…`) : '';
 }
-updateSyncIndicator();
-setInterval(updateSyncIndicator, 5000);
+// Same 5s cadence covers both checks — no separate timer for the lunch auto-close.
+async function periodicCheck(){
+  if(await checkLunchAutoClose()) renderHome();
+  await updateSyncIndicator();
+}
+periodicCheck();
+setInterval(periodicCheck, 5000);

@@ -1,0 +1,22 @@
+// Pure day-hours accumulation for report.js's monthData() — no store/DOM access, so it's
+// testable in isolation the same way js/salary.js is.
+import { recHours } from './utils.js';
+
+// recs: raw records for the month; empIds: employee ids to build rows for; days: days in month.
+// Returns hours[empId][day] = summed completed hours for that day (null = no record at all —
+// never a sentinel), and openFlags[empId][day] = true if ANY session that day is still open,
+// tracked independently of the hours sum. That independence matters once a day can have
+// multiple sessions (lunch break): a closed morning session's hours must never mask a still-open
+// afternoon session on the same day, regardless of which record gets processed first.
+export function buildDayHours(recs, empIds, days){
+  const hours = {}, openFlags = {};
+  empIds.forEach(id => { hours[id] = Array(days+1).fill(null); openFlags[id] = Array(days+1).fill(false); });
+  recs.forEach(r => {
+    if(!(r.emp_id in hours)) return;
+    const d = Number(r.date.slice(8,10));
+    const h = recHours(r);
+    if(h === null) openFlags[r.emp_id][d] = true;
+    else hours[r.emp_id][d] = (hours[r.emp_id][d] || 0) + h;
+  });
+  return {hours, openFlags};
+}

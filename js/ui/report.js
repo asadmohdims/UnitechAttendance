@@ -1,9 +1,10 @@
-import { $, busy, toast, pad, fmtHours, recHours, dateStr, shiftMonthInput } from '../utils.js';
+import { $, busy, toast, pad, fmtHours, dateStr, shiftMonthInput } from '../utils.js';
 import { state } from '../state.js';
 import { store } from '../store/index.js';
 import { applyAvatar } from '../avatars.js';
 import { switchTab } from './shell.js';
 import { setRecordsDate } from './records.js';
+import { buildDayHours } from '../reportMath.js';
 
 const repMonth = $('repMonth');
 repMonth.value = dateStr().slice(0,7);
@@ -35,28 +36,20 @@ export async function monthData(ym){ // ym: 'YYYY-MM'
     return null;
   }
   const emps = state.employees.filter(e => e.active || recs.some(r => r.emp_id === e.id));
-  const hours = {}; // hours[empId][day] = total hours (null none, -1 open session)
-  emps.forEach(e => hours[e.id] = Array(days+1).fill(null));
-  recs.forEach(r => {
-    if(!hours[r.emp_id]) return;
-    const d = Number(r.date.slice(8,10));
-    const h = recHours(r);
-    if(h === null){ if(hours[r.emp_id][d] === null) hours[r.emp_id][d] = -1; }
-    else hours[r.emp_id][d] = (hours[r.emp_id][d] === null || hours[r.emp_id][d] === -1 ? 0 : hours[r.emp_id][d]) + h;
-  });
-  return {ym, days, emps, hours, recs, openRecords:recs.filter(r => !r.clock_out), hasData: recs.length > 0};
+  const {hours, openFlags} = buildDayHours(recs, emps.map(e => e.id), days);
+  return {ym, days, emps, hours, openFlags, recs, openRecords:recs.filter(r => !r.clock_out), hasData: recs.length > 0};
 }
 
 // Sums one employee's per-day hours array (as produced by monthData) into a period total.
 // Shared with the Salary tab so both read the exact same hours a given month's pay is based on.
-export function summarizeHours(hoursArr, days){
-  let total = 0, daysWorked = 0, hasOpen = false;
+// `openArr` (monthData's openFlags[empId]) is optional — Salary doesn't need hasOpen and omits it.
+export function summarizeHours(hoursArr, days, openArr = []){
+  let total = 0, daysWorked = 0;
   for(let d=1; d<=days; d++){
     const v = hoursArr[d];
-    if(v === -1) hasOpen = true;
-    else if(v !== null){ total += v; daysWorked++; }
+    if(v !== null){ total += v; daysWorked++; }
   }
-  return {total, daysWorked, hasOpen};
+  return {total, daysWorked, hasOpen: openArr.some(Boolean)};
 }
 
 export async function renderReport(){
@@ -65,12 +58,12 @@ export async function renderReport(){
   busy(false);
   if(!md) return;
   lastReportData = md;
-  const {ym, days, emps, hours, openRecords, hasData} = md;
+  const {ym, days, emps, hours, openFlags, openRecords, hasData} = md;
   $('repEmpty').style.display = hasData ? 'none' : '';
   $('reportMonthLabel').textContent = new Date(`${ym}-01T12:00:00`).toLocaleDateString('en-IN', {month:'long', year:'numeric'});
   let totalHours = 0, attendanceDays = 0;
   const employeeStats = emps.map(e => {
-    const {total, daysWorked, hasOpen} = summarizeHours(hours[e.id], days);
+    const {total, daysWorked, hasOpen} = summarizeHours(hours[e.id], days, openFlags[e.id]);
     totalHours += total;
     attendanceDays += daysWorked;
     return {employee:e, total, daysWorked, hasOpen};
@@ -115,8 +108,8 @@ export async function renderReport(){
     let total = 0, daysWorked = 0, row = '';
     for(let d=1; d<=days; d++){
       const v = hours[e.id][d];
-      if(v === null) row += '<td class="num muted">·</td>';
-      else if(v === -1) row += '<td class="num open-session">IN</td>';
+      if(openFlags[e.id][d]) row += '<td class="num open-session">IN</td>';
+      else if(v === null) row += '<td class="num muted">·</td>';
       else { total += v; daysWorked++; row += `<td class="num">${fmtHours(v)}</td>`; }
     }
     const tr = document.createElement('tr');
@@ -132,15 +125,15 @@ $('btnExport').onclick = async () => {
   const md = await monthData(repMonth.value);
   busy(false);
   if(!md) return;
-  const {ym, days, emps, hours} = md;
+  const {ym, days, emps, hours, openFlags} = md;
   const header = ['Employee', ...Array.from({length:days}, (_,i) => `${ym}-${pad(i+1)}`), 'Days worked', 'Total hours'];
   const rows = emps.map(e => {
     let total = 0, daysWorked = 0;
     const cells = [];
     for(let d=1; d<=days; d++){
       const v = hours[e.id][d];
-      if(v === null) cells.push('');
-      else if(v === -1) cells.push('IN (no out)');
+      if(openFlags[e.id][d]) cells.push('IN (no out)');
+      else if(v === null) cells.push('');
       else { total += v; daysWorked++; cells.push(Number(v.toFixed(2))); }
     }
     return [e.name, ...cells, daysWorked, Number(total.toFixed(2))];

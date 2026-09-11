@@ -50,7 +50,26 @@ export async function renderRecords(){
   $('recEmpty').style.display = records.length ? 'none' : '';
   $('recCountLabel').textContent = records.length ? `${records.length} ${records.length === 1 ? 'entry' : 'entries'}` : '';
 
-  for(const r of records){
+  // listRecordsForDate sorts by clock_in globally, which can interleave different employees'
+  // sessions on a lunch-break day (A-in, B-in, A-lunch-out, B-lunch-out, ...) — re-group by
+  // employee (keeping each employee's own chronological order) so a same-day second session
+  // always renders directly under its first, with a lunch divider between them below.
+  const byEmp = new Map();
+  records.forEach(r => { if(!byEmp.has(r.emp_id)) byEmp.set(r.emp_id, []); byEmp.get(r.emp_id).push(r); });
+  const grouped = [...byEmp.values()].flat();
+
+  let prev = null;
+  for(const r of grouped){
+    if(prev && prev.emp_id === r.emp_id && prev.clock_out){
+      const gapHours = (new Date(r.clock_in) - new Date(prev.clock_out)) / 3600000;
+      const auto = !prev.out_photo; // out_photo is null only for an auto-close — a manual punch always has one
+      const divider = document.createElement('div');
+      divider.className = 'rec-lunch-divider';
+      divider.textContent = `Lunch: ${fmtHours(gapHours)}${auto ? ' (auto)' : ''}`;
+      list.appendChild(divider);
+    }
+    prev = r;
+
     const emp = state.employees.find(e => e.id === r.emp_id);
     const row = document.createElement('div');
     row.className = 'rec-row';

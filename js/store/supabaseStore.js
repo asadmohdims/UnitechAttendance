@@ -81,12 +81,19 @@ async function clockIn(empId, blob){
   return toRecordShape(rec);
 }
 
-async function clockOut(recordId, blob){
+// `atIso` lets a caller record an exact past instant (e.g. the lunch auto-close cutoff)
+// instead of "now" — defaults to now for a normal manual punch. `blob` is optional: an
+// auto-close has nobody at the camera, so out_photo/out_photo_blob are only set when a real
+// photo was actually captured — otherwise we'd leave a photo path pointing at nothing ever
+// uploaded.
+async function clockOut(recordId, blob, atIso){
   const rec = await outbox.getItem(recordId);
   if(!rec) throw new Error('Open session not found locally');
-  rec.clock_out = new Date().toISOString();
-  rec.out_photo = `${rec.emp_id}/${rec.clientId}-out.jpg`;
-  rec.out_photo_blob = blob;
+  rec.clock_out = atIso || new Date().toISOString();
+  if(blob){
+    rec.out_photo = `${rec.emp_id}/${rec.clientId}-out.jpg`;
+    rec.out_photo_blob = blob;
+  }
   await outbox.putItem(rec);
   outbox.kick();
 }

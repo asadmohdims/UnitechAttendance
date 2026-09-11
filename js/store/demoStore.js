@@ -79,14 +79,19 @@ async function clockIn(empId, blob){
   return data;
 }
 
-async function clockOut(recordId, blob){
+// `atIso` lets a caller record an exact past instant (e.g. the lunch auto-close cutoff)
+// instead of "now". `blob` is optional — an auto-close has no photo, so out_photo is only
+// set when one was actually captured (matches supabaseStore.js's clockOut).
+async function clockOut(recordId, blob, atIso){
   const records = loadRecords();
   const idx = records.findIndex(r => r.id === recordId);
   if(idx < 0) throw new Error('Demo attendance record not found');
-  const path = `${records[idx].emp_id}/${recordId}-out.jpg`;
-  await uploadPhoto(path, blob);
-  records[idx].clock_out = new Date().toISOString();
-  records[idx].out_photo = path;
+  if(blob){
+    const path = `${records[idx].emp_id}/${recordId}-out.jpg`;
+    await uploadPhoto(path, blob);
+    records[idx].out_photo = path;
+  }
+  records[idx].clock_out = atIso || new Date().toISOString();
   saveRecords(records);
   return records[idx];
 }

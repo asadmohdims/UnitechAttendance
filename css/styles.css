@@ -166,6 +166,11 @@ input[type=time]::-webkit-calendar-picker-indicator, input[type=date]::-webkit-c
 .chip.lunch{color:#93c5fd; border-color:#2c4870;}
 .chip.review{color:#fde3a7; border-color:#7a5914;}
 .detail-total{margin-left:6px; font-size:13px; color:var(--muted); white-space:nowrap;}
+/* Icon-only (a title/aria-label carry the meaning) so it reads as a quiet affordance on an
+   otherwise read-only info strip, not another same-weight action competing with the chips.
+   `.btn.small` (two classes) outranks a plain `.detail-jump` on specificity alone, so this
+   needs `.btn.small.detail-jump` to actually override its min-height/padding/font-size. */
+.btn.small.detail-jump{margin-left:10px; width:32px; height:32px; min-height:0; padding:0; font-size:15px; line-height:1;}
 .detail-total b{color:var(--ink); font-size:15px;}
 
 /* Key for the calendar's status pills — sits below the scrollable table itself, not above

@@ -273,6 +273,19 @@ function toggleDayDetail(tr, sessions){
   totalSpan.innerHTML = `Worked <b>${fmtHours(totalHours)}</b>${stillOpen ? ' so far' : ''}`
     + (!stillOpen && totalPaidHours !== totalHours ? ` &middot; Paid <b>${fmtHours(totalPaidHours)}</b>` : '');
   inner.appendChild(totalSpan);
+  // The chips above are read-only (see the lunch-chip comment) — this is the one action this
+  // panel offers, and it's the whole point of it: jump straight to that date in Daily records
+  // instead of closing this, opening Daily records, and re-picking the date by hand.
+  const jumpBtn = document.createElement('button');
+  jumpBtn.className = 'btn small ghost detail-jump';
+  jumpBtn.textContent = '↗';
+  jumpBtn.title = 'Edit in Daily records';
+  jumpBtn.setAttribute('aria-label', 'Edit in Daily records');
+  jumpBtn.onclick = () => {
+    setRecordsDate(sessions[0].date);
+    switchTab('records');
+  };
+  inner.appendChild(jumpBtn);
   row._sessions = sessions;
   row.classList.add('open');
 }

@@ -243,6 +243,17 @@ deduction shares the same number instead of a second hardcoded `8`.
 - Tested in `js/reportMath.test.mjs` — the Friday/holiday precedence, the today-is-eligible
   boundary, and the regression this guards against: checking weekday before `employeeSince`
   would have paid someone a "holiday" for a Friday before they were ever added.
+- **Jump-to-Daily-records from the day-detail panel (2026-09-11)**: this was the actual "for any
+  amends they need to go to daily view, select date and then make a change" complaint from the
+  original review — `toggleDayDetail()` in `js/ui/report.js` was read-only (see its own comment:
+  "the toggle itself lives in Daily records"), so fixing a flagged day still meant leaving the
+  calendar, opening Daily records, and re-picking the date by hand. Rather than build full inline
+  editing into the calendar (a bigger change — real Phase 2 scope, not started), the smallest fix
+  that actually closes that loop: a `↗` icon button (`.detail-jump`, title/aria-label carry the
+  meaning since there's no room for label text) appended to the same chip row, reusing the exact
+  `setRecordsDate()` + `switchTab('records')` pair the review banner's "Review entries" button
+  already used for the *first* flagged entry — now available from *any* day's detail panel, not
+  just the first flagged one.
 
 ## Design system (kiosk/home screen)
 

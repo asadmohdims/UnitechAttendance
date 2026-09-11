@@ -93,3 +93,14 @@ export function dayOffStatus({date, weekday, employeeSince, today = dateStr()}){
   if(weekday === WEEKLY_HOLIDAY_DAY) return 'holiday';
   return 'off';
 }
+
+// A day with exactly one session — as opposed to the two-session morning+afternoon pattern a
+// full day normally has now that lunch breaks are routinely punched separately (see the
+// Lunch-break section in CLAUDE.md) — reads as attendance for only one half of the day, worth
+// its own calendar color rather than blending into a normal full day.
+// Caveat worth knowing: this can't tell "only worked the morning" apart from "worked a full
+// day in one continuous punch with no lunch break taken" — both are a single session. It's a
+// literal session-count rule, not an hours-based one; flag it if that misclassifies real days.
+export function isHalfDay(sessions){
+  return !!sessions && sessions.length === 1;
+}

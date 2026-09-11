@@ -1,6 +1,6 @@
 :root{
   --bg:#0b1220; --card:#151f2e; --raised:#1d2a3b; --ink:#f4f7fb; --muted:#b8c3d1;
-  --green:#22c55e; --green-ink:#052e16; --amber:#f59e0b; --red:#fb7185; --blue:#60a5fa; --violet:#a78bfa; --border:#2b3b50;
+  --green:#22c55e; --green-ink:#052e16; --amber:#f59e0b; --red:#fb7185; --blue:#60a5fa; --violet:#a78bfa; --teal:#2dd4bf; --border:#2b3b50;
 }
 *{box-sizing:border-box; margin:0; padding:0; -webkit-tap-highlight-color:transparent;}
 body{min-height:100vh; font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif; background:radial-gradient(circle at 50% -20%,#223958 0,var(--bg) 43%); color:var(--ink);}
@@ -135,10 +135,13 @@ input[type=time]::-webkit-calendar-picker-indicator, input[type=date]::-webkit-c
 }
 .daypill.full{background:rgba(34,197,94,.16); border-color:var(--green); color:#a7f3c0; cursor:pointer;}
 .daypill.review{background:rgba(245,158,11,.20); border-color:var(--amber); color:#fde3a7; cursor:pointer;}
-.daypill.full:hover, .daypill.review:hover{transform:translateY(-2px);}
+/* A single-session day (only a morning or only an afternoon punch — see isHalfDay()'s caveat
+   in reportMath.js) — its own color so it doesn't blend into a normal two-session full day. */
+.daypill.half{background:rgba(45,212,191,.18); border-color:var(--teal); color:#99f6e4; cursor:pointer;}
+.daypill.full:hover, .daypill.half:hover, .daypill.review:hover{transform:translateY(-2px);}
 .daypill.auto::after{content:""; position:absolute; top:-3px; right:-3px; width:7px; height:7px; border-radius:50%; background:var(--blue); border:1.5px solid var(--card);}
-.daypill.full.flagged{border-color:var(--amber);}
-.daypill.full.flagged::after{content:""; position:absolute; top:-3px; right:-3px; width:7px; height:7px; border-radius:50%; background:var(--amber); border:1.5px solid var(--card);}
+.daypill.full.flagged, .daypill.half.flagged{border-color:var(--amber);}
+.daypill.full.flagged::after, .daypill.half.flagged::after{content:""; position:absolute; top:-3px; right:-3px; width:7px; height:7px; border-radius:50%; background:var(--amber); border:1.5px solid var(--card);}
 /* Friday's standing paid holiday — filled and lettered like .full/.review, since it's a
    frequent, expected state worth reading at a glance rather than a quiet footnote. */
 .daypill.holiday{background:rgba(167,139,250,.20); border-color:var(--violet); color:#ddd6fe;}

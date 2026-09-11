@@ -3,7 +3,7 @@
 //   node --test js/
 import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
-import { buildDayHours, groupByEmployeeDay, needsReview, dayOffStatus } from './reportMath.js';
+import { buildDayHours, groupByEmployeeDay, needsReview, dayOffStatus, isHalfDay } from './reportMath.js';
 
 describe('buildDayHours', () => {
   const morning = { emp_id: 'e1', date: '2026-09-05', clock_in: '2026-09-05T09:00:00.000Z', clock_out: '2026-09-05T13:00:00.000Z' }; // 4h
@@ -185,5 +185,23 @@ describe('dayOffStatus', () => {
 
   test('no employeeSince provided (e.g. demo mode has no created_at): never gated', () => {
     assert.equal(dayOffStatus({date:'2026-01-01', weekday:THURSDAY, today:'2026-09-11'}), 'off');
+  });
+});
+
+describe('isHalfDay', () => {
+  const morning = { clock_in: '2026-09-11T09:00:00.000Z', clock_out: '2026-09-11T13:00:00.000Z' };
+  const afternoon = { clock_in: '2026-09-11T13:00:00.000Z', clock_out: '2026-09-11T17:00:00.000Z' };
+
+  test('a single session is a half day', () => {
+    assert.equal(isHalfDay([morning]), true);
+  });
+
+  test('a morning + afternoon pair (a full lunch-break day) is not a half day', () => {
+    assert.equal(isHalfDay([morning, afternoon]), false);
+  });
+
+  test('no sessions is not a half day', () => {
+    assert.equal(isHalfDay([]), false);
+    assert.equal(isHalfDay(undefined), false);
   });
 });

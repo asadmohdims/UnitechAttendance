@@ -207,12 +207,20 @@ deduction shares the same number instead of a second hardcoded `8`.
 - `monthData()` in `js/ui/report.js` computes `gapStatus[empId][day]` once per render, exactly
   the way `hours`/`openFlags`/`reviewFlags` already work — the calendar pills and the employee
   summary's days-off count read the same array, so they can't disagree about a given day.
-- **Calendar**: `.daypill.holiday` (new `--violet` token, filled, labelled "H" — a frequent,
-  expected state worth reading at a glance) and `.daypill.off` (dashed border, reuses the
-  existing `--muted`/`--border` tokens rather than a second new accent — deliberately quieter,
-  since it's inferred rather than confirmed data). A day actually worked always wins and shows
-  as `.full` regardless of whether it's a Friday — the pill reflects what happened, not what day
-  it is. New legend rows for both in `index.html`.
+- **Calendar**: `.daypill.holiday` (new `--violet` token, filled, labelled "F" for Friday — a
+  frequent, expected state worth reading at a glance) and `.daypill.off` (dashed border, labelled
+  "A" for absent/day off, reuses the existing `--muted`/`--border` tokens rather than a second
+  new accent — deliberately quieter, since it's inferred rather than confirmed data). A day
+  actually worked always wins and shows as `.full`/`.half` regardless of whether it's a Friday —
+  the pill reflects what happened, not what day it is. New legend rows for all of these in
+  `index.html`.
+- **Half day** (added 2026-09-11 on owner feedback after seeing Phase 1 live): a day with
+  exactly one session — as opposed to the two-session morning+afternoon pattern a full day
+  normally has now that lunch breaks are routinely punched separately — gets its own
+  `.daypill.half` color (new `--teal` token) instead of blending into `.full`. `isHalfDay()`
+  in `js/reportMath.js` is a literal session-count rule, not an hours-based one — it can't tell
+  "only worked the morning" apart from "worked a full day in one continuous punch with no lunch
+  break taken." Flagged to the owner as a known caveat; revisit if it misclassifies real days.
 - **Employee summary**: an always-visible "● N days off" line under the employee's name
   (`.report-daysoff` — muted, bold) is the actually-prominent surface for this, per the owner's
   "very clearly" ask; the calendar pill alone is small enough to miss when scanning.
@@ -392,7 +400,8 @@ not bundling).
   lunch-paid merge — not flagged, flagged on the last session of a day, a chain of 3+ sessions,
   merging under a rounding `hoursFn`, and a still-open session after a flagged one; and
   `dayOffStatus`'s holiday/off/nothing-to-show classification, including the Friday-before-hire
-  precedence regression and the "no `employeeSince`" demo-mode case), and `js/rounding.js` (both
+  precedence regression and the "no `employeeSince`" demo-mode case; and `isHalfDay`'s
+  single-vs-two-session distinction), and `js/rounding.js` (both
   sides of the 10/11-minute grace-window cutover, the exact 10:30 tie, hour/day rollovers, and
   `recHoursRounded`'s open-session and zero-length cases).
 - Deliberately **not** covered by automated tests: `supabaseStore.js` (touches the real

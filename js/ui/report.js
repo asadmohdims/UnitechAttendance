@@ -4,7 +4,7 @@ import { store } from '../store/index.js';
 import { applyAvatar } from '../avatars.js';
 import { switchTab } from './shell.js';
 import { setRecordsDate } from './records.js';
-import { buildDayHours, groupByEmployeeDay, needsReview, dayHoursFromSessions, dayOffStatus } from '../reportMath.js';
+import { buildDayHours, groupByEmployeeDay, needsReview, dayHoursFromSessions, dayOffStatus, isHalfDay } from '../reportMath.js';
 import { recHoursRounded, roundToQuarterHour, wasRounded } from '../rounding.js';
 
 const repMonth = $('repMonth');
@@ -195,10 +195,14 @@ function renderDetailCalendar({days, emps, hours, openFlags, reviewFlags, gapSta
       // Only reached with no punches at all (not open, no hours) — 'holiday' or 'off', see
       // dayOffStatus() in reportMath.js for what decides which, or null for nothing to show.
       const gap = !open && !hasHours ? gapStatus[e.id][d] : null;
+      // A single-session day (only a morning or only an afternoon punch) gets its own color
+      // instead of blending into a normal two-session full day — see isHalfDay()'s caveat in
+      // reportMath.js about what this can't distinguish.
+      const half = hasHours && isHalfDay(sessions);
       const pill = document.createElement('div');
-      pill.className = 'daypill' + (open ? ' review' : hasHours ? ' full' : gap ? ` ${gap}` : '')
+      pill.className = 'daypill' + (open ? ' review' : hasHours ? (half ? ' half' : ' full') : gap ? ` ${gap}` : '')
         + (flagged ? ' flagged' : '') + (autoInfo ? ' auto' : '');
-      pill.textContent = open ? '!' : hasHours ? d : gap === 'holiday' ? 'H' : '';
+      pill.textContent = open ? '!' : hasHours ? d : gap === 'holiday' ? 'F' : gap === 'off' ? 'A' : '';
       if(sessions){
         pill.onclick = () => toggleDayDetail(tr, sessions);
       }

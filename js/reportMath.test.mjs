@@ -3,7 +3,7 @@
 //   node --test js/
 import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
-import { buildDayHours } from './reportMath.js';
+import { buildDayHours, groupByEmployeeDay } from './reportMath.js';
 
 describe('buildDayHours', () => {
   const morning = { emp_id: 'e1', date: '2026-09-05', clock_in: '2026-09-05T09:00:00.000Z', clock_out: '2026-09-05T13:00:00.000Z' }; // 4h
@@ -44,5 +44,28 @@ describe('buildDayHours', () => {
     const {hours} = buildDayHours([stranger], ['e1'], 15);
     assert.equal(hours.e2, undefined);
     assert.equal(hours.e1[5], null);
+  });
+});
+
+describe('groupByEmployeeDay', () => {
+  test('sorts a day\'s sessions chronologically regardless of input order', () => {
+    const afternoon = { emp_id: 'e1', date: '2026-09-05', clock_in: '2026-09-05T09:30:00.000Z', clock_out: '2026-09-05T12:00:00.000Z' };
+    const morning = { emp_id: 'e1', date: '2026-09-05', clock_in: '2026-09-05T04:00:00.000Z', clock_out: '2026-09-05T08:00:00.000Z' };
+    const map = groupByEmployeeDay([afternoon, morning]);
+    assert.deepEqual(map.e1[5], [morning, afternoon]);
+  });
+
+  test('keeps different employees\' and different days\' sessions apart', () => {
+    const a = { emp_id: 'e1', date: '2026-09-05', clock_in: '2026-09-05T09:00:00.000Z', clock_out: null };
+    const b = { emp_id: 'e2', date: '2026-09-05', clock_in: '2026-09-05T09:00:00.000Z', clock_out: null };
+    const c = { emp_id: 'e1', date: '2026-09-06', clock_in: '2026-09-06T09:00:00.000Z', clock_out: null };
+    const map = groupByEmployeeDay([a, b, c]);
+    assert.deepEqual(map.e1[5], [a]);
+    assert.deepEqual(map.e2[5], [b]);
+    assert.deepEqual(map.e1[6], [c]);
+  });
+
+  test('no records produces an empty map', () => {
+    assert.deepEqual(groupByEmployeeDay([]), {});
   });
 });

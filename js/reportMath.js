@@ -20,3 +20,20 @@ export function buildDayHours(recs, empIds, days){
   });
   return {hours, openFlags};
 }
+
+// Groups a month's raw records by employee, then by day-of-month, each day's list sorted
+// chronologically. buildDayHours() gives the aggregate a day needs for its status pill;
+// this gives the session-by-session detail (times, lunch gap) shown when a day is clicked.
+export function groupByEmployeeDay(recs){
+  const map = {};
+  recs.forEach(r => {
+    const d = Number(r.date.slice(8,10));
+    if(!map[r.emp_id]) map[r.emp_id] = {};
+    if(!map[r.emp_id][d]) map[r.emp_id][d] = [];
+    map[r.emp_id][d].push(r);
+  });
+  Object.values(map).forEach(byDay => {
+    Object.values(byDay).forEach(list => list.sort((a, b) => new Date(a.clock_in) - new Date(b.clock_in)));
+  });
+  return map;
+}

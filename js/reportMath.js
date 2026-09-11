@@ -37,3 +37,13 @@ export function groupByEmployeeDay(recs){
   });
   return map;
 }
+
+// True when a day's data can't be trusted as final without a human checking it: either the
+// last session is still open (clock_out null — forgot to clock out), or it was auto-closed by
+// the lunch safety net and nothing followed it (out_photo null on a session that IS closed —
+// the employee never tapped back in from lunch). Both collapse to the same check: the day's
+// last session has no photographed clock-out.
+export function needsReview(sessions){
+  if(!sessions || !sessions.length) return false;
+  return !sessions[sessions.length - 1].out_photo;
+}

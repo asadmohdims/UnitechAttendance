@@ -4,7 +4,7 @@ import { store } from '../store/index.js';
 import { applyAvatar } from '../avatars.js';
 import { switchTab } from './shell.js';
 import { setRecordsDate } from './records.js';
-import { buildDayHours, groupByEmployeeDay } from '../reportMath.js';
+import { buildDayHours, groupByEmployeeDay, needsReview } from '../reportMath.js';
 
 const repMonth = $('repMonth');
 repMonth.value = dateStr().slice(0,7);
@@ -20,7 +20,7 @@ $('btnReportDetail').onclick = () => {
   $('btnReportDetail').textContent = isOpen ? 'View detailed calendar' : 'Hide detailed calendar';
 };
 $('btnReviewRecords').onclick = () => {
-  const first = lastReportData?.openRecords?.[0];
+  const first = lastReportData?.reviewRecords?.[0];
   if(first) setRecordsDate(first.date);
   switchTab('records');
 };
@@ -38,7 +38,21 @@ export async function monthData(ym){ // ym: 'YYYY-MM'
   const emps = state.employees.filter(e => e.active || recs.some(r => r.emp_id === e.id));
   const {hours, openFlags} = buildDayHours(recs, emps.map(e => e.id), days);
   const sessionsByDay = groupByEmployeeDay(recs);
-  return {ym, days, emps, hours, openFlags, sessionsByDay, recs, openRecords:recs.filter(r => !r.clock_out), hasData: recs.length > 0};
+
+  // reviewFlags is broader than openFlags: it also catches a day whose last session was
+  // auto-closed for lunch and never got a follow-up punch — data that looks complete (real
+  // hours, no open session) but hasn't actually been confirmed by the employee coming back.
+  const reviewFlags = {}, reviewRecords = [];
+  emps.forEach(e => { reviewFlags[e.id] = Array(days+1).fill(false); });
+  Object.entries(sessionsByDay).forEach(([empId, byDay]) => {
+    Object.entries(byDay).forEach(([day, sessions]) => {
+      if(!needsReview(sessions)) return;
+      reviewRecords.push(sessions[sessions.length - 1]);
+      if(reviewFlags[empId]) reviewFlags[empId][day] = true;
+    });
+  });
+
+  return {ym, days, emps, hours, openFlags, reviewFlags, sessionsByDay, recs, reviewRecords, hasData: recs.length > 0};
 }
 
 // Sums one employee's per-day hours array (as produced by monthData) into a period total.
@@ -59,26 +73,31 @@ export async function renderReport(){
   busy(false);
   if(!md) return;
   lastReportData = md;
-  const {ym, days, emps, hours, openFlags, sessionsByDay, openRecords, hasData} = md;
+  const {ym, days, emps, hours, openFlags, reviewFlags, sessionsByDay, reviewRecords, hasData} = md;
   $('repEmpty').style.display = hasData ? 'none' : '';
   $('reportMonthLabel').textContent = new Date(`${ym}-01T12:00:00`).toLocaleDateString('en-IN', {month:'long', year:'numeric'});
   let totalHours = 0, attendanceDays = 0;
   const employeeStats = emps.map(e => {
-    const {total, daysWorked, hasOpen} = summarizeHours(hours[e.id], days, openFlags[e.id]);
+    const {total, daysWorked, hasOpen} = summarizeHours(hours[e.id], days, reviewFlags[e.id]);
     totalHours += total;
     attendanceDays += daysWorked;
     return {employee:e, total, daysWorked, hasOpen};
   });
   $('metricHours').textContent = fmtHours(totalHours);
   $('metricDays').textContent = attendanceDays;
-  $('metricReview').textContent = openRecords.length ? `${openRecords.length} ${openRecords.length === 1 ? 'entry' : 'entries'}` : 'None';
-  $('metricReview').classList.toggle('good', !openRecords.length);
-  $('metricReview').classList.toggle('warn', !!openRecords.length);
-  $('reviewAlert').style.display = openRecords.length ? '' : 'none';
-  if(openRecords.length){
-    const names = [...new Set(openRecords.map(r => state.employees.find(e => e.id === r.emp_id)?.name || 'An employee'))];
-    $('reviewTitle').textContent = `${openRecords.length} attendance ${openRecords.length === 1 ? 'entry needs' : 'entries need'} review`;
-    $('reviewText').textContent = `${names.join(', ')} ${names.length === 1 ? 'has' : 'have'} not clocked out yet.`;
+  $('metricReview').textContent = reviewRecords.length ? `${reviewRecords.length} ${reviewRecords.length === 1 ? 'entry' : 'entries'}` : 'None';
+  $('metricReview').classList.toggle('good', !reviewRecords.length);
+  $('metricReview').classList.toggle('warn', !!reviewRecords.length);
+  $('reviewAlert').style.display = reviewRecords.length ? '' : 'none';
+  if(reviewRecords.length){
+    const nameOf = r => state.employees.find(e => e.id === r.emp_id)?.name || 'An employee';
+    const openNames = [...new Set(reviewRecords.filter(r => !r.clock_out).map(nameOf))];
+    const abandonedNames = [...new Set(reviewRecords.filter(r => r.clock_out).map(nameOf))];
+    const parts = [];
+    if(openNames.length) parts.push(`${openNames.join(', ')} ${openNames.length === 1 ? 'has' : 'have'} not clocked out yet`);
+    if(abandonedNames.length) parts.push(`${abandonedNames.join(', ')} ${abandonedNames.length === 1 ? 'was' : 'were'} auto-closed for lunch and never clocked back in`);
+    $('reviewTitle').textContent = `${reviewRecords.length} attendance ${reviewRecords.length === 1 ? 'entry needs' : 'entries need'} review`;
+    $('reviewText').textContent = parts.join('; ') + '.';
   }
   const list = $('reportEmployeeList');
   list.innerHTML = '';
@@ -99,7 +118,7 @@ export async function renderReport(){
     list.appendChild(row);
   });
 
-  renderDetailCalendar({days, emps, hours, openFlags, sessionsByDay, employeeStats});
+  renderDetailCalendar({days, emps, hours, openFlags, reviewFlags, sessionsByDay, employeeStats});
 }
 
 // Each day is a status pill, not a number — a day can have more than one session now (a
@@ -107,7 +126,7 @@ export async function renderReport(){
 // pinned (position:sticky) so they're never the ones scrolled out of view; the day columns
 // are what scrolls. Clicking a day expands an inline row with that day's actual session
 // times and lunch gap, reusing the same in/out/lunch vocabulary as the Daily records tab.
-function renderDetailCalendar({days, emps, hours, openFlags, sessionsByDay, employeeStats}){
+function renderDetailCalendar({days, emps, hours, openFlags, reviewFlags, sessionsByDay, employeeStats}){
   let h = '<tr><th class="col-emp">Employee</th>';
   for(let d=1; d<=days; d++) h += `<th>${d}</th>`;
   h += '<th class="col-days">Days</th><th class="col-total">Total hrs</th></tr>';
@@ -132,9 +151,17 @@ function renderDetailCalendar({days, emps, hours, openFlags, sessionsByDay, empl
       const sessions = sessionsForEmp[d];
       const open = openFlags[e.id][d];
       const hasHours = hours[e.id][d] !== null;
-      const auto = sessions && sessions.some(s => s.clock_out && !s.out_photo);
+      // "flagged" = needs review but isn't genuinely still open — i.e. the day's last session
+      // was auto-closed for lunch and never got a follow-up punch. Hours ARE known (hasHours),
+      // so this shows the day number with an amber marker, not the '!' used for a truly open
+      // session (where there's no final number to show yet).
+      const flagged = reviewFlags[e.id][d] && !open;
+      // An auto-close that DID get resumed afterward is worth a quiet, informational note (blue)
+      // — distinct from one that never resolved (amber, via `flagged` above).
+      const autoInfo = !flagged && sessions && sessions.some(s => s.clock_out && !s.out_photo);
       const pill = document.createElement('div');
-      pill.className = 'daypill' + (open ? ' review' : hasHours ? ' full' : '') + (auto ? ' auto' : '');
+      pill.className = 'daypill' + (open ? ' review' : hasHours ? ' full' : '')
+        + (flagged ? ' flagged' : '') + (autoInfo ? ' auto' : '');
       pill.textContent = open ? '!' : hasHours ? d : '';
       if(sessions){
         pill.onclick = () => toggleDayDetail(tr, sessions);

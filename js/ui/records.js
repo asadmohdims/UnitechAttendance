@@ -81,10 +81,18 @@ export async function renderRecords(){
     const who = document.createElement('div'); who.className = 'rec-who';
     const name = document.createElement('div'); name.className = 'report-name'; name.textContent = emp ? emp.name : '?';
     who.appendChild(name);
+    const empSessions = byEmp.get(r.emp_id);
+    const isLastForEmp = empSessions[empSessions.length - 1] === r;
     if(!r.clock_out){
       const live = document.createElement('div'); live.className = 'open-session'; live.style.fontSize = '13px';
       live.textContent = '● Still in';
       who.appendChild(live);
+    }else if(isLastForEmp && !r.out_photo){
+      // The lunch safety net closed this session, and nothing followed it that day — the
+      // employee never tapped back in. Hours look complete but haven't actually been confirmed.
+      const flag = document.createElement('div'); flag.className = 'lunch-flag'; flag.style.fontSize = '13px';
+      flag.textContent = '● Lunch not resumed';
+      who.appendChild(flag);
     }
 
     const punches = document.createElement('div'); punches.className = 'rec-punches';

@@ -3,7 +3,7 @@
 //   node --test js/
 import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
-import { buildDayHours, groupByEmployeeDay } from './reportMath.js';
+import { buildDayHours, groupByEmployeeDay, needsReview } from './reportMath.js';
 
 describe('buildDayHours', () => {
   const morning = { emp_id: 'e1', date: '2026-09-05', clock_in: '2026-09-05T09:00:00.000Z', clock_out: '2026-09-05T13:00:00.000Z' }; // 4h
@@ -67,5 +67,35 @@ describe('groupByEmployeeDay', () => {
 
   test('no records produces an empty map', () => {
     assert.deepEqual(groupByEmployeeDay([]), {});
+  });
+});
+
+describe('needsReview', () => {
+  const realIn = { clock_in: '2026-09-05T09:00:00.000Z', clock_out: '2026-09-05T13:00:00.000Z', out_photo: 'e1/a-out.jpg' };
+  const autoOut = { clock_in: '2026-09-05T09:00:00.000Z', clock_out: '2026-09-05T13:00:00.000Z', out_photo: null };
+  const stillOpen = { clock_in: '2026-09-05T14:00:00.000Z', clock_out: null, out_photo: null };
+
+  test('a normally-closed single session: no review needed', () => {
+    assert.equal(needsReview([realIn]), false);
+  });
+
+  test('still clocked in (forgot to clock out): needs review', () => {
+    assert.equal(needsReview([stillOpen]), true);
+  });
+
+  // The actual gap this guards: an auto-closed lunch that got a real resume punch afterward is
+  // resolved and fine; one that never got a follow-up session looks identical to a normal short
+  // day unless the LAST session specifically is checked, not just "was anyone auto-closed today".
+  test('auto-closed for lunch and never resumed (last session has no photo): needs review', () => {
+    assert.equal(needsReview([autoOut]), true);
+  });
+
+  test('auto-closed for lunch but resumed afterward: no review needed', () => {
+    assert.equal(needsReview([autoOut, realIn]), false);
+  });
+
+  test('no sessions that day: no review needed', () => {
+    assert.equal(needsReview([]), false);
+    assert.equal(needsReview(undefined), false);
   });
 });

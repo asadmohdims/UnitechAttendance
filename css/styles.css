@@ -105,6 +105,7 @@ input[type=time]::-webkit-calendar-picker-indicator, input[type=date]::-webkit-c
 .grow{flex:1 1 auto !important;}
 .muted{color:var(--muted); font-size:13px;}
 .open-session{color:var(--green); font-weight:600;}
+.lunch-flag{color:#fbbf24; font-weight:600;}
 #photoView{position:fixed; inset:0; background:rgba(0,0,0,.9); display:none; align-items:center; justify-content:center; z-index:110; cursor:pointer;}
 #photoView.open{display:flex;}
 #photoView img{max-width:92%; max-height:92%; border-radius:12px;}
@@ -133,6 +134,8 @@ input[type=time]::-webkit-calendar-picker-indicator, input[type=date]::-webkit-c
 .daypill.review{background:rgba(245,158,11,.20); border-color:var(--amber); color:#fde3a7; cursor:pointer;}
 .daypill.full:hover, .daypill.review:hover{transform:translateY(-2px);}
 .daypill.auto::after{content:""; position:absolute; top:-3px; right:-3px; width:7px; height:7px; border-radius:50%; background:var(--blue); border:1.5px solid var(--card);}
+.daypill.full.flagged{border-color:var(--amber);}
+.daypill.full.flagged::after{content:""; position:absolute; top:-3px; right:-3px; width:7px; height:7px; border-radius:50%; background:var(--amber); border:1.5px solid var(--card);}
 .detail-row{display:none;}
 .detail-row.open{display:table-row;}
 .detail-row td{background:var(--raised); padding:0;}

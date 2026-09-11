@@ -41,9 +41,18 @@ async function checkLunchAutoClose(){
   if(!toClose.length) return false;
   const atIso = cutoffTimeFor(now).toISOString();
   for(const rec of toClose){
-    await store.clockOut(rec.id, null, atIso);
-    delete state.openSessions[rec.emp_id];
-    state.onLunch[rec.emp_id] = true;
+    try{
+      await store.clockOut(rec.id, null, atIso);
+      delete state.openSessions[rec.emp_id];
+      state.onLunch[rec.emp_id] = true;
+    }catch(err){
+      // Don't let one record's failure (e.g. genuinely deleted from the admin panel in the
+      // meantime) stop the rest of this tick's tiles from updating, or block the next tick's
+      // periodicCheck() from running at all — this is a silent background safety net, not a
+      // foreground action anyone's watching, so leave it in openSessions and retry in 5s
+      // rather than surfacing a toast on every failed attempt.
+      console.error('Lunch auto-close failed for record', rec.id, err);
+    }
   }
   return true;
 }

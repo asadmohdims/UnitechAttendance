@@ -42,6 +42,7 @@ js/
   salary.js                  -- pure salary math (proration, rate selection) — no store/DOM access
   lunch.js                    -- pure lunch auto-close predicate (cutoff time, shouldAutoCloseForLunch)
   reportMath.js                -- pure per-day hours/review-flag/session-grouping math for the report
+  rounding.js                   -- pure payroll rounding (grace-window rule) + recHoursRounded()
   store/
     index.js                  -- `store = DEMO_MODE ? demoStore : supabaseStore`
     demoStore.js                -- localStorage-backed
@@ -97,7 +98,7 @@ network hiccup was treated as the one unacceptable failure mode — this is why 
   localStorage, so its `clockIn`/`clockOut` just changed signature (blob instead of a
   pre-computed photo path) to match the shared interface, no offline logic.
 
-## Lunch-break support (2026-09-11, branch `feature/lunch-break-support`)
+## Lunch-break support (2026-09-11)
 
 Employees punch multiple in/out sessions per day now instead of one — this needed **no schema
 change**: `records` already had no per-day uniqueness constraint (its own comment says "one row
@@ -137,9 +138,47 @@ never an inferred or separately-deducted amount.
   — so a same-day second session always renders directly under its first, with a
   "Lunch: Xh Ym" divider between them (`(auto)` appended only when the closing session had no
   photo).
-- **Not yet merged to `main`** — code-complete, unit-tested, and manually verified (including
-  live in a real browser against seeded multi-day data), but still sitting on
-  `feature/lunch-break-support`, pushed to origin.
+- **Merged to `main`** (commit `c4bcf37`) and live.
+
+## Payroll rounding (2026-09-11, `js/rounding.js`)
+
+Salary pays on rounded punches, not raw minutes: `roundToQuarterHour()` rounds any timestamp to
+the nearest 15-minute mark using a **grace-window rule the shop chose directly** — a punch up
+to 10 minutes past a quarter still counts as that quarter; only past 10 minutes does it roll to
+the next one (10:30 is the exact cutover). This is *not* the DOL's symmetric 7-minute rule the
+work started from — the shop wanted a wider "still counts as on time" window than that standard
+gives, and explicitly chose it after seeing the trade-off (a wider down-rounding window is still
+net-neutral over a full shift, since the same function rounds both the in and the out punch).
+
+- Report and Daily records **keep showing exact punch times** — `recHours()` — since they're the
+  audit trail tied to the proof photo. Only Salary's `hoursWorked` comes from `recHoursRounded()`
+  (`buildDayHours(recs, empIds, days, recHoursRounded)` in `reportMath.js`).
+- Wherever rounding actually moves a punch, a small "→ 9:15 paid" annotation shows next to the
+  exact time (`wasRounded()`), in both Daily records and the Report calendar's day-detail panel —
+  so an admin can show an employee the exact-vs-counted time if a pay figure is ever challenged,
+  not just present a silently-different total.
+- Covered by `js/rounding.test.mjs`: both sides of the 10/11-minute cutover, the exact 10:30
+  tie, hour- and day-boundary rollovers, and `recHoursRounded`'s null-for-open-session case.
+
+## Lunch-paid override (2026-09-11)
+
+The owner can opt, per lunch gap, to pay through it as if it were worked time — a real feature
+request from reviewing a simulated month, not a hypothetical. One tap in Daily records
+("Include as paid work" on the lunch divider); tapping again fully reverts it — that
+reversibility *is* the safety net, so there's no separate confirm dialog.
+
+- **Schema**: `records.lunch_paid boolean default false` (see `supabase-setup.sql`), set on the
+  *earlier* of the two sessions the gap sits between — a flag, never a change to the punch times
+  themselves. `store.setLunchPaid(recordId, paid)` in both `demoStore.js`/`supabaseStore.js`.
+- **Math**: `dayHoursFromSessions(sessions, hoursFn)` in `reportMath.js` collapses any run of
+  sessions chained by `lunch_paid` into one virtual span *before* calling `hoursFn` — so a
+  paid-through day gets one continuous shift's rounding at its true start/end, not two
+  independently-rounded halves plus an unrounded gap stitched on. `buildDayHours()` uses this
+  for Report/Salary's totals; `js/ui/records.js`'s day-header total and `js/ui/report.js`'s
+  day-detail panel both call the same function directly, so all three screens can never disagree
+  about a lunch-paid day's total.
+- Needs the Supabase migration applied (done, per the owner, 2026-09-11) before the toggle works
+  against the live project — a fresh clone/reset would need to re-run that `alter table`.
 
 ## Design system (kiosk/home screen)
 
@@ -175,6 +214,17 @@ pattern (`.emp-row` and `.rec-row` in `css/styles.css`) — every admin screen i
 language as of the Stage 2 work below. On mobile, `.emp-row`'s action buttons wrap onto their
 own row instead of stacking one-per-line, and `.rec-row` uses `grid-template-areas` to
 regroup avatar/name/hours onto one line and in/out/actions onto a second.
+
+Daily records was redesigned again (2026-09-11) once the lunch-paid feature made a plain list of
+same-weight rows genuinely hard to read: a lunch-break day now renders as `.rec-group` — one
+header (`.rec-group-header`: avatar, name, status badge, and the day's *combined* total) with
+the individual sessions nested underneath as indented `.rec-session-row`s, so the total is never
+mental arithmetic and the exact per-punch audit trail is still one glance away. A single-session
+day still renders as the plain `.rec-row` from before — the grouped treatment only exists where
+it's needed. Because each `.rec-row`/`.rec-group` is its own independent CSS grid (not a shared
+table), their column widths are fixed pixel values rather than `auto`/1fr-content-based — a row
+with a longer "paid" rounding annotation would otherwise size its own columns wider than a plain
+row and the columns would drift out of alignment down the list.
 
 The Report tab's detailed calendar was redesigned (2026-09-11) from a plain number-per-day
 table into a status grid — the old design had no room for what a day can now contain (more
@@ -214,7 +264,7 @@ admin isn't blocked from zooming Records/Report/Employees/Salary on their own ph
   rate-selection rule, tested), the `salary_rates` table, and the Salary admin tab
   (`js/ui/salary.js`) built on the same grid-list design as Report. `STANDARD_MONTHLY_HOURS`
   in `js/config.js` is a placeholder pending confirmation with the shop owner; no overtime cap
-  yet (see Planned features #2 below).
+  yet (see "Time & attendance backlog" below).
 - ✅ **Stage 2 — admin UX** (from the original audit, done 2026-09-11): `js/ui/records.js`'s
   edit/delete now go through `promptModal()` (see `js/ui/modal.js`, which gained `danger`
   styling for destructive confirms and optional/`required:false` fields) instead of native
@@ -236,28 +286,40 @@ admin isn't blocked from zooming Records/Report/Employees/Salary on their own ph
   bold full-ink for more presence without competing with the clock's size-driven dominance.
 - ✅ **Lunch-break support + Report calendar redesign** (2026-09-11) — see the dedicated
   "Lunch-break support" section above and the Design system paragraph on the status-grid
-  calendar. Supersedes Planned feature #3 below, done out of the original stated sequence
-  (explicitly chosen). **Code-complete and tested but not yet merged to `main`** — lives on
-  `feature/lunch-break-support`, pushed to origin; the next session picks up from there.
+  calendar. Merged to `main`.
+- ✅ Missed clock-in highlight (commit `3951074`): resolved as "not currently clocked in as of
+  now" — the simpler of the two forks, no schedule/shift-time concept added. `MISSED_CLOCKIN_HOUR`
+  in `js/config.js` is a placeholder pending the shop owner, same status as
+  `STANDARD_MONTHLY_HOURS`/`LUNCH_CUTOFF_HOUR`. Kiosk tile + a Daily records banner
+  (`js/missedClockIn.js`).
+- ✅ Kiosk tile redesign (commit `2089f2e`) and a perf fix (commit `acd0510`) stopping
+  `refreshTileStates()`'s 5s tick from re-fetching every avatar's signed URL on every poll —
+  see the split between it and the full `renderHome()` rebuild in `js/ui/kiosk.js`.
+- ✅ **Payroll rounding + lunch-paid override** (2026-09-11) — see the dedicated sections above.
+  The 15-min rounding rule and the lunch-paid toggle are both live; **overtime is the one
+  remaining item from the original time-and-attendance backlog** — see below. The owner has
+  said he'll tackle it just before going live, not now.
+- ✅ **Cross-device clock-out fix** (2026-09-11): `clockOut()` in `supabaseStore.js` required
+  the session to exist in *that browser's* local outbox, with no fallback — so a session opened
+  on one device (or one whose local outbox had already been cleared after syncing) would show as
+  clockable on another device's tile, then fail with a misleading "check internet" message when
+  tapped. The lunch auto-close safety net had the identical exposure, since it runs against
+  `state.openSessions`, which already merges in sessions from *other* devices via
+  `listOpenSessions()`. Fixed by giving `clockOut()` the same "not local → write straight to
+  Postgres" fallback `updateRecordTimes`/`setLunchPaid`/`deleteRecord` already had; the auto-close
+  loop in `js/ui/kiosk.js` also now isolates one record's failure so it can't block the rest of
+  that tick. Not yet re-verified against the live project with a real second device — worth
+  doing before relying on it for real multi-week usage.
 
-## Planned features — time & attendance accuracy (discussed 2026-09-10)
+## Time & attendance backlog — overtime (the one item left)
 
-Originally four features, sequenced by dependency. **Lunch break (was #3 here) shipped
-2026-09-11** — see "Lunch-break support" above — done out of the original stated order,
-explicitly chosen over working strictly 1→2→3→4. Remaining two, renumbered:
-
-1. **Missed clock-in highlight** — flag on the home/admin screen when someone hasn't clocked
-   in. Intent still undecided — open question before starting: is "missed" evaluated against a
-   fixed expected shift-start time (needs a schedule concept that doesn't exist yet) or just
-   "not currently clocked in as of now" (no schedule needed)? Independent of #2 below.
-2. **15-minute rounding on clock in/out** (e.g. 9:13 → 9:15), then **overtime calculation** on
-   top of the rounded, lunch-net hours. Rounding's open decision: direction — nearest-15
-   (symmetric), always-favor-shop (in↑/out↓), or nearest-with-grace-window (more
-   payroll-standard, more rules to encode); pure function, belongs in `js/salary.js` alongside
-   the existing money math, testable with `node --test`. Overtime needs a decision on basis
-   (daily >8h, weekly >40h, or both) and whether it's a separate line in `calcSalary`'s output
-   or folded into the ratio — can now also draw on the real lunch-break data from the feature
-   above rather than raw punch times.
+Everything else from the original four-item backlog (missed clock-in, lunch break, rounding) is
+done — see Status above. Overtime calculation on top of the now-rounded, lunch-net hours is the
+last piece, **deliberately deferred until just before going live** (the owner's call, 2026-09-11).
+Open questions when it's picked up: basis (daily >8h, weekly >40h, or both), and whether it's a
+separate line in `calcSalary`'s output or folded into the existing ratio — can draw on real
+lunch-break and rounding data rather than raw punch times. Belongs in `js/salary.js` alongside
+the existing money math, testable with `node --test` the same way.
 
 ## Testing
 
@@ -279,15 +341,21 @@ not bundling).
   force-closing a stale prior-day open session, a session that started after the cutoff), and
   `js/reportMath.js` (per-day hours/open-flag accumulation, including the regression test for
   an order-dependent bug where a closed session's hours could mask a same-day still-open
-  session; the session-grouping behind the calendar's click-through detail; and `needsReview`'s
-  logic for both "still open" and "auto-closed, never resumed").
+  session; the session-grouping behind the calendar's click-through detail; `needsReview`'s
+  logic for both "still open" and "auto-closed, never resumed"; and `dayHoursFromSessions`'s
+  lunch-paid merge — not flagged, flagged on the last session of a day, a chain of 3+ sessions,
+  merging under a rounding `hoursFn`, and a still-open session after a flagged one), and
+  `js/rounding.js` (both sides of the 10/11-minute grace-window cutover, the exact 10:30 tie,
+  hour/day rollovers, and `recHoursRounded`'s open-session and zero-length cases).
 - Deliberately **not** covered by automated tests: `supabaseStore.js` (touches the real
   network/DB — a proper test would need a mocked client or a disposable test project; keep
   verifying it via the console against the live project, per the working conventions below)
   and the UI layer (no headless-browser test tool is set up — that would be new tooling, ask
-  first). Because both stores share the same pure `salary.js` logic rather than duplicating
-  it, testing that logic once covers correctness for both the demo and production data paths
-  — `supabaseStore.js` itself is thin CRUD with little logic of its own left to break.
+  first). Because both stores share the same pure `salary.js`/`reportMath.js`/`rounding.js`
+  logic rather than duplicating it, testing that logic once covers correctness for both the
+  demo and production data paths — `supabaseStore.js` itself is thin CRUD with little logic of
+  its own left to break, though the cross-device `clockOut()` fallback (see Status above) is a
+  recent exception worth a real-device re-check before trusting it under load.
 
 ## Working conventions established on this project
 

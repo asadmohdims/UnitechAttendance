@@ -89,14 +89,37 @@ async function clockIn(empId, blob){
 // uploaded.
 async function clockOut(recordId, blob, atIso){
   const rec = await outbox.getItem(recordId);
-  if(!rec) throw new Error('Open session not found locally');
-  rec.clock_out = atIso || new Date().toISOString();
-  if(blob){
-    rec.out_photo = `${rec.emp_id}/${rec.clientId}-out.jpg`;
-    rec.out_photo_blob = blob;
+  if(rec){
+    rec.clock_out = atIso || new Date().toISOString();
+    if(blob){
+      rec.out_photo = `${rec.emp_id}/${rec.clientId}-out.jpg`;
+      rec.out_photo_blob = blob;
+    }
+    await outbox.putItem(rec);
+    outbox.kick();
+    return;
   }
-  await outbox.putItem(rec);
-  outbox.kick();
+
+  // Not in this browser's local outbox — the session was opened on a different device (or
+  // this one's local copy was already cleared after syncing). `state.openSessions` already
+  // merges in sessions like this from the server (see listOpenSessions below), so the tile
+  // shown as clockable must not silently fail to actually clock out — write straight to
+  // Postgres instead, same as updateRecordTimes/setLunchPaid/deleteRecord already do for the
+  // same "not local" case.
+  const {data: existing, error: fetchError} = await sb.from('records').select('emp_id').eq('id', recordId).maybeSingle();
+  if(fetchError) throw fetchError;
+  if(!existing) throw new Error('This session could not be found — it may have already been edited or deleted from the admin panel.');
+
+  let outPhoto = null;
+  if(blob){
+    outPhoto = `${existing.emp_id}/${recordId}-out.jpg`;
+    const {error: uploadError} = await sb.storage.from('photos').upload(outPhoto, blob, {contentType:'image/jpeg', upsert:true});
+    if(uploadError) throw uploadError;
+  }
+  const {error} = await sb.from('records')
+    .update({clock_out: atIso || new Date().toISOString(), out_photo: outPhoto})
+    .eq('id', recordId);
+  if(error) throw error;
 }
 
 async function listRecordsForDate(date){

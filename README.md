@@ -10,16 +10,23 @@ A web app to track employee attendance for a small shop (< 10 employees).
 - Daily hours are calculated automatically (supports overnight shifts and fixing missed punches).
 - Lunch breaks are just a normal second clock-in/out — no separate button to learn. If someone
   forgets to tap back in, the kiosk closes their session automatically at a configurable cutoff
-  and flags it for the admin to double-check, instead of silently paying them through it.
-- Records view per day with in/out photos, editable times, grouped by session when someone has
-  more than one that day (with the lunch gap shown between them).
+  and flags it for the admin to double-check, instead of silently paying them through it. The
+  owner can also opt, per lunch break, to pay through it as if it were worked time — a one-tap,
+  fully reversible toggle right next to that day's records.
+- Records view per day, grouped: a lunch-break day shows one combined total for the day up top,
+  with the individual sessions and their photos underneath — no adding two numbers by hand.
+  Times are editable, with an audit trail (the exact captured time never changes, even where pay
+  rounding applies — see below).
 - Monthly report: a status-grid calendar (not just a number per day) shows at a glance who
   worked, who's still clocked in, and whose lunch needs a second look — click any day for the
   full session breakdown. Hours per day per employee, days worked, total hours — downloadable
   as Excel (.xlsx).
 - Salary: prorates a monthly rate against hours actually worked, with a full calculation
-  breakdown shown per employee. Rate changes are amendments (never edited in place), so past
-  months keep the rate that was actually in effect at the time.
+  breakdown shown per employee. Pay is based on each punch rounded to the nearest 15 minutes
+  (a configurable grace window, not a strict nearest-quarter split); wherever rounding changes a
+  punch, the exact time and the paid time are both shown side by side, so a pay figure can
+  always be explained if it's ever questioned. Rate changes are amendments (never edited in
+  place), so past months keep the rate that was actually in effect at the time.
 
 ## Usage
 

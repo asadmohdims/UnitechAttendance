@@ -1,6 +1,7 @@
 // Pure day-hours accumulation for report.js's monthData() — no store/DOM access, so it's
 // testable in isolation the same way js/salary.js is.
-import { recHours } from './utils.js';
+import { recHours, dateStr } from './utils.js';
+import { WEEKLY_HOLIDAY_DAY } from './config.js';
 
 // A day's chronologically-sorted sessions, collapsing any run chained by `lunch_paid` (a flag
 // on the earlier session in a pair, set when the owner opts to pay through that lunch gap)
@@ -75,4 +76,20 @@ export function groupByEmployeeDay(recs){
 export function needsReview(sessions){
   if(!sessions || !sessions.length) return false;
   return !sessions[sessions.length - 1].out_photo;
+}
+
+// Classifies a day that has NO punches at all (buildDayHours already returned null hours and
+// no open session) — deciding whether that gap is the standing weekly holiday, an inferred
+// day off, or nothing worth marking (a day that hasn't happened yet, or predates this
+// employee being added). A day with any punches never reaches this function — buildDayHours/
+// needsReview already cover those.
+// `employeeSince` gates BEFORE the holiday check: a Friday that fell before someone was even
+// added should read as "nothing to show," not "paid holiday" — hiring can't retroactively pay
+// someone for a day before they existed in the system. Left undefined (the demo store doesn't
+// track a created_at), the gate is simply skipped rather than misclassifying every past day.
+export function dayOffStatus({date, weekday, employeeSince, today = dateStr()}){
+  if(date > today) return null;
+  if(employeeSince && date < employeeSince) return null;
+  if(weekday === WEEKLY_HOLIDAY_DAY) return 'holiday';
+  return 'off';
 }

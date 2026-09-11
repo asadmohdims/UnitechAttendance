@@ -180,6 +180,46 @@ reversibility *is* the safety net, so there's no separate confirm dialog.
 - Needs the Supabase migration applied (done, per the owner, 2026-09-11) before the toggle works
   against the live project — a fresh clone/reset would need to re-run that `alter table`.
 
+## Holiday & day-off visibility — Phase 1 (2026-09-11)
+
+First of a 3-phase piece of work: (1) this phase — make Friday's paid holiday and an
+employee's days off visible in the monthly report; (2) make the monthly view's day-detail
+actionable instead of read-only, so a correction doesn't require a trip to Daily records; (3)
+day-off-aware salary deduction. Phases 2 and 3 are not started yet.
+
+This phase is **purely visibility — no schema change, no new store method**. `WEEKLY_HOLIDAY_DAY`
+(`js/config.js`, default 5/Friday, same "placeholder pending the owner" status as
+`LUNCH_CUTOFF_HOUR`/`MISSED_CLOCKIN_HOUR`) is the one thing that would need to change if the
+shop's weekly off day is ever something other than Friday. `STANDARD_DAY_HOURS = 8` was pulled
+out of `STANDARD_MONTHLY_HOURS` (still `= STANDARD_DAY_HOURS * 26`) so Phase 3's per-day salary
+deduction shares the same number instead of a second hardcoded `8`.
+
+- **A day off is inferred, not recorded** — a deliberate call (owner's, 2026-09-11): rather than
+  requiring the owner to explicitly mark every day off, any active employee's day with zero
+  punches is treated as one automatically. `dayOffStatus()` (`js/reportMath.js`) is the single
+  place this is decided, given a day that `buildDayHours` already found had no sessions at all:
+  `'holiday'` if it's the weekly holiday, `'off'` otherwise, or `null` if the day hasn't happened
+  yet or predates the employee (checked via `employees.created_at`, gated *before* the holiday
+  check — a Friday before someone was hired must not show as a paid holiday). An explicit
+  "owner adds a reason for a specific day off" capability was intentionally deferred rather than
+  built now — the owner wants the ability eventually, but only "if needed," and it doesn't gate
+  anything in this phase.
+- `monthData()` in `js/ui/report.js` computes `gapStatus[empId][day]` once per render, exactly
+  the way `hours`/`openFlags`/`reviewFlags` already work — the calendar pills and the employee
+  summary's days-off count read the same array, so they can't disagree about a given day.
+- **Calendar**: `.daypill.holiday` (new `--violet` token, filled, labelled "H" — a frequent,
+  expected state worth reading at a glance) and `.daypill.off` (dashed border, reuses the
+  existing `--muted`/`--border` tokens rather than a second new accent — deliberately quieter,
+  since it's inferred rather than confirmed data). A day actually worked always wins and shows
+  as `.full` regardless of whether it's a Friday — the pill reflects what happened, not what day
+  it is. New legend rows for both in `index.html`.
+- **Employee summary**: an always-visible "● N days off" line under the employee's name
+  (`.report-daysoff` — muted, bold) is the actually-prominent surface for this, per the owner's
+  "very clearly" ask; the calendar pill alone is small enough to miss when scanning.
+- Tested in `js/reportMath.test.mjs` — the Friday/holiday precedence, the today-is-eligible
+  boundary, and the regression this guards against: checking weekday before `employeeSince`
+  would have paid someone a "holiday" for a Friday before they were ever added.
+
 ## Design system (kiosk/home screen)
 
 Landscape layout: a fixed side panel + a centered, wrapping grid of ID-badge-shaped employee
@@ -310,6 +350,12 @@ admin isn't blocked from zooming Records/Report/Employees/Salary on their own ph
   loop in `js/ui/kiosk.js` also now isolates one record's failure so it can't block the rest of
   that tick. Not yet re-verified against the live project with a real second device — worth
   doing before relying on it for real multi-week usage.
+- 🔶 **Holiday & day-off visibility — Phase 1 done** (2026-09-11, branch
+  `feature/holiday-dayoff-visibility`): see the dedicated section above. Friday's paid holiday
+  and an inferred day off are now visible in the monthly report's calendar and employee
+  summary — no schema change, purely derived from existing data. **Phases 2 (make the monthly
+  view's corrections actionable) and 3 (day-off-aware salary deduction, manual per
+  employee/month per the owner's call) are not started.**
 
 ## Time & attendance backlog — overtime (the one item left)
 
@@ -344,9 +390,11 @@ not bundling).
   session; the session-grouping behind the calendar's click-through detail; `needsReview`'s
   logic for both "still open" and "auto-closed, never resumed"; and `dayHoursFromSessions`'s
   lunch-paid merge — not flagged, flagged on the last session of a day, a chain of 3+ sessions,
-  merging under a rounding `hoursFn`, and a still-open session after a flagged one), and
-  `js/rounding.js` (both sides of the 10/11-minute grace-window cutover, the exact 10:30 tie,
-  hour/day rollovers, and `recHoursRounded`'s open-session and zero-length cases).
+  merging under a rounding `hoursFn`, and a still-open session after a flagged one; and
+  `dayOffStatus`'s holiday/off/nothing-to-show classification, including the Friday-before-hire
+  precedence regression and the "no `employeeSince`" demo-mode case), and `js/rounding.js` (both
+  sides of the 10/11-minute grace-window cutover, the exact 10:30 tie, hour/day rollovers, and
+  `recHoursRounded`'s open-session and zero-length cases).
 - Deliberately **not** covered by automated tests: `supabaseStore.js` (touches the real
   network/DB — a proper test would need a mocked client or a disposable test project; keep
   verifying it via the console against the live project, per the working conventions below)

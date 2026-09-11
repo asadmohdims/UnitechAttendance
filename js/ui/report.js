@@ -4,7 +4,7 @@ import { store } from '../store/index.js';
 import { applyAvatar } from '../avatars.js';
 import { switchTab } from './shell.js';
 import { setRecordsDate } from './records.js';
-import { buildDayHours, groupByEmployeeDay, needsReview, dayHoursFromSessions } from '../reportMath.js';
+import { buildDayHours, groupByEmployeeDay, needsReview, dayHoursFromSessions, dayOffStatus } from '../reportMath.js';
 import { recHoursRounded, roundToQuarterHour, wasRounded } from '../rounding.js';
 
 const repMonth = $('repMonth');
@@ -58,7 +58,26 @@ export async function monthData(ym){ // ym: 'YYYY-MM'
     });
   });
 
-  return {ym, days, emps, hours, payHours, openFlags, reviewFlags, sessionsByDay, recs, reviewRecords, hasData: recs.length > 0};
+  // gapStatus[empId][day] classifies a day with NO punches at all as 'holiday' (the standing
+  // weekly holiday), 'off' (an inferred day off), or null (hasn't happened yet, or predates
+  // this employee) — computed once here so the calendar pills and the employee summary's
+  // days-off count can never disagree about a given day, the same way `hours` already keeps
+  // Report/Records/Salary in sync.
+  const gapStatus = {};
+  emps.forEach(e => {
+    gapStatus[e.id] = Array(days+1).fill(null);
+    const since = e.created_at ? dateStr(new Date(e.created_at)) : undefined;
+    for(let d=1; d<=days; d++){
+      if(hours[e.id][d] !== null || openFlags[e.id][d]) continue; // has real punch data that day
+      gapStatus[e.id][d] = dayOffStatus({
+        date: `${ym}-${pad(d)}`,
+        weekday: new Date(y, m-1, d).getDay(),
+        employeeSince: since
+      });
+    }
+  });
+
+  return {ym, days, emps, hours, payHours, openFlags, reviewFlags, gapStatus, sessionsByDay, recs, reviewRecords, hasData: recs.length > 0};
 }
 
 // Sums one employee's per-day hours array (as produced by monthData) into a period total.
@@ -79,7 +98,7 @@ export async function renderReport(){
   busy(false);
   if(!md) return;
   lastReportData = md;
-  const {ym, days, emps, hours, openFlags, reviewFlags, sessionsByDay, reviewRecords, hasData} = md;
+  const {ym, days, emps, hours, openFlags, reviewFlags, gapStatus, sessionsByDay, reviewRecords, hasData} = md;
   $('repEmpty').style.display = hasData ? 'none' : '';
   $('reportMonthLabel').textContent = new Date(`${ym}-01T12:00:00`).toLocaleDateString('en-IN', {month:'long', year:'numeric'});
   let totalHours = 0, attendanceDays = 0;
@@ -87,7 +106,8 @@ export async function renderReport(){
     const {total, daysWorked, hasOpen} = summarizeHours(hours[e.id], days, reviewFlags[e.id]);
     totalHours += total;
     attendanceDays += daysWorked;
-    return {employee:e, total, daysWorked, hasOpen};
+    const daysOff = gapStatus[e.id].filter(s => s === 'off').length;
+    return {employee:e, total, daysWorked, hasOpen, daysOff};
   });
   $('metricHours').textContent = fmtHours(totalHours);
   $('metricDays').textContent = attendanceDays;
@@ -107,7 +127,7 @@ export async function renderReport(){
   }
   const list = $('reportEmployeeList');
   list.innerHTML = '';
-  employeeStats.forEach(({employee, total, daysWorked, hasOpen}) => {
+  employeeStats.forEach(({employee, total, daysWorked, hasOpen, daysOff}) => {
     const row = document.createElement('div');
     row.className = 'report-person';
     const avatar = document.createElement('img');
@@ -117,6 +137,13 @@ export async function renderReport(){
     const name = document.createElement('div'); name.className = 'report-name'; name.textContent = employee.name;
     const days = document.createElement('span'); days.className = 'report-detail report-days-inline'; days.textContent = `${daysWorked} ${daysWorked === 1 ? 'attendance day' : 'attendance days'}`;
     who.append(name, days);
+    if(daysOff > 0){
+      // Always visible (not the mobile-only pattern .report-days-inline uses above) — this is
+      // the "very clearly" surface for a day off, since the calendar pill alone is small.
+      const offBadge = document.createElement('div'); offBadge.className = 'report-daysoff';
+      offBadge.textContent = `● ${daysOff} ${daysOff === 1 ? 'day off' : 'days off'}`;
+      who.appendChild(offBadge);
+    }
     const stateEl = document.createElement('div'); stateEl.className = `report-state ${hasOpen ? 'open' : 'ok'}`; stateEl.textContent = hasOpen ? '● Review required' : '● All clear';
     const daysNumber = document.createElement('div'); daysNumber.className = 'report-number days-worked'; daysNumber.innerHTML = `<span>Days</span><strong>${daysWorked}</strong>`;
     const hoursNumber = document.createElement('div'); hoursNumber.className = 'report-number'; hoursNumber.innerHTML = `<span>Total hours</span><strong>${fmtHours(total)}</strong>`;
@@ -124,7 +151,7 @@ export async function renderReport(){
     list.appendChild(row);
   });
 
-  renderDetailCalendar({days, emps, hours, openFlags, reviewFlags, sessionsByDay, employeeStats});
+  renderDetailCalendar({days, emps, hours, openFlags, reviewFlags, gapStatus, sessionsByDay, employeeStats});
 }
 
 // Each day is a status pill, not a number — a day can have more than one session now (a
@@ -132,7 +159,7 @@ export async function renderReport(){
 // pinned (position:sticky) so they're never the ones scrolled out of view; the day columns
 // are what scrolls. Clicking a day expands an inline row with that day's actual session
 // times and lunch gap, reusing the same in/out/lunch vocabulary as the Daily records tab.
-function renderDetailCalendar({days, emps, hours, openFlags, reviewFlags, sessionsByDay, employeeStats}){
+function renderDetailCalendar({days, emps, hours, openFlags, reviewFlags, gapStatus, sessionsByDay, employeeStats}){
   let h = '<tr><th class="col-emp">Employee</th>';
   for(let d=1; d<=days; d++) h += `<th>${d}</th>`;
   h += '<th class="col-days">Days</th><th class="col-total">Total hrs</th></tr>';
@@ -165,10 +192,13 @@ function renderDetailCalendar({days, emps, hours, openFlags, reviewFlags, sessio
       // An auto-close that DID get resumed afterward is worth a quiet, informational note (blue)
       // — distinct from one that never resolved (amber, via `flagged` above).
       const autoInfo = !flagged && sessions && sessions.some(s => s.clock_out && !s.out_photo);
+      // Only reached with no punches at all (not open, no hours) — 'holiday' or 'off', see
+      // dayOffStatus() in reportMath.js for what decides which, or null for nothing to show.
+      const gap = !open && !hasHours ? gapStatus[e.id][d] : null;
       const pill = document.createElement('div');
-      pill.className = 'daypill' + (open ? ' review' : hasHours ? ' full' : '')
+      pill.className = 'daypill' + (open ? ' review' : hasHours ? ' full' : gap ? ` ${gap}` : '')
         + (flagged ? ' flagged' : '') + (autoInfo ? ' auto' : '');
-      pill.textContent = open ? '!' : hasHours ? d : '';
+      pill.textContent = open ? '!' : hasHours ? d : gap === 'holiday' ? 'H' : '';
       if(sessions){
         pill.onclick = () => toggleDayDetail(tr, sessions);
       }

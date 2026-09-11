@@ -1,6 +1,6 @@
 :root{
   --bg:#0b1220; --card:#151f2e; --raised:#1d2a3b; --ink:#f4f7fb; --muted:#b8c3d1;
-  --green:#22c55e; --green-ink:#052e16; --amber:#f59e0b; --red:#fb7185; --blue:#60a5fa; --border:#2b3b50;
+  --green:#22c55e; --green-ink:#052e16; --amber:#f59e0b; --red:#fb7185; --blue:#60a5fa; --violet:#a78bfa; --border:#2b3b50;
 }
 *{box-sizing:border-box; margin:0; padding:0; -webkit-tap-highlight-color:transparent;}
 body{min-height:100vh; font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif; background:radial-gradient(circle at 50% -20%,#223958 0,var(--bg) 43%); color:var(--ink);}
@@ -139,6 +139,15 @@ input[type=time]::-webkit-calendar-picker-indicator, input[type=date]::-webkit-c
 .daypill.auto::after{content:""; position:absolute; top:-3px; right:-3px; width:7px; height:7px; border-radius:50%; background:var(--blue); border:1.5px solid var(--card);}
 .daypill.full.flagged{border-color:var(--amber);}
 .daypill.full.flagged::after{content:""; position:absolute; top:-3px; right:-3px; width:7px; height:7px; border-radius:50%; background:var(--amber); border:1.5px solid var(--card);}
+/* Friday's standing paid holiday — filled and lettered like .full/.review, since it's a
+   frequent, expected state worth reading at a glance rather than a quiet footnote. */
+.daypill.holiday{background:rgba(167,139,250,.20); border-color:var(--violet); color:#ddd6fe;}
+/* An inferred day off (no explicit record backs this — see dayOffStatus() in reportMath.js)
+   gets a quieter, dashed treatment from the existing muted/border tokens rather than a second
+   new accent colour — still visibly different from a plain "nothing to show" blank cell, but
+   deliberately not as loud as a real data state. The employee summary's "N days off" badge
+   below is the actually-prominent surface for this, per the shop owner's "very clearly" ask.*/
+.daypill.off{background:rgba(184,195,209,.10); border-style:dashed; border-color:var(--muted);}
 .detail-row{display:none;}
 .detail-row.open{display:table-row;}
 .detail-row td{background:var(--raised); padding:0;}
@@ -190,6 +199,7 @@ h3{font-size:16px; margin-bottom:10px;}
 .report-person{display:grid; grid-template-columns:46px minmax(110px,1.25fr) 1fr 72px 88px; align-items:center; gap:12px; padding:14px 17px; border-bottom:1px solid var(--border);}
 .report-person:last-child{border-bottom:0}.report-avatar{width:43px; height:43px; border:2px solid #33465f; border-radius:50%; object-fit:cover;}
 .report-name{font-size:16px; font-weight:750}.report-detail{display:block; margin-top:3px; color:var(--muted); font-size:13px;}.report-state{font-size:14px; font-weight:750;}.report-state.ok{color:#86efac}.report-state.open{color:#fbbf24}
+.report-daysoff{margin-top:3px; font-size:13px; font-weight:700; color:var(--muted);}
 .report-number{text-align:right; font-variant-numeric:tabular-nums}.report-number strong{font-size:16px}.report-number span{display:block; color:var(--muted); font-size:12px; margin-bottom:2px;}
 .report-detail-toggle{display:block; width:max-content; margin:16px auto 0; border:0; padding:12px; background:none; color:#93c5fd; text-decoration:underline; font-size:14px; font-weight:700; cursor:pointer;}
 #reportDetail{margin-top:16px;}

@@ -3,7 +3,7 @@
 //   node --test js/
 import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
-import { buildDayHours, groupByEmployeeDay, needsReview } from './reportMath.js';
+import { buildDayHours, groupByEmployeeDay, needsReview, dayOffStatus } from './reportMath.js';
 
 describe('buildDayHours', () => {
   const morning = { emp_id: 'e1', date: '2026-09-05', clock_in: '2026-09-05T09:00:00.000Z', clock_out: '2026-09-05T13:00:00.000Z' }; // 4h
@@ -149,5 +149,41 @@ describe('needsReview', () => {
   test('no sessions that day: no review needed', () => {
     assert.equal(needsReview([]), false);
     assert.equal(needsReview(undefined), false);
+  });
+});
+
+describe('dayOffStatus', () => {
+  // weekday is passed in as a plain 0-6 number rather than derived from `date` internally —
+  // keeps this test independent of which real calendar dates happen to fall on a Friday.
+  const FRIDAY = 5, THURSDAY = 4;
+
+  test('a Friday with no punches is the standing paid holiday', () => {
+    assert.equal(dayOffStatus({date:'2026-09-11', weekday:FRIDAY, today:'2026-09-11'}), 'holiday');
+  });
+
+  test('a non-Friday with no punches is an inferred day off', () => {
+    assert.equal(dayOffStatus({date:'2026-09-10', weekday:THURSDAY, today:'2026-09-11'}), 'off');
+  });
+
+  test('a day that has not happened yet has nothing to show', () => {
+    assert.equal(dayOffStatus({date:'2026-09-12', weekday:FRIDAY, today:'2026-09-11'}), null);
+  });
+
+  test('today itself is eligible (not treated as "not happened yet")', () => {
+    assert.equal(dayOffStatus({date:'2026-09-11', weekday:THURSDAY, today:'2026-09-11'}), 'off');
+  });
+
+  test('a day before the employee was added has nothing to show', () => {
+    assert.equal(dayOffStatus({date:'2026-09-01', weekday:THURSDAY, employeeSince:'2026-09-05', today:'2026-09-11'}), null);
+  });
+
+  // The regression this guards: checking weekday before employeeSince would pay someone a
+  // "holiday" for a Friday that fell before they were ever added to the system.
+  test('a Friday before the employee was added: hire date wins over the holiday', () => {
+    assert.equal(dayOffStatus({date:'2026-09-04', weekday:FRIDAY, employeeSince:'2026-09-05', today:'2026-09-11'}), null);
+  });
+
+  test('no employeeSince provided (e.g. demo mode has no created_at): never gated', () => {
+    assert.equal(dayOffStatus({date:'2026-01-01', weekday:THURSDAY, today:'2026-09-11'}), 'off');
   });
 });

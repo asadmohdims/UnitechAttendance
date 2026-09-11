@@ -5,6 +5,8 @@ import { applyAvatar } from '../avatars.js';
 import { refreshAll } from './kiosk.js';
 import { promptModal } from './modal.js';
 import { isMissedClockIn } from '../missedClockIn.js';
+import { recHoursRounded, roundToQuarterHour, wasRounded } from '../rounding.js';
+import { dayHoursFromSessions } from '../reportMath.js';
 
 const recDate = $('recDate');
 recDate.value = dateStr();
@@ -26,14 +28,165 @@ function punchCell(label, iso, photoPath){
   const val = document.createElement('span'); val.className = 'val';
   val.append(document.createTextNode(fmtTime(iso)));
   if(photoPath){
-    const img = document.createElement('img');
-    img.className = 'photo-thumb';
-    store.getPhotoUrl(photoPath).then(u => { if(u) img.src = u; });
-    img.onclick = () => showPhoto(photoPath);
-    val.appendChild(img);
+    // Appended only once a URL actually resolves — an <img> with no src renders as a bare
+    // broken-image box, which is worse than just not showing a thumbnail at all.
+    store.getPhotoUrl(photoPath).then(u => {
+      if(!u) return;
+      const img = document.createElement('img');
+      img.className = 'photo-thumb';
+      img.src = u;
+      img.onclick = () => showPhoto(photoPath);
+      val.appendChild(img);
+    });
   }
   cell.append(lbl, val);
+  if(iso && wasRounded(iso)){
+    const note = document.createElement('span'); note.className = 'paid-note';
+    note.textContent = `→ ${fmtTime(roundToQuarterHour(iso))} paid`;
+    cell.appendChild(note);
+  }
   return cell;
+}
+
+// Shared by a single session's own hours and a multi-session day's combined total — same
+// worked/paid pairing logic, just fed different numbers, so the two always read consistently.
+function hoursStat(workedHours, paidHours, emphasize){
+  const el = document.createElement('div'); el.className = 'rec-hours' + (emphasize ? ' day-total' : '');
+  if(paidHours !== null && paidHours !== workedHours){
+    el.innerHTML = `<div class="rec-hours-stat"><span class="lbl">Worked</span>${fmtHours(workedHours)}</div>`
+      + `<div class="rec-hours-stat paid"><span class="lbl">Paid</span>${fmtHours(paidHours)}</div>`;
+  }else{
+    el.textContent = fmtHours(workedHours);
+  }
+  return el;
+}
+
+// A day's status in one glance, based on its LAST session — the same "still open, or
+// auto-closed and never resumed" check used everywhere else (js/reportMath.js's needsReview).
+// Returns null for a normal, fully-resolved day (nothing to flag).
+function statusBadge(sessions){
+  const last = sessions[sessions.length - 1];
+  if(!last.clock_out) return {className: 'open-session', text: '● Still in'};
+  if(!last.out_photo) return {className: 'lunch-flag', text: '● Lunch not resumed'};
+  return null;
+}
+
+function appendBadge(who, sessions){
+  const badge = statusBadge(sessions);
+  if(!badge) return;
+  const el = document.createElement('div'); el.className = badge.className; el.style.fontSize = '13px';
+  el.textContent = badge.text;
+  who.appendChild(el);
+}
+
+// gapSession: the session whose clock_out starts the gap — `lunch_paid` lives on it, and it's
+// what setLunchPaid() targets. Toggling is the only mechanism here: no separate confirm step,
+// because the flag is instantly reversible by tapping again — a mistaken tap costs one more tap.
+function lunchDivider(gapSession, gapHours, auto){
+  const divider = document.createElement('div');
+  divider.className = 'rec-lunch-divider' + (gapSession.lunch_paid ? ' paid' : '');
+  const label = document.createElement('span');
+  label.textContent = `Lunch: ${fmtHours(gapHours)}${auto ? ' (auto)' : ''}`;
+  const toggle = document.createElement('button');
+  toggle.className = 'btn small ghost lunch-paid-toggle';
+  toggle.textContent = gapSession.lunch_paid ? '✓ Paid as work — undo' : 'Include as paid work';
+  toggle.onclick = async () => {
+    busy(true);
+    try{
+      await store.setLunchPaid(gapSession.id, !gapSession.lunch_paid);
+      await refreshAll();
+      await renderRecords();
+    }catch(err){ toast('Failed: ' + err.message); }
+    busy(false);
+  };
+  divider.append(label, toggle);
+  return divider;
+}
+
+// The punches + this-session's-own hours + edit/delete actions — the part every session has,
+// whether it's rendered as a lone `.rec-row` or as one sub-row inside a multi-session `.rec-group`.
+function sessionContent(r, emp){
+  const punches = document.createElement('div'); punches.className = 'rec-punches';
+  punches.append(punchCell('In', r.clock_in, r.in_photo), punchCell('Out', r.clock_out, r.out_photo));
+
+  const hours = hoursStat(recHours(r), recHoursRounded(r));
+
+  const actions = document.createElement('div'); actions.className = 'rec-actions';
+  const bEdit = document.createElement('button'); bEdit.className = 'btn small ghost'; bEdit.textContent = 'Edit'; bEdit.onclick = () => editRecord(r, emp);
+  const bDel = document.createElement('button'); bDel.className = 'btn small red'; bDel.textContent = 'Delete';
+  bDel.onclick = async () => {
+    const confirmed = await promptModal({
+      title: `Delete this record for ${emp ? emp.name : 'this employee'}?`,
+      submitLabel: 'Delete', danger: true, fields: []
+    });
+    if(!confirmed) return;
+    busy(true);
+    try{
+      await store.deleteRecord(r);
+      await refreshAll();
+      await renderRecords();
+    }catch(err){ toast('Failed: ' + err.message); }
+    busy(false);
+  };
+  actions.append(bEdit, bDel);
+
+  return {punches, hours, actions};
+}
+
+// A normal, single-session day — unchanged from before: one full-width row, avatar and all.
+function singleSessionRow(r, emp){
+  const row = document.createElement('div');
+  row.className = 'rec-row';
+
+  const avatar = document.createElement('img');
+  avatar.className = 'report-avatar rec-avatar'; avatar.alt = '';
+  if(emp) applyAvatar(avatar, emp);
+
+  const who = document.createElement('div'); who.className = 'rec-who';
+  const name = document.createElement('div'); name.className = 'report-name'; name.textContent = emp ? emp.name : '?';
+  who.appendChild(name);
+  appendBadge(who, [r]);
+
+  const {punches, hours, actions} = sessionContent(r, emp);
+  row.append(avatar, who, punches, hours, actions);
+  return row;
+}
+
+// A lunch-break day: sessions share one header (avatar, name, status badge, and the day's
+// combined total) so a reviewer reads "who, and how much, for today" at a glance — instead of
+// two same-weight rows and a lunch gap in between, with the total left as mental arithmetic.
+// Individual sessions nest underneath, still showing their own exact times/hours (the audit
+// trail), with the lunch toggle between them.
+function multiSessionGroup(sessions, emp){
+  const group = document.createElement('div'); group.className = 'rec-group';
+
+  const header = document.createElement('div'); header.className = 'rec-group-header';
+  const avatar = document.createElement('img');
+  avatar.className = 'report-avatar rec-avatar'; avatar.alt = '';
+  if(emp) applyAvatar(avatar, emp);
+  const who = document.createElement('div'); who.className = 'rec-who';
+  const name = document.createElement('div'); name.className = 'report-name'; name.textContent = emp ? emp.name : '?';
+  who.appendChild(name);
+  appendBadge(who, sessions);
+  const dayTotal = hoursStat(dayHoursFromSessions(sessions, recHours).total, dayHoursFromSessions(sessions, recHoursRounded).total, true);
+  header.append(avatar, who, dayTotal);
+  group.appendChild(header);
+
+  const sessionsWrap = document.createElement('div'); sessionsWrap.className = 'rec-group-sessions';
+  sessions.forEach((r, i) => {
+    if(i > 0){
+      const gapSession = sessions[i - 1];
+      const gapHours = (new Date(r.clock_in) - new Date(gapSession.clock_out)) / 3600000;
+      const auto = !gapSession.out_photo; // out_photo is null only for an auto-close — a manual punch always has one
+      sessionsWrap.appendChild(lunchDivider(gapSession, gapHours, auto));
+    }
+    const {punches, hours, actions} = sessionContent(r, emp);
+    const sessionRow = document.createElement('div'); sessionRow.className = 'rec-session-row';
+    sessionRow.append(punches, hours, actions);
+    sessionsWrap.appendChild(sessionRow);
+  });
+  group.appendChild(sessionsWrap);
+  return group;
 }
 
 export async function renderRecords(){
@@ -53,77 +206,16 @@ export async function renderRecords(){
   renderMissedAlert();
 
   // listRecordsForDate sorts by clock_in globally, which can interleave different employees'
-  // sessions on a lunch-break day (A-in, B-in, A-lunch-out, B-lunch-out, ...) — re-group by
-  // employee (keeping each employee's own chronological order) so a same-day second session
-  // always renders directly under its first, with a lunch divider between them below.
+  // sessions on a lunch-break day (A-in, B-in, A-lunch-out, B-lunch-out, ...) — group by
+  // employee (keeping each one's own chronological order) so a same-day second session always
+  // renders as part of the same person's group, never interleaved with someone else's.
   const byEmp = new Map();
   records.forEach(r => { if(!byEmp.has(r.emp_id)) byEmp.set(r.emp_id, []); byEmp.get(r.emp_id).push(r); });
-  const grouped = [...byEmp.values()].flat();
 
-  let prev = null;
-  for(const r of grouped){
-    if(prev && prev.emp_id === r.emp_id && prev.clock_out){
-      const gapHours = (new Date(r.clock_in) - new Date(prev.clock_out)) / 3600000;
-      const auto = !prev.out_photo; // out_photo is null only for an auto-close — a manual punch always has one
-      const divider = document.createElement('div');
-      divider.className = 'rec-lunch-divider';
-      divider.textContent = `Lunch: ${fmtHours(gapHours)}${auto ? ' (auto)' : ''}`;
-      list.appendChild(divider);
-    }
-    prev = r;
-
-    const emp = state.employees.find(e => e.id === r.emp_id);
-    const row = document.createElement('div');
-    row.className = 'rec-row';
-
-    const avatar = document.createElement('img');
-    avatar.className = 'report-avatar rec-avatar'; avatar.alt = '';
-    if(emp) applyAvatar(avatar, emp);
-
-    const who = document.createElement('div'); who.className = 'rec-who';
-    const name = document.createElement('div'); name.className = 'report-name'; name.textContent = emp ? emp.name : '?';
-    who.appendChild(name);
-    const empSessions = byEmp.get(r.emp_id);
-    const isLastForEmp = empSessions[empSessions.length - 1] === r;
-    if(!r.clock_out){
-      const live = document.createElement('div'); live.className = 'open-session'; live.style.fontSize = '13px';
-      live.textContent = '● Still in';
-      who.appendChild(live);
-    }else if(isLastForEmp && !r.out_photo){
-      // The lunch safety net closed this session, and nothing followed it that day — the
-      // employee never tapped back in. Hours look complete but haven't actually been confirmed.
-      const flag = document.createElement('div'); flag.className = 'lunch-flag'; flag.style.fontSize = '13px';
-      flag.textContent = '● Lunch not resumed';
-      who.appendChild(flag);
-    }
-
-    const punches = document.createElement('div'); punches.className = 'rec-punches';
-    punches.append(punchCell('In', r.clock_in, r.in_photo), punchCell('Out', r.clock_out, r.out_photo));
-
-    const hours = document.createElement('div'); hours.className = 'rec-hours'; hours.textContent = fmtHours(recHours(r));
-
-    const actions = document.createElement('div'); actions.className = 'rec-actions';
-    const bEdit = document.createElement('button'); bEdit.className = 'btn small ghost'; bEdit.textContent = 'Edit'; bEdit.onclick = () => editRecord(r, emp);
-    const bDel = document.createElement('button'); bDel.className = 'btn small red'; bDel.textContent = 'Delete';
-    bDel.onclick = async () => {
-      const confirmed = await promptModal({
-        title: `Delete this record for ${emp ? emp.name : 'this employee'}?`,
-        submitLabel: 'Delete', danger: true, fields: []
-      });
-      if(!confirmed) return;
-      busy(true);
-      try{
-        await store.deleteRecord(r);
-        await refreshAll();
-        await renderRecords();
-      }catch(err){ toast('Failed: ' + err.message); }
-      busy(false);
-    };
-    actions.append(bEdit, bDel);
-
-    row.append(avatar, who, punches, hours, actions);
-    list.appendChild(row);
-  }
+  byEmp.forEach((sessions, empId) => {
+    const emp = state.employees.find(e => e.id === empId);
+    list.appendChild(sessions.length > 1 ? multiSessionGroup(sessions, emp) : singleSessionRow(sessions[0], emp));
+  });
 }
 
 // Only meaningful for today's date — "missed clock-in" isn't a retroactive judgment about a

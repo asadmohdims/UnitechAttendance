@@ -69,3 +69,8 @@ create index if not exists salary_rates_emp_idx on salary_rates(emp_id);
 alter table salary_rates enable row level security;
 create policy "authenticated full access" on salary_rates
   for all to authenticated using (true) with check (true);
+
+-- Lunch-paid override: lets the owner opt, per lunch gap, to pay through it as if it were
+-- worked time. Stored on the earlier of the two sessions the gap sits between — a flag, never
+-- a change to the punch times themselves, so un-checking it in Daily records fully reverts it.
+alter table records add column if not exists lunch_paid boolean not null default false;

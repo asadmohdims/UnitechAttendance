@@ -9,7 +9,8 @@ const EMP_CACHE_KEY = 'attendance_employee_cache';
 // Public record shape (no blob fields) for an outbox row that hasn't synced yet.
 function toRecordShape(rec){
   return {id:rec.clientId, emp_id:rec.emp_id, date:rec.date, clock_in:rec.clock_in,
-    clock_out:rec.clock_out, in_photo:rec.in_photo, out_photo:rec.out_photo, created_at:rec.created_at};
+    clock_out:rec.clock_out, in_photo:rec.in_photo, out_photo:rec.out_photo,
+    lunch_paid:rec.lunch_paid || false, created_at:rec.created_at};
 }
 
 async function listEmployees(){
@@ -139,6 +140,21 @@ async function updateRecordTimes(recordId, clockInIso, clockOutIsoOrNull){
   if(error) throw error;
 }
 
+// Marks (or un-marks) the lunch gap right after this session as paid work — a reversible flag,
+// never a data change to the punches themselves, so toggling it off undoes it completely.
+// Needs the `lunch_paid boolean default false` column added to `records` (see supabase-setup.sql).
+async function setLunchPaid(recordId, paid){
+  const rec = await outbox.getItem(recordId);
+  if(rec){
+    rec.lunch_paid = paid;
+    await outbox.putItem(rec);
+    outbox.kick();
+    return;
+  }
+  const {error} = await sb.from('records').update({lunch_paid:paid}).eq('id', recordId);
+  if(error) throw error;
+}
+
 async function deleteRecord(record){
   const rec = await outbox.getItem(record.id);
   if(rec){
@@ -204,7 +220,8 @@ async function syncOne(clientId){
     const {error} = await sb.from('records').upsert({
       id:rec.clientId, emp_id:rec.emp_id, date:rec.date,
       clock_in:rec.clock_in, clock_out:rec.clock_out,
-      in_photo:rec.in_photo, out_photo:rec.out_photo
+      in_photo:rec.in_photo, out_photo:rec.out_photo,
+      lunch_paid:rec.lunch_paid || false
     });
     if(error) throw error;
     if(rec.clock_out){
@@ -255,7 +272,7 @@ if(!DEMO_MODE) outbox.startBackgroundSync(runSync);
 export const supabaseStore = {
   listEmployees, addEmployee, renameEmployee, setEmployeeActive, setEmployeeAvatar,
   listOpenSessions, clockIn, clockOut,
-  listRecordsForDate, listRecordsForRange, updateRecordTimes, deleteRecord,
+  listRecordsForDate, listRecordsForRange, updateRecordTimes, setLunchPaid, deleteRecord,
   uploadPhoto, getPhotoUrl, getSyncStatus,
   listSalaryRates, setSalaryRate
 };

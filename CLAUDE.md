@@ -217,7 +217,11 @@ deduction shares the same number instead of a second hardcoded `8`.
 - **Half day** (added 2026-09-11 on owner feedback after seeing Phase 1 live): a day with
   exactly one session — as opposed to the two-session morning+afternoon pattern a full day
   normally has now that lunch breaks are routinely punched separately — gets its own
-  `.daypill.half` color (new `--teal` token) instead of blending into `.full`.
+  `.daypill.half` color (`--pink`) instead of blending into `.full`. The first color chosen,
+  `--teal` (`#2dd4bf`), sat close enough to `--green` (`#22c55e`) in both hue and brightness
+  that the owner misread a real full pill as half at a glance — switched to pink specifically
+  because it's far from green on the color wheel, unlike every other candidate close to an
+  already-used hue.
   `isHalfDay(sessions, hoursWorked)` in `js/reportMath.js` originally used session count alone,
   which the owner correctly flagged as confusing once real-looking data hit it: a genuine
   9-hour single-session day (worked straight through, no break) read identically to a real

@@ -4,7 +4,7 @@ import { store } from '../store/index.js';
 import { applyAvatar } from '../avatars.js';
 import { switchTab } from './shell.js';
 import { setRecordsDate } from './records.js';
-import { buildDayHours, groupByEmployeeDay, needsReview } from '../reportMath.js';
+import { buildDayHours, groupByEmployeeDay, needsReview, dayHoursFromSessions } from '../reportMath.js';
 import { recHoursRounded, roundToQuarterHour, wasRounded } from '../rounding.js';
 
 const repMonth = $('repMonth');
@@ -39,9 +39,9 @@ export async function monthData(ym){ // ym: 'YYYY-MM'
   const emps = state.employees.filter(e => e.active || recs.some(r => r.emp_id === e.id));
   const empIds = emps.map(e => e.id);
   const {hours, openFlags} = buildDayHours(recs, empIds, days);
-  // payHours mirrors `hours` but rounds each punch to the nearest quarter hour first (the
-  // DOL 7-minute rule) — this is what Salary pays on. Report/Records keep showing `hours`,
-  // the exact figure tied to the proof photo.
+  // payHours mirrors `hours` but rounds each punch to the nearest quarter hour first (see
+  // js/rounding.js for the shop's rounding rule) — this is what Salary pays on. Report/Records
+  // keep showing `hours`, the exact figure tied to the proof photo.
   const {hours: payHours} = buildDayHours(recs, empIds, days, recHoursRounded);
   const sessionsByDay = groupByEmployeeDay(recs);
 
@@ -195,9 +195,9 @@ function renderDetailCalendar({days, emps, hours, openFlags, reviewFlags, sessio
   });
 }
 
-// A small "paid 9:15" annotation appended after a punch time, shown only when the DOL
-// rounding rule actually moved that punch — this is the "if they challenge it" evidence:
-// the exact punch stays visible, with what it was rounded to for pay right next to it.
+// A small "paid 9:15" annotation appended after a punch time, shown only when rounding
+// actually moved that punch — this is the "if they challenge it" evidence: the exact punch
+// stays visible, with what it was rounded to for pay right next to it.
 function paidNote(iso){
   return wasRounded(iso) ? ` <span class="paid-note">&rarr; ${fmtTime(roundToQuarterHour(iso))} paid</span>` : '';
 }
@@ -218,8 +218,11 @@ function toggleDayDetail(tr, sessions){
     if(i > 0){
       const gapHours = (new Date(s.clock_in) - new Date(sessions[i-1].clock_out)) / 3600000;
       const auto = !sessions[i-1].out_photo;
+      const paid = sessions[i-1].lunch_paid;
       const lunchChip = document.createElement('span'); lunchChip.className = 'chip lunch';
-      lunchChip.textContent = `Lunch ${fmtHours(gapHours)}${auto ? ' (auto)' : ''}`;
+      // Read-only here — the toggle itself lives in Daily records (see js/ui/records.js);
+      // this just needs to not silently disagree with what that screen shows.
+      lunchChip.textContent = `Lunch ${fmtHours(gapHours)}${auto ? ' (auto)' : ''}${paid ? ' — paid as work' : ''}`;
       inner.appendChild(lunchChip);
     }
     const inChip = document.createElement('span'); inChip.className = 'chip';
@@ -229,8 +232,8 @@ function toggleDayDetail(tr, sessions){
     outChip.innerHTML = `<span class="lbl">Out</span>${s.clock_out ? fmtTime(s.clock_out) + paidNote(s.clock_out) : 'Still in'}`;
     inner.appendChild(outChip);
   });
-  const totalHours = sessions.reduce((sum, s) => sum + (recHours(s) || 0), 0);
-  const totalPaidHours = sessions.reduce((sum, s) => sum + (recHoursRounded(s) || 0), 0);
+  const totalHours = dayHoursFromSessions(sessions, recHours).total || 0;
+  const totalPaidHours = dayHoursFromSessions(sessions, recHoursRounded).total || 0;
   const stillOpen = sessions.some(s => !s.clock_out);
   const totalSpan = document.createElement('span'); totalSpan.className = 'detail-total';
   totalSpan.innerHTML = `Worked <b>${fmtHours(totalHours)}</b>${stillOpen ? ' so far' : ''}`

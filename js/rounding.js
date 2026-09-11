@@ -1,13 +1,18 @@
 // Pure payroll-rounding math — no store/DOM access, same pattern as salary.js/lunch.js.
 const QUARTER_MS = 15 * 60 * 1000;
+// The shop's own rule (not the DOL's symmetric 7-minute rule this started from): a punch up to
+// 10 minutes past a quarter still counts as that quarter; only past 10 minutes does it roll to
+// the next one. 10:30 is the exact cutover, so :00-:10 round down and :11-:14 round up.
+const ROUND_DOWN_THROUGH_MS = 10.5 * 60 * 1000;
 
-// DOL "7-minute rule" (29 CFR 785.48(b)): round to the nearest 15 minutes, symmetric for
-// both clock-in and clock-out. Every real-world UTC offset (including IST, +5:30) is itself
-// a multiple of 15 minutes, so rounding the raw epoch ms to the nearest 900,000ms lands on a
-// quarter-hour boundary in local time too — no timezone-aware arithmetic needed.
+// Every real-world UTC offset (including IST, +5:30) is itself a multiple of 15 minutes, so
+// doing this arithmetic on the raw epoch ms lands on a quarter-hour boundary in local time
+// too, with no timezone-aware handling needed.
 export function roundToQuarterHour(input){
   const ms = new Date(input).getTime();
-  return new Date(Math.round(ms / QUARTER_MS) * QUARTER_MS);
+  const quarterStart = Math.floor(ms / QUARTER_MS) * QUARTER_MS;
+  const offset = ms - quarterStart;
+  return new Date(offset <= ROUND_DOWN_THROUGH_MS ? quarterStart : quarterStart + QUARTER_MS);
 }
 
 // True when rounding actually moved the punch — the UI uses this to decide whether a "paid"

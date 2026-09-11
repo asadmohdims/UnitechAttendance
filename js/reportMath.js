@@ -2,6 +2,30 @@
 // testable in isolation the same way js/salary.js is.
 import { recHours } from './utils.js';
 
+// A day's chronologically-sorted sessions, collapsing any run chained by `lunch_paid` (a flag
+// on the earlier session in a pair, set when the owner opts to pay through that lunch gap)
+// into one virtual span before applying hoursFn. Merging first — rather than summing each
+// session's hours and separately adding the raw gap — means a paid-through lunch day gets one
+// continuous shift's rounding at its true start/end, not two independently-rounded halves plus
+// an unrounded gap stitched on.
+// Exported so report.js's day-detail panel can total a day's sessions the exact same
+// lunch-paid-aware way buildDayHours() does below — otherwise the expanded detail row and the
+// calendar's own total column could disagree the moment a lunch gap is marked paid.
+export function dayHoursFromSessions(sessions, hoursFn){
+  let total = null, hasOpen = false;
+  let i = 0;
+  while(i < sessions.length){
+    let j = i;
+    while(j + 1 < sessions.length && sessions[j].lunch_paid) j++;
+    const span = i === j ? sessions[i] : {clock_in: sessions[i].clock_in, clock_out: sessions[j].clock_out};
+    const h = hoursFn(span);
+    if(h === null) hasOpen = true;
+    else total = (total || 0) + h;
+    i = j + 1;
+  }
+  return {total, hasOpen};
+}
+
 // recs: raw records for the month; empIds: employee ids to build rows for; days: days in month.
 // Returns hours[empId][day] = summed completed hours for that day (null = no record at all —
 // never a sentinel), and openFlags[empId][day] = true if ANY session that day is still open,
@@ -14,12 +38,14 @@ import { recHours } from './utils.js';
 export function buildDayHours(recs, empIds, days, hoursFn = recHours){
   const hours = {}, openFlags = {};
   empIds.forEach(id => { hours[id] = Array(days+1).fill(null); openFlags[id] = Array(days+1).fill(false); });
-  recs.forEach(r => {
-    if(!(r.emp_id in hours)) return;
-    const d = Number(r.date.slice(8,10));
-    const h = hoursFn(r);
-    if(h === null) openFlags[r.emp_id][d] = true;
-    else hours[r.emp_id][d] = (hours[r.emp_id][d] || 0) + h;
+  const grouped = groupByEmployeeDay(recs);
+  Object.keys(grouped).forEach(empId => {
+    if(!(empId in hours)) return;
+    Object.entries(grouped[empId]).forEach(([day, sessions]) => {
+      const {total, hasOpen} = dayHoursFromSessions(sessions, hoursFn);
+      hours[empId][day] = total;
+      openFlags[empId][day] = hasOpen;
+    });
   });
   return {hours, openFlags};
 }

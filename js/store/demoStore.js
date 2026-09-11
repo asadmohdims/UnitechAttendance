@@ -115,6 +115,16 @@ function updateRecordTimes(recordId, clockInIso, clockOutIsoOrNull){
   saveRecords(records);
 }
 
+// Marks (or un-marks) the lunch gap right after this session as paid work — a reversible flag,
+// never a data change to the punches themselves, so toggling it off undoes it completely.
+function setLunchPaid(recordId, paid){
+  const records = loadRecords();
+  const idx = records.findIndex(x => x.id === recordId);
+  if(idx < 0) throw new Error('Record not found');
+  records[idx].lunch_paid = paid;
+  saveRecords(records);
+}
+
 function deleteRecord(record){
   saveRecords(loadRecords().filter(x => x.id !== record.id));
   [record.in_photo, record.out_photo].filter(Boolean).forEach(p => localStorage.removeItem(photoKey(p)));
@@ -151,7 +161,7 @@ async function getPhotoUrl(path){
 export const demoStore = {
   listEmployees, addEmployee, renameEmployee, setEmployeeActive, setEmployeeAvatar,
   listOpenSessions, clockIn, clockOut,
-  listRecordsForDate, listRecordsForRange, updateRecordTimes, deleteRecord,
+  listRecordsForDate, listRecordsForRange, updateRecordTimes, setLunchPaid, deleteRecord,
   uploadPhoto, getPhotoUrl, getSyncStatus,
   listSalaryRates, setSalaryRate
 };

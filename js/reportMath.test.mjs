@@ -45,6 +45,58 @@ describe('buildDayHours', () => {
     assert.equal(hours.e2, undefined);
     assert.equal(hours.e1[5], null);
   });
+
+  describe('lunch_paid (owner opts to pay through a lunch gap)', () => {
+    // 9-12 (3h), lunch 12-13 (1h), 13-17 (4h). Un-flagged: 3+4=7h, the gap excluded.
+    const morningSession = { emp_id: 'e1', date: '2026-09-05', clock_in: '2026-09-05T09:00:00.000Z', clock_out: '2026-09-05T12:00:00.000Z' };
+    const afternoonSession = { emp_id: 'e1', date: '2026-09-05', clock_in: '2026-09-05T13:00:00.000Z', clock_out: '2026-09-05T17:00:00.000Z' };
+
+    test('not flagged: the lunch gap is excluded as before', () => {
+      const {hours} = buildDayHours([morningSession, afternoonSession], ['e1'], 15);
+      assert.equal(hours.e1[5], 7);
+    });
+
+    test('flagged on the earlier session: the whole day becomes one continuous 9-17 span (8h)', () => {
+      const flagged = {...morningSession, lunch_paid: true};
+      const {hours} = buildDayHours([flagged, afternoonSession], ['e1'], 15);
+      assert.equal(hours.e1[5], 8);
+    });
+
+    test('flagged session merges under a rounding hoursFn using the outer span, not two separately-rounded halves', () => {
+      // Nearest-15 rounding a 9:07-12:53 half and a 13:15-17:00 half separately would give a
+      // different total than rounding the single merged 9:07-17:00 span — this checks the
+      // merge happens BEFORE hoursFn runs, not after.
+      const roundToQuarter = ms => Math.round(ms / 900000) * 900000;
+      const roundingHoursFn = r => r.clock_out ? Math.max(0, (roundToQuarter(new Date(r.clock_out).getTime()) - roundToQuarter(new Date(r.clock_in).getTime())) / 3600000) : null;
+      const morning = {...morningSession, clock_in: '2026-09-05T09:07:00.000Z', clock_out: '2026-09-05T12:53:00.000Z', lunch_paid: true};
+      const afternoon = {...afternoonSession, clock_in: '2026-09-05T13:15:00.000Z', clock_out: '2026-09-05T17:00:00.000Z'};
+      const {hours} = buildDayHours([morning, afternoon], ['e1'], 15, roundingHoursFn);
+      // Merged span 9:07 -> 17:00 rounds to 9:00 -> 17:00 = 8h, not (9:00-13:00=3.75 rounded halves summed).
+      assert.equal(hours.e1[5], 8);
+    });
+
+    test('a flag on the LAST session of the day (nothing to chain to) has no effect', () => {
+      const flaggedLast = {...afternoonSession, lunch_paid: true};
+      const {hours} = buildDayHours([morningSession, flaggedLast], ['e1'], 15);
+      assert.equal(hours.e1[5], 7);
+    });
+
+    test('a three-session day with both gaps flagged merges into a single span', () => {
+      const s1 = {...morningSession, lunch_paid: true};
+      const s2 = {...afternoonSession, clock_out: '2026-09-05T18:00:00.000Z', lunch_paid: true};
+      const s3 = { emp_id: 'e1', date: '2026-09-05', clock_in: '2026-09-05T19:00:00.000Z', clock_out: '2026-09-05T20:00:00.000Z' };
+      const {hours} = buildDayHours([s1, s2, s3], ['e1'], 15);
+      assert.equal(hours.e1[5], 11); // 9:00 -> 20:00
+    });
+
+    test('flagged but the following session is still open: day reports open, not a false total', () => {
+      const flagged = {...morningSession, lunch_paid: true};
+      const stillOpenAfternoon = { emp_id: 'e1', date: '2026-09-05', clock_in: '2026-09-05T13:00:00.000Z', clock_out: null };
+      const {hours, openFlags} = buildDayHours([flagged, stillOpenAfternoon], ['e1'], 15);
+      assert.equal(hours.e1[5], null);
+      assert.equal(openFlags.e1[5], true);
+    });
+  });
 });
 
 describe('groupByEmployeeDay', () => {

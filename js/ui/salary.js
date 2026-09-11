@@ -38,8 +38,8 @@ export async function renderSalary(){
   const list = $('salaryList');
   list.innerHTML = '';
   md.emps.forEach(e => {
-    // Pay is based on payHours (each punch rounded to the nearest 15 min, the DOL 7-minute
-    // rule) — not the exact hours Report/Records show. A day counts as "worked" the same way
+    // Pay is based on payHours (each punch rounded to the nearest 15 min — see js/rounding.js)
+    // — not the exact hours Report/Records show. A day counts as "worked" the same way
     // either way (both are null only when there's no completed session that day), so daysWorked
     // comes out identical regardless of which array it's read from.
     const {total, daysWorked} = summarizeHours(md.payHours[e.id], md.days);

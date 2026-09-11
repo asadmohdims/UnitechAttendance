@@ -142,7 +142,12 @@ input[type=time]::-webkit-calendar-picker-indicator, input[type=date]::-webkit-c
 .detail-row{display:none;}
 .detail-row.open{display:table-row;}
 .detail-row td{background:var(--raised); padding:0;}
-.detail-inner{position:sticky; left:0; display:flex; align-items:center; gap:10px; flex-wrap:wrap; padding:14px 18px; width:max-content; max-width:90vw;}
+/* Capped well under `main`'s own 980px max-width (not just 90vw) — this row lives inside a
+   wide, horizontally-scrolling table, so its own visible box is narrower than the viewport;
+   wrapping here (rather than at 90vw) keeps every chip on-screen instead of getting clipped
+   past the table's scrollport edge. The "paid" annotation chips are what made this bite in
+   practice — long enough that a 2-session day used to render wider than that visible box. */
+.detail-inner{position:sticky; left:0; display:flex; align-items:center; gap:10px; flex-wrap:wrap; padding:14px 18px; width:max-content; max-width:min(90vw, 820px);}
 .detail-date{font-weight:750; font-size:13px; color:var(--ink); white-space:nowrap;}
 .chip{background:var(--card); border:1px solid var(--border); border-radius:9px; padding:6px 11px; font-size:12.5px; display:inline-flex; align-items:center; gap:7px; white-space:nowrap;}
 .chip .lbl{color:var(--muted); font-size:10.5px; text-transform:uppercase; letter-spacing:.03em;}
@@ -211,19 +216,45 @@ h3{font-size:16px; margin-bottom:10px;}
 .emp-status.active .dot{background:var(--green);}
 .emp-actions{display:flex; gap:8px; flex-wrap:wrap; justify-content:flex-end;}
 
-/* Daily records tab — grid-list row */
-.rec-row{display:grid; grid-template-columns:44px minmax(90px,1fr) auto 70px auto; align-items:center; gap:14px; padding:13px 17px; border-bottom:1px solid var(--border);}
-.rec-row:last-child{border-bottom:0;}
+/* Daily records tab — grid-list row.
+   Each `.rec-row` is its own independent grid (not a shared table), so column widths are
+   fixed pixel values rather than `auto`/1fr-content-based — otherwise a row with a longer
+   "paid" annotation sizes its own punches/hours columns wider than a plain row, and the
+   columns drift out of alignment down the list. Only `who` (names vary in length anyway,
+   never needs to align to a grid) is left flexible. */
+.rec-row{display:grid; grid-template-columns:44px minmax(110px,1fr) 300px 120px auto; align-items:center; gap:14px; padding:13px 17px;}
+.rec-row, .rec-group{border-bottom:1px solid var(--border);}
+#recList > *:last-child{border-bottom:0;}
+/* A lunch-break day's two (or more) sessions share one header — avatar, name, status, and the
+   day's combined total — instead of reading as two same-weight rows with a gap in between and
+   the total left as mental arithmetic. Sub-rows nest underneath, indented to align under the
+   header's name rather than its avatar, still showing each session's own exact times (the
+   audit trail) and its own worked/paid figure. */
+.rec-group-header{display:grid; grid-template-columns:44px minmax(110px,1fr) auto; align-items:center; gap:14px; padding:13px 17px 10px;}
+.rec-hours.day-total .rec-hours-stat{font-size:16px;}
+.rec-hours.day-total .rec-hours-stat.paid{font-size:13px;}
+.rec-group-sessions{padding:0 17px 8px 75px;}
+.rec-session-row{display:grid; grid-template-columns:300px 120px 1fr auto; align-items:center; gap:14px; padding:8px 0;}
+.rec-session-row .rec-actions{grid-column:4;}
 .rec-punches{display:flex; gap:18px;}
 .rec-punch{text-align:center;}
 .rec-punch .lbl{display:block; font-size:11px; color:var(--muted); text-transform:uppercase; letter-spacing:.04em; margin-bottom:3px;}
-.rec-punch .val{font-size:13.5px; font-weight:650; font-variant-numeric:tabular-nums; display:flex; align-items:center; gap:6px;}
+.rec-punch .val{font-size:13.5px; font-weight:650; font-variant-numeric:tabular-nums; display:flex; align-items:center; justify-content:center; gap:6px;}
 .rec-punch .photo-thumb{width:26px; height:26px; border-radius:6px; cursor:pointer;}
 .paid-note{color:var(--muted); font-size:11.5px; font-style:italic;}
 .rec-punch .paid-note{display:block; margin-top:2px; font-style:normal;}
-.rec-hours{text-align:right; font-variant-numeric:tabular-nums; font-weight:700; font-size:14.5px;}
+.rec-hours{display:flex; flex-direction:column; align-items:flex-end; gap:2px; font-variant-numeric:tabular-nums;}
+.rec-hours-stat{font-weight:700; font-size:14.5px; white-space:nowrap;}
+.rec-hours-stat .lbl{color:var(--muted); font-size:10.5px; font-weight:650; text-transform:uppercase; letter-spacing:.03em; margin-right:5px;}
+.rec-hours-stat.paid{font-size:12.5px; font-weight:650; color:var(--muted);}
 .rec-actions{display:flex; gap:6px; justify-content:flex-end;}
-.rec-lunch-divider{padding:6px 17px; font-size:12px; font-weight:650; color:var(--muted); text-align:center; background:var(--raised); border-bottom:1px dashed var(--border);}
+.rec-lunch-divider{display:flex; align-items:center; justify-content:space-between; gap:12px; padding:6px 17px; font-size:12px; font-weight:650; color:var(--muted); background:var(--raised); border-bottom:1px dashed var(--border);}
+/* Reuses --blue (the one brand accent, already used for lunch chips elsewhere) rather than
+   --green/--amber, which the design system reserves for the kiosk tile's clocked-in and
+   syncing states specifically — this isn't either of those. */
+.rec-lunch-divider.paid{color:#93c5fd; background:rgba(96,165,250,.1); border-bottom-color:#2c4870;}
+.lunch-paid-toggle{min-height:26px; padding:4px 10px; font-size:11.5px; white-space:nowrap;}
+.rec-lunch-divider.paid .lunch-paid-toggle{border-color:#2c4870; color:#93c5fd;}
 
 @media (max-width:520px){header{padding:15px 16px} main{padding:8px 16px 70px} #clock{font-size:12px}.card{padding:14px}}
 @media (max-width:620px){.report-summary{grid-template-columns:1fr}.report-top{align-items:stretch; flex-direction:column}.report-top .btn{width:100%}.report-person{grid-template-columns:43px 1fr 82px; gap:10px}.report-person .report-state{grid-column:2; grid-row:2}.report-person .days-worked{display:none}.report-days-inline{display:block;}.report-person .report-number:last-child{grid-column:3; grid-row:1 / span 2}.review-alert{align-items:flex-start; flex-direction:column}.review-alert .btn{width:100%}.salary-person{grid-template-columns:43px 1fr; row-gap:8px}.salary-amount,.salary-actions{grid-column:2}.salary-amount{text-align:left}}
@@ -236,4 +267,10 @@ h3{font-size:16px; margin-bottom:10px;}
   .rec-row .rec-hours{grid-area:hours;}
   .rec-row .rec-punches{grid-area:punches; justify-content:flex-start;}
   .rec-row .rec-actions{grid-area:actions;}
+  .rec-group-header{grid-template-columns:40px 1fr auto;}
+  .rec-group-sessions{padding-left:0;}
+  .rec-session-row{grid-template-columns:1fr auto; grid-template-areas:"punches punches" "hours actions"; row-gap:8px; padding:10px 0;}
+  .rec-session-row .rec-punches{grid-area:punches; justify-content:flex-start;}
+  .rec-session-row .rec-hours{grid-area:hours; align-items:flex-start;}
+  .rec-session-row .rec-actions{grid-area:actions; grid-column:auto;}
 }

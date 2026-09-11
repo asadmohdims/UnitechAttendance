@@ -8,13 +8,16 @@ import { recHours } from './utils.js';
 // tracked independently of the hours sum. That independence matters once a day can have
 // multiple sessions (lunch break): a closed morning session's hours must never mask a still-open
 // afternoon session on the same day, regardless of which record gets processed first.
-export function buildDayHours(recs, empIds, days){
+// `hoursFn` is injectable (defaults to the exact recHours) so Salary can build the same
+// aggregate from recHoursRounded() — the payroll-rounded figure — without duplicating this
+// grouping/accumulation logic.
+export function buildDayHours(recs, empIds, days, hoursFn = recHours){
   const hours = {}, openFlags = {};
   empIds.forEach(id => { hours[id] = Array(days+1).fill(null); openFlags[id] = Array(days+1).fill(false); });
   recs.forEach(r => {
     if(!(r.emp_id in hours)) return;
     const d = Number(r.date.slice(8,10));
-    const h = recHours(r);
+    const h = hoursFn(r);
     if(h === null) openFlags[r.emp_id][d] = true;
     else hours[r.emp_id][d] = (hours[r.emp_id][d] || 0) + h;
   });

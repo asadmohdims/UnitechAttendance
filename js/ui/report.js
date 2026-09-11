@@ -5,6 +5,7 @@ import { applyAvatar } from '../avatars.js';
 import { switchTab } from './shell.js';
 import { setRecordsDate } from './records.js';
 import { buildDayHours, groupByEmployeeDay, needsReview } from '../reportMath.js';
+import { recHoursRounded, roundToQuarterHour, wasRounded } from '../rounding.js';
 
 const repMonth = $('repMonth');
 repMonth.value = dateStr().slice(0,7);
@@ -36,7 +37,12 @@ export async function monthData(ym){ // ym: 'YYYY-MM'
     return null;
   }
   const emps = state.employees.filter(e => e.active || recs.some(r => r.emp_id === e.id));
-  const {hours, openFlags} = buildDayHours(recs, emps.map(e => e.id), days);
+  const empIds = emps.map(e => e.id);
+  const {hours, openFlags} = buildDayHours(recs, empIds, days);
+  // payHours mirrors `hours` but rounds each punch to the nearest quarter hour first (the
+  // DOL 7-minute rule) — this is what Salary pays on. Report/Records keep showing `hours`,
+  // the exact figure tied to the proof photo.
+  const {hours: payHours} = buildDayHours(recs, empIds, days, recHoursRounded);
   const sessionsByDay = groupByEmployeeDay(recs);
 
   // reviewFlags is broader than openFlags: it also catches a day whose last session was
@@ -52,7 +58,7 @@ export async function monthData(ym){ // ym: 'YYYY-MM'
     });
   });
 
-  return {ym, days, emps, hours, openFlags, reviewFlags, sessionsByDay, recs, reviewRecords, hasData: recs.length > 0};
+  return {ym, days, emps, hours, payHours, openFlags, reviewFlags, sessionsByDay, recs, reviewRecords, hasData: recs.length > 0};
 }
 
 // Sums one employee's per-day hours array (as produced by monthData) into a period total.
@@ -189,6 +195,13 @@ function renderDetailCalendar({days, emps, hours, openFlags, reviewFlags, sessio
   });
 }
 
+// A small "paid 9:15" annotation appended after a punch time, shown only when the DOL
+// rounding rule actually moved that punch — this is the "if they challenge it" evidence:
+// the exact punch stays visible, with what it was rounded to for pay right next to it.
+function paidNote(iso){
+  return wasRounded(iso) ? ` <span class="paid-note">&rarr; ${fmtTime(roundToQuarterHour(iso))} paid</span>` : '';
+}
+
 // Toggles the row's detail panel: closes if the same day's pill is clicked again, otherwise
 // rebuilds it from that day's sessions (same in/out/lunch chip vocabulary as Daily records).
 function toggleDayDetail(tr, sessions){
@@ -210,16 +223,18 @@ function toggleDayDetail(tr, sessions){
       inner.appendChild(lunchChip);
     }
     const inChip = document.createElement('span'); inChip.className = 'chip';
-    inChip.innerHTML = `<span class="lbl">In</span>${fmtTime(s.clock_in)}`;
+    inChip.innerHTML = `<span class="lbl">In</span>${fmtTime(s.clock_in)}${paidNote(s.clock_in)}`;
     inner.appendChild(inChip);
     const outChip = document.createElement('span'); outChip.className = 'chip' + (s.clock_out ? '' : ' review');
-    outChip.innerHTML = `<span class="lbl">Out</span>${s.clock_out ? fmtTime(s.clock_out) : 'Still in'}`;
+    outChip.innerHTML = `<span class="lbl">Out</span>${s.clock_out ? fmtTime(s.clock_out) + paidNote(s.clock_out) : 'Still in'}`;
     inner.appendChild(outChip);
   });
   const totalHours = sessions.reduce((sum, s) => sum + (recHours(s) || 0), 0);
+  const totalPaidHours = sessions.reduce((sum, s) => sum + (recHoursRounded(s) || 0), 0);
   const stillOpen = sessions.some(s => !s.clock_out);
   const totalSpan = document.createElement('span'); totalSpan.className = 'detail-total';
-  totalSpan.innerHTML = `Worked <b>${fmtHours(totalHours)}</b>${stillOpen ? ' so far' : ''}`;
+  totalSpan.innerHTML = `Worked <b>${fmtHours(totalHours)}</b>${stillOpen ? ' so far' : ''}`
+    + (!stillOpen && totalPaidHours !== totalHours ? ` &middot; Paid <b>${fmtHours(totalPaidHours)}</b>` : '');
   inner.appendChild(totalSpan);
   row._sessions = sessions;
   row.classList.add('open');

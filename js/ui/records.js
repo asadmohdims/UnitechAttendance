@@ -5,6 +5,7 @@ import { applyAvatar } from '../avatars.js';
 import { refreshAll } from './kiosk.js';
 import { promptModal } from './modal.js';
 import { isMissedClockIn } from '../missedClockIn.js';
+import { recHoursRounded, roundToQuarterHour, wasRounded } from '../rounding.js';
 
 const recDate = $('recDate');
 recDate.value = dateStr();
@@ -33,6 +34,11 @@ function punchCell(label, iso, photoPath){
     val.appendChild(img);
   }
   cell.append(lbl, val);
+  if(iso && wasRounded(iso)){
+    const note = document.createElement('span'); note.className = 'paid-note';
+    note.textContent = `→ ${fmtTime(roundToQuarterHour(iso))} paid`;
+    cell.appendChild(note);
+  }
   return cell;
 }
 
@@ -100,7 +106,12 @@ export async function renderRecords(){
     const punches = document.createElement('div'); punches.className = 'rec-punches';
     punches.append(punchCell('In', r.clock_in, r.in_photo), punchCell('Out', r.clock_out, r.out_photo));
 
-    const hours = document.createElement('div'); hours.className = 'rec-hours'; hours.textContent = fmtHours(recHours(r));
+    const workedHours = recHours(r);
+    const paidHours = recHoursRounded(r);
+    const hours = document.createElement('div'); hours.className = 'rec-hours';
+    hours.textContent = (paidHours !== null && paidHours !== workedHours)
+      ? `${fmtHours(workedHours)} worked · ${fmtHours(paidHours)} paid`
+      : fmtHours(workedHours);
 
     const actions = document.createElement('div'); actions.className = 'rec-actions';
     const bEdit = document.createElement('button'); bEdit.className = 'btn small ghost'; bEdit.textContent = 'Edit'; bEdit.onclick = () => editRecord(r, emp);

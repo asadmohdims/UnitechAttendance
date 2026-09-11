@@ -38,7 +38,11 @@ export async function renderSalary(){
   const list = $('salaryList');
   list.innerHTML = '';
   md.emps.forEach(e => {
-    const {total, daysWorked} = summarizeHours(md.hours[e.id], md.days);
+    // Pay is based on payHours (each punch rounded to the nearest 15 min, the DOL 7-minute
+    // rule) — not the exact hours Report/Records show. A day counts as "worked" the same way
+    // either way (both are null only when there's no completed session that day), so daysWorked
+    // comes out identical regardless of which array it's read from.
+    const {total, daysWorked} = summarizeHours(md.payHours[e.id], md.days);
     const rate = pickRateForPeriod(rates[e.id], periodEnd);
     const calc = rate ? calcSalary({monthlySalary:rate.monthly_salary, hoursWorked:total, standardHours:STANDARD_MONTHLY_HOURS}) : null;
 
@@ -65,7 +69,7 @@ export async function renderSalary(){
     detail.style.display = 'none';
     detail.innerHTML = rate
       ? `<p><b>Rate used:</b> ${fmtCurrency(rate.monthly_salary)}/month, effective from ${rate.effective_from}</p>
-         <p><b>Hours worked:</b> ${fmtHours(total)} over ${daysWorked} ${daysWorked === 1 ? 'day' : 'days'}</p>
+         <p><b>Hours paid:</b> ${fmtHours(total)} over ${daysWorked} ${daysWorked === 1 ? 'day' : 'days'} — each punch rounded to the nearest 15 min (see Daily records for exact punch times)</p>
          <p><b>Standard hours:</b> ${STANDARD_MONTHLY_HOURS}/month</p>
          <p><b>Formula:</b> ${fmtCurrency(rate.monthly_salary)} × (${total.toFixed(1)} ÷ ${STANDARD_MONTHLY_HOURS} hrs) = ${fmtCurrency(calc.amount)}</p>`
       : `<p>No salary rate has been set for ${e.name} yet — use Amend to add one.</p>`;

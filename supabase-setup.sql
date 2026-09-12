@@ -94,3 +94,47 @@ create index if not exists day_pay_overrides_emp_idx on day_pay_overrides(emp_id
 alter table day_pay_overrides enable row level security;
 create policy "authenticated full access" on day_pay_overrides
   for all to authenticated using (true) with check (true);
+
+-- Payments: a two-sided cash ledger. The employee and the owner each log what they believe
+-- was paid, independently — there's no in-app confirm/dispute step. Ratification is simply
+-- both rows existing and being comparable (see js/paymentsMath.js's reconcileDay()), so a
+-- mismatch is a real, visible signal instead of silent trust. `entered_by` is who logged the
+-- row (not who was paid — that's always `emp_id`), since the same employee+date can carry one
+-- row from each side.
+create table if not exists payments (
+  id uuid primary key default gen_random_uuid(),
+  emp_id uuid not null references employees(id) on delete cascade,
+  amount numeric not null,
+  occurred_on date not null,
+  entered_by text not null check (entered_by in ('employee', 'owner')),
+  created_at timestamptz not null default now()
+);
+create index if not exists payments_emp_date_idx on payments(emp_id, occurred_on);
+
+alter table payments enable row level security;
+create policy "authenticated full access" on payments
+  for all to authenticated using (true) with check (true);
+
+-- Payment resolutions: lets the owner mark a flagged (mismatched) employee+date as "talked
+-- it out" without necessarily editing either side's amount — same reversible, no-confirm-dialog
+-- shape as day_pay_overrides above, keyed the same way (one row per emp_id+date).
+create table if not exists payment_resolutions (
+  id uuid primary key default gen_random_uuid(),
+  emp_id uuid not null references employees(id) on delete cascade,
+  date date not null,
+  resolved boolean not null default true,
+  note text,
+  created_at timestamptz not null default now(),
+  unique (emp_id, date)
+);
+create index if not exists payment_resolutions_emp_idx on payment_resolutions(emp_id);
+
+alter table payment_resolutions enable row level security;
+create policy "authenticated full access" on payment_resolutions
+  for all to authenticated using (true) with check (true);
+
+-- PIN for an employee's own kiosk access to the Payments screen (privacy from other employees
+-- on the shared tablet) — hashed, never stored in plaintext. Assigned by the owner in the
+-- Employees tab, not self-service (see js/pin.js for the hash/verify functions).
+alter table employees add column if not exists pin_hash text;
+alter table employees add column if not exists pin_salt text;

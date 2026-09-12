@@ -16,7 +16,8 @@ export const state = {
                         // disambiguates "already completed a shift" from "never showed up"
                         // (both look like "no open session, not on a break" otherwise), source
                         // for the missed-clock-in flag
-  adminUnlocked: false
+  adminUnlocked: false,
+  kioskMode: 'attendance' // 'attendance' | 'payments' — which screen the kiosk's tile grid shows
 };
 
-export const ADMIN_TABS = ['records', 'report', 'employees', 'salary'];
+export const ADMIN_TABS = ['records', 'report', 'employees', 'salary', 'payments'];

@@ -6,6 +6,17 @@ import { captureFor } from '../camera.js';
 import { shouldAutoCloseForLunch, cutoffTimeFor } from '../lunch.js';
 import { shouldAutoCloseStaleSession, endOfDayFor } from '../staleSession.js';
 import { isMissedClockIn } from '../missedClockIn.js';
+import { renderPaymentsGrid, togglePaymentsMode } from './payments.js';
+
+$('btnPayments').onclick = togglePaymentsMode;
+
+// The one side-panel button always invites the OTHER screen — "Payments" while looking at
+// Attendance, "Attendance" while looking at Payments — so there's always a visible way back
+// without tapping the same label twice to toggle blind.
+const MODE_BTN_HTML = {
+  attendance: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="6" width="20" height="12" rx="2"></rect><circle cx="12" cy="12" r="3"></circle><line x1="6" y1="10" x2="6" y2="10.01"></line><line x1="18" y1="14" x2="18" y2="14.01"></line></svg>Payments',
+  payments: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"></circle><polyline points="12 7 12 12 15.5 14"></polyline></svg>Attendance'
+};
 
 // Reloads employees + open sessions from the store into shared state and re-renders the kiosk.
 // Called after every mutation (add/rename/deactivate employee, punch in/out) so both store
@@ -124,6 +135,10 @@ function renderRoster(active){
 // genuine data load, wasteful (and visibly flickery) if done on a timer. See refreshTileStates()
 // for the time-only path used by periodicCheck().
 export function renderHome(){
+  $('btnPayments').innerHTML = MODE_BTN_HTML[state.kioskMode];
+  $('paymentsBanner').style.display = state.kioskMode === 'payments' ? '' : 'none';
+  if(state.kioskMode === 'payments'){ renderPaymentsGrid(); return; }
+
   const grid = $('empGrid');
   grid.innerHTML = '';
   const active = state.employees.filter(e => e.active);
@@ -162,6 +177,9 @@ export function renderHome(){
 // on a tile that isn't in the DOM yet (e.g. the very first tick, before refreshAll's initial
 // renderHome() has run).
 function refreshTileStates(){
+  // Payments-mode tiles have no clock-state badge to refresh — this whole function's job (the
+  // 5s live in/lunch/missed tick) doesn't apply outside Attendance mode.
+  if(state.kioskMode !== 'attendance') return;
   const active = state.employees.filter(e => e.active);
   renderRoster(active);
   active.forEach(e => {

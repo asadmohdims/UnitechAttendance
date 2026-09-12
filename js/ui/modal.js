@@ -10,9 +10,11 @@ const errEl = $('promptErr');
 const submitBtn = $('promptSubmit');
 const cancelBtn = $('promptCancel');
 
-// fields: [{name, label, type ('text'|'number'|'date'|'time'), value, placeholder, min, required}]
-// A field is required unless explicitly marked `required: false` (e.g. an optional clock-out
-// time). Pass an empty `fields` array to use this as a styled confirm() instead of a prompt().
+// fields: [{name, label, type ('text'|'number'|'date'|'time'|'select'), value, placeholder, min,
+// required, options}]. A field is required unless explicitly marked `required: false` (e.g. an
+// optional clock-out time). `type:'select'` renders a native <select> instead of an <input> —
+// `options: [{value, label}]` — for a short, fixed list (an employee picker) rather than free
+// text. Pass an empty `fields` array to use this as a styled confirm() instead of a prompt().
 // `danger: true` styles Save as the red/destructive button, for confirms like "Delete this?".
 // Resolves with {name: value, ...} on Save (an empty object for a zero-field confirm), or
 // null on Cancel/Escape.
@@ -28,11 +30,23 @@ export function promptModal({title, fields, submitLabel = 'Save', danger = false
       const label = document.createElement('label');
       label.className = 'modal-field-label';
       label.textContent = f.label;
-      const input = document.createElement('input');
-      input.type = f.type || 'text';
-      input.value = f.value ?? '';
-      if(f.placeholder) input.placeholder = f.placeholder;
-      if(f.min != null) input.min = f.min;
+      const input = document.createElement(f.type === 'select' ? 'select' : 'input');
+      if(f.type === 'select'){
+        (f.options || []).forEach(opt => {
+          const o = document.createElement('option');
+          o.value = opt.value; o.textContent = opt.label;
+          input.appendChild(o);
+        });
+        if(f.value != null) input.value = f.value;
+      }else{
+        input.type = f.type || 'text';
+        input.value = f.value ?? '';
+        if(f.placeholder) input.placeholder = f.placeholder;
+        if(f.min != null) input.min = f.min;
+        if(f.maxlength != null) input.maxLength = f.maxlength;
+        if(f.inputmode) input.inputMode = f.inputmode;
+        if(f.pattern) input.pattern = f.pattern;
+      }
       fieldsEl.append(label, input);
       return {name: f.name, input, required: f.required !== false};
     });

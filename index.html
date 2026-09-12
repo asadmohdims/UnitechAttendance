@@ -30,6 +30,7 @@
   <button data-tab="report">Report 🔒</button>
   <button data-tab="employees">Employees 🔒</button>
   <button data-tab="salary">Salary 🔒</button>
+  <button data-tab="payments">Payments 🔒</button>
 </nav>
 
 <!-- HOME (its own fixed-viewport screen, kept outside <main> so hiding <main> in kiosk mode can't hide it too) -->
@@ -46,12 +47,17 @@
         <div class="kiosk-date" id="kioskDate"></div>
       </div>
     </div>
+    <button class="btn green kiosk-mode-btn" id="btnPayments"></button>
     <div class="kiosk-footer">
       <div id="syncStatus" class="sync-status"></div>
       <button class="kiosk-admin-link" id="btnAdminEntry">Admin access</button>
     </div>
   </div>
   <div class="kiosk-main">
+    <div class="payments-banner" id="paymentsBanner" style="display:none">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="6" width="20" height="12" rx="2"></rect><circle cx="12" cy="12" r="3"></circle><line x1="6" y1="10" x2="6" y2="10.01"></line><line x1="18" y1="14" x2="18" y2="14.01"></line></svg>
+      Tap your name to log a payment you received
+    </div>
     <div class="kiosk-badges" id="empGrid"></div>
     <p class="muted" id="homeEmpty" style="display:none">No employees yet — ask the admin to add them.</p>
   </div>
@@ -63,6 +69,7 @@
     <button data-tab="records">Daily records</button>
     <button data-tab="report">Monthly report</button>
     <button data-tab="salary">Salary</button>
+    <button data-tab="payments">Payments</button>
     <button id="btnReturnKiosk">Return to kiosk</button>
   </div>
   <!-- RECORDS -->
@@ -166,6 +173,37 @@
       <p class="muted" id="salEmpty" style="display:none; padding:0 17px 17px">No employees yet.</p>
     </div>
   </section>
+
+  <!-- PAYMENTS -->
+  <section id="tab-payments" class="admin-tab" style="display:none">
+    <div class="report-top">
+      <div>
+        <p class="muted">Cash payment ledger</p>
+        <h2>Payments</h2>
+        <p class="muted">Independent entries from you and each employee — matched automatically, flagged when they don't agree.</p>
+      </div>
+      <button class="btn green" id="btnLogPayment">+ Log payment</button>
+    </div>
+    <div class="report-period">
+      <button class="month-arrow" id="btnPayPrevMonth" aria-label="Previous month">‹</button>
+      <input type="month" id="payMonth" aria-label="Payments month">
+      <button class="month-arrow" id="btnPayNextMonth" aria-label="Next month">›</button>
+    </div>
+    <div class="review-alert" id="payAlert" style="display:none">
+      <div><strong id="payAlertTitle"></strong><span id="payAlertText"></span></div>
+    </div>
+    <div class="pay-summary">
+      <div class="metric"><span class="metric-label">Total logged</span><strong class="metric-value" id="metricPayTotal">—</strong></div>
+      <div class="metric"><span class="metric-label">Matched</span><strong class="metric-value good" id="metricPayMatched">—</strong></div>
+      <div class="metric"><span class="metric-label">Awaiting other side</span><strong class="metric-value warn" id="metricPayAwaiting">—</strong></div>
+      <div class="metric"><span class="metric-label">Mismatches</span><strong class="metric-value bad" id="metricPayMismatch">—</strong></div>
+    </div>
+    <div class="card report-list">
+      <div class="report-list-head"><h3>Payment activity</h3><span id="paymentsCountLabel"></span></div>
+      <div id="paymentsList"></div>
+      <p class="muted" id="paymentsEmpty" style="display:none; padding:0 17px 17px">No payments logged this month.</p>
+    </div>
+  </section>
 </main>
 
 <!-- Login -->
@@ -228,6 +266,81 @@
   <div id="pcAction"></div>
   <div id="pcName"></div>
   <div id="pcDetail" class="muted"></div>
+</div>
+
+<!-- Payments: PIN -> monthly summary -> add-payment. One persistent overlay with three
+     swappable inner screens: only the flow opening/closing fades (one clean transition each
+     way) — switching between screens inside it is an instant display swap, so two
+     independently-fading overlays never cross-fade over each other. -->
+<div id="paymentFlowModal" class="modal-overlay">
+  <div id="pinScreen" class="pin-card">
+    <img id="pinAvatar" class="pin-avatar" alt="">
+    <div class="pin-title" id="pinTitle"></div>
+    <div class="pin-sub">4-digit PIN</div>
+    <div class="pin-dots" id="pinDots">
+      <span class="pin-dot"></span><span class="pin-dot"></span><span class="pin-dot"></span><span class="pin-dot"></span>
+    </div>
+    <p class="pin-error-text" id="pinError">&nbsp;</p>
+    <p class="pin-locked-msg" id="pinLocked" style="display:none">Too many incorrect attempts. See the owner to reset your PIN.</p>
+    <div class="pin-keypad" id="pinKeypad">
+      <button data-digit="1">1</button><button data-digit="2">2</button><button data-digit="3">3</button>
+      <button data-digit="4">4</button><button data-digit="5">5</button><button data-digit="6">6</button>
+      <button data-digit="7">7</button><button data-digit="8">8</button><button data-digit="9">9</button>
+      <button disabled></button><button data-digit="0">0</button>
+      <button id="pinBackspace">⌫</button>
+    </div>
+    <button class="pin-cancel" id="pinCancel">Cancel</button>
+  </div>
+
+  <div id="pmScreen" class="pay-card" style="display:none">
+    <button class="back-btn" id="pmBack">‹ Back</button>
+    <div class="pay-header">
+      <img id="pmAvatar" class="pay-avatar" alt="">
+      <div>
+        <div class="pay-name" id="pmName"></div>
+        <div class="pay-sub" id="pmMonth"></div>
+      </div>
+    </div>
+    <div class="month-total">
+      <div class="month-total-label">Logged this month</div>
+      <div class="month-total-value" id="pmTotal"></div>
+    </div>
+    <button class="btn green" id="pmAdd">+ Add payment</button>
+    <div class="entries-title">This month's entries</div>
+    <div id="pmEntries"></div>
+    <p class="muted" id="pmEmpty" style="display:none">No payments logged yet this month.</p>
+  </div>
+
+  <div id="apScreen" class="pay-card" style="display:none">
+    <button class="back-btn" id="apBack">‹ Back</button>
+    <div class="pay-header">
+      <img id="apAvatar" class="pay-avatar" alt="">
+      <div>
+        <div class="pay-name" id="apName"></div>
+        <div class="pay-sub">Add a payment</div>
+      </div>
+    </div>
+    <div class="pay-amount-display"><span>₹</span><span id="apAmount">0</span></div>
+    <div class="pay-keypad" id="apKeypad">
+      <button data-digit="1">1</button><button data-digit="2">2</button><button data-digit="3">3</button>
+      <button data-digit="4">4</button><button data-digit="5">5</button><button data-digit="6">6</button>
+      <button data-digit="7">7</button><button data-digit="8">8</button><button data-digit="9">9</button>
+      <button disabled></button><button data-digit="0">0</button>
+      <button id="apBackspace">⌫</button>
+    </div>
+    <label class="modal-field-label" for="apDate">Date</label>
+    <input type="date" id="apDate">
+    <button class="btn green" id="apSave" style="margin-top:22px">Save payment</button>
+    <p class="modal-err" id="apErr"></p>
+  </div>
+</div>
+
+<!-- Payments: save confirmation -->
+<div id="paymentConfirm">
+  <div id="pymCheck">✓</div>
+  <div id="pymAction">Payment logged</div>
+  <div id="pymName"></div>
+  <div id="pymDetail" class="muted"></div>
 </div>
 
 <!-- Photo viewer -->

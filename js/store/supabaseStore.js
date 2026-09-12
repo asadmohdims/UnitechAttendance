@@ -63,6 +63,20 @@ async function setEmployeeAvatar(id, path){
   if(error) throw error;
 }
 
+// Owner-assigned PIN for this employee's own kiosk access to Payments — stored as a hash+salt
+// pair (see js/pin.js), never the raw PIN. Needs the `pin_hash`/`pin_salt` columns added to
+// `employees` (see supabase-setup.sql).
+async function setEmployeePin(id, hash, salt){
+  const {error} = await sb.from('employees').update({pin_hash:hash, pin_salt:salt}).eq('id', id);
+  if(error) throw error;
+}
+
+async function getEmployeePinRecord(id){
+  const {data, error} = await sb.from('employees').select('pin_hash,pin_salt').eq('id', id).single();
+  if(error) throw error;
+  return data.pin_hash ? {hash:data.pin_hash, salt:data.pin_salt} : null;
+}
+
 // A client-generated UUID becomes both the local outbox key AND the eventual Postgres
 // records.id (it overrides the column's `default gen_random_uuid()` on upsert). There's
 // no separate "temp id -> real id" step: the same id is used from the tap onward, synced
@@ -280,6 +294,59 @@ async function setDayOverride(empId, date, paid){
   if(error) throw error;
 }
 
+// A deliberate, occasional action (not a rapid repeated tap like clock in/out), so a plain
+// write is enough — no outbox needed the way punches need one for instant latency + offline
+// resilience under many daily taps. `enteredBy` is 'employee' (kiosk, PIN-gated) or 'owner'
+// (admin) — see js/paymentsMath.js's reconcileDay() for how the two sides get compared. Needs
+// the `payments` table added (see supabase-setup.sql).
+async function addPayment(empId, amount, occurredOn, enteredBy){
+  const {data, error} = await sb.from('payments')
+    .insert({emp_id:empId, amount, occurred_on:occurredOn, entered_by:enteredBy})
+    .select().single();
+  if(error) throw error;
+  return data;
+}
+
+async function listPaymentsForRange(fromDate, toDate){
+  const {data, error} = await sb.from('payments').select('*').gte('occurred_on', fromDate).lte('occurred_on', toDate);
+  if(error) throw error;
+  return data;
+}
+
+// Scoped to one employee (rather than filtering listPaymentsForRange client-side) so the
+// kiosk's own-payments screen never even fetches another employee's amounts.
+async function listPaymentsForEmployeeRange(empId, fromDate, toDate){
+  const {data, error} = await sb.from('payments').select('*').eq('emp_id', empId)
+    .gte('occurred_on', fromDate).lte('occurred_on', toDate);
+  if(error) throw error;
+  return data;
+}
+
+async function updatePayment(id, amount, occurredOn){
+  const {error} = await sb.from('payments').update({amount, occurred_on:occurredOn}).eq('id', id);
+  if(error) throw error;
+}
+
+async function deletePayment(id){
+  const {error} = await sb.from('payments').delete().eq('id', id);
+  if(error) throw error;
+}
+
+async function listPaymentResolutions(fromDate, toDate){
+  const {data, error} = await sb.from('payment_resolutions').select('*').gte('date', fromDate).lte('date', toDate);
+  if(error) throw error;
+  return data;
+}
+
+// Marks (or un-marks) a flagged employee+date as talked-out without necessarily editing either
+// side's amount — same reversible shape as setDayOverride, upsert-by-(emp_id,date). Needs the
+// `payment_resolutions` table added (see supabase-setup.sql).
+async function setPaymentResolution(empId, date, resolved, note){
+  const {error} = await sb.from('payment_resolutions')
+    .upsert({emp_id:empId, date, resolved, note: note || null}, {onConflict:'emp_id,date'});
+  if(error) throw error;
+}
+
 async function uploadPhoto(path, blob, {upsert = false} = {}){
   const {error} = await sb.storage.from('photos').upload(path, blob, {contentType:'image/jpeg', upsert});
   if(error) throw error;
@@ -371,10 +438,13 @@ if(!DEMO_MODE) outbox.startBackgroundSync(runSync);
 
 export const supabaseStore = {
   listEmployees, addEmployee, renameEmployee, setEmployeeActive, setEmployeeAvatar,
+  setEmployeePin, getEmployeePinRecord,
   listOpenSessions, clockIn, clockOut, addManualRecord,
   listRecordsForDate, listRecordsForRange, updateRecordTimes, setLunchPaid, deleteRecord,
   splitSessionForLunch,
   uploadPhoto, getPhotoUrl, getSyncStatus,
   listSalaryRates, setSalaryRate,
-  listDayPayOverrides, setDayOverride
+  listDayPayOverrides, setDayOverride,
+  addPayment, listPaymentsForRange, listPaymentsForEmployeeRange, updatePayment, deletePayment,
+  listPaymentResolutions, setPaymentResolution
 };

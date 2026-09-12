@@ -7,6 +7,7 @@ import { renderRecords } from './records.js';
 import { renderReport } from './report.js';
 import { renderEmployees } from './employees.js';
 import { renderSalary } from './salary.js';
+import { renderPayments } from './payments.js';
 
 /* ---------- auth ---------- */
 export async function initAuth(){
@@ -97,7 +98,7 @@ function setKioskZoomLock(locked){
 
 export function switchTab(tab){
   document.querySelectorAll('nav button').forEach(x => x.classList.toggle('active', x.dataset.tab === tab));
-  ['home','records','report','employees','salary'].forEach(t =>
+  ['home','records','report','employees','salary','payments'].forEach(t =>
     $('tab-'+t).style.display = (t === tab) ? '' : 'none');
   document.body.classList.toggle('kiosk-active', tab === 'home');
   setKioskZoomLock(tab === 'home');
@@ -108,6 +109,7 @@ export function switchTab(tab){
   if(tab === 'report') renderReport();
   if(tab === 'employees') renderEmployees();
   if(tab === 'salary') renderSalary();
+  if(tab === 'payments') renderPayments();
 }
 document.querySelectorAll('nav button').forEach(b => b.onclick = () => {
   const tab = b.dataset.tab;

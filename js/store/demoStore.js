@@ -6,6 +6,8 @@ const DEMO_RECORDS_KEY = 'attendance_demo_records';
 const DEMO_PHOTOS_KEY = 'attendance_demo_photo:';
 const DEMO_SALARY_KEY = 'attendance_demo_salary_rates';
 const DEMO_OVERRIDES_KEY = 'attendance_demo_day_overrides';
+const DEMO_PAYMENTS_KEY = 'attendance_demo_payments';
+const DEMO_PAYMENT_RESOLUTIONS_KEY = 'attendance_demo_payment_resolutions';
 
 function loadEmployeesRaw(){
   const sampleEmployees = [
@@ -66,6 +68,20 @@ function setEmployeeAvatar(id, path){
   const e = employees.find(x => x.id === id);
   if(e) e.avatar = path;
   saveEmployees(employees);
+}
+
+// Owner-assigned PIN for this employee's own kiosk access to Payments — stored as a hash+salt
+// pair (see js/pin.js), never the raw PIN.
+function setEmployeePin(id, hash, salt){
+  const employees = loadEmployeesRaw();
+  const e = employees.find(x => x.id === id);
+  if(e){ e.pin_hash = hash; e.pin_salt = salt; }
+  saveEmployees(employees);
+}
+
+function getEmployeePinRecord(id){
+  const e = loadEmployeesRaw().find(x => x.id === id);
+  return e && e.pin_hash ? {hash: e.pin_hash, salt: e.pin_salt} : null;
 }
 
 // Admin-entered backfill for a day that has no punch at all (an absence turning out to be a
@@ -204,6 +220,61 @@ function setDayOverride(empId, date, paid){
   saveDayOverrides(rows);
 }
 
+function loadPayments(){ return JSON.parse(localStorage.getItem(DEMO_PAYMENTS_KEY) || '[]'); }
+function savePayments(rows){ localStorage.setItem(DEMO_PAYMENTS_KEY, JSON.stringify(rows)); }
+
+// A deliberate, occasional action (not a rapid repeated tap like clock in/out), so a plain
+// write is enough — no outbox needed the way punches need one for instant latency + offline
+// resilience under many daily taps. `enteredBy` is 'employee' (kiosk, PIN-gated) or 'owner'
+// (admin) — see js/paymentsMath.js's reconcileDay() for how the two sides get compared.
+function addPayment(empId, amount, occurredOn, enteredBy){
+  const row = {id:'demo-payment-' + Date.now(), emp_id:empId, amount, occurred_on:occurredOn, entered_by:enteredBy, created_at:new Date().toISOString()};
+  const rows = loadPayments();
+  rows.push(row);
+  savePayments(rows);
+  return row;
+}
+
+function listPaymentsForRange(fromDate, toDate){
+  return loadPayments().filter(p => p.occurred_on >= fromDate && p.occurred_on <= toDate);
+}
+
+// Scoped to one employee (rather than filtering listPaymentsForRange client-side) so the
+// kiosk's own-payments screen never even fetches another employee's amounts.
+function listPaymentsForEmployeeRange(empId, fromDate, toDate){
+  return loadPayments().filter(p => p.emp_id === empId && p.occurred_on >= fromDate && p.occurred_on <= toDate);
+}
+
+function updatePayment(id, amount, occurredOn){
+  const rows = loadPayments();
+  const idx = rows.findIndex(p => p.id === id);
+  if(idx < 0) throw new Error('Payment not found');
+  rows[idx].amount = amount;
+  rows[idx].occurred_on = occurredOn;
+  savePayments(rows);
+}
+
+function deletePayment(id){
+  savePayments(loadPayments().filter(p => p.id !== id));
+}
+
+function loadPaymentResolutions(){ return JSON.parse(localStorage.getItem(DEMO_PAYMENT_RESOLUTIONS_KEY) || '[]'); }
+function savePaymentResolutions(rows){ localStorage.setItem(DEMO_PAYMENT_RESOLUTIONS_KEY, JSON.stringify(rows)); }
+
+function listPaymentResolutions(fromDate, toDate){
+  return loadPaymentResolutions().filter(r => r.date >= fromDate && r.date <= toDate);
+}
+
+// Marks (or un-marks) a flagged employee+date as talked-out without necessarily editing either
+// side's amount — same reversible, upsert-by-(emp_id,date) shape as setDayOverride.
+function setPaymentResolution(empId, date, resolved, note){
+  const rows = loadPaymentResolutions();
+  const idx = rows.findIndex(r => r.emp_id === empId && r.date === date);
+  if(idx >= 0){ rows[idx].resolved = resolved; rows[idx].note = note || null; }
+  else rows.push({id:'demo-resolution-' + Date.now(), emp_id:empId, date, resolved, note: note || null, created_at:new Date().toISOString()});
+  savePaymentResolutions(rows);
+}
+
 function uploadPhoto(path, blob){
   return new Promise(resolve => {
     const reader = new FileReader();
@@ -219,10 +290,13 @@ async function getPhotoUrl(path){
 
 export const demoStore = {
   listEmployees, addEmployee, renameEmployee, setEmployeeActive, setEmployeeAvatar,
+  setEmployeePin, getEmployeePinRecord,
   listOpenSessions, clockIn, clockOut, addManualRecord,
   listRecordsForDate, listRecordsForRange, updateRecordTimes, setLunchPaid, deleteRecord,
   splitSessionForLunch,
   uploadPhoto, getPhotoUrl, getSyncStatus,
   listSalaryRates, setSalaryRate,
-  listDayPayOverrides, setDayOverride
+  listDayPayOverrides, setDayOverride,
+  addPayment, listPaymentsForRange, listPaymentsForEmployeeRange, updatePayment, deletePayment,
+  listPaymentResolutions, setPaymentResolution
 };

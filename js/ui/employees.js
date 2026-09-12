@@ -5,6 +5,7 @@ import { applyAvatar } from '../avatars.js';
 import { captureFor } from '../camera.js';
 import { refreshAll, renderHome } from './kiosk.js';
 import { promptModal } from './modal.js';
+import { setEmployeePinFlow } from './payments.js';
 
 $('btnAddEmp').onclick = async () => {
   const name = $('newEmpName').value.trim();
@@ -89,7 +90,10 @@ export function renderEmployees(){
       }catch(err){ toast('Failed: ' + err.message); }
       busy(false);
     };
-    actions.append(bPhoto, bRen, bTog);
+    const bPin = document.createElement('button');
+    bPin.className = 'btn small ghost'; bPin.textContent = e.pin_hash ? 'Change PIN' : 'Set PIN';
+    bPin.onclick = () => setEmployeePinFlow(e);
+    actions.append(bPhoto, bRen, bPin, bTog);
 
     row.append(avatarImg, who, actions);
     list.appendChild(row);

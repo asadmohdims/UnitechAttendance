@@ -60,3 +60,30 @@ export function promptModal({title, fields, submitLabel = 'Save', danger = false
     inputs[0]?.input.focus();
   });
 }
+
+// A read-only variant for showing information rather than collecting it (e.g. "which days,
+// exactly, made up this absence count") — same card/overlay as promptModal so it doesn't
+// introduce a second visual language, just a single "Close" button instead of Save/Cancel.
+// `render(container)` builds whatever DOM the caller needs directly into the fields area,
+// same escape-safe DOM-building convention as the rest of this app (no raw HTML strings).
+export function infoModal({title, render}){
+  return new Promise(resolve => {
+    titleEl.textContent = title;
+    errEl.textContent = '';
+    fieldsEl.innerHTML = '';
+    render(fieldsEl);
+    submitBtn.textContent = 'Close';
+    submitBtn.classList.remove('red');
+    submitBtn.classList.add('green');
+    cancelBtn.style.display = 'none';
+    function close(){
+      modal.classList.remove('open');
+      submitBtn.onclick = null; modal.onkeydown = null;
+      cancelBtn.style.display = '';
+      resolve();
+    }
+    submitBtn.onclick = close;
+    modal.onkeydown = e => { if(e.key === 'Enter' || e.key === 'Escape') close(); };
+    modal.classList.add('open');
+  });
+}

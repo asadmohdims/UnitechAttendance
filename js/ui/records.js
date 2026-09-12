@@ -6,6 +6,7 @@ import { refreshAll, tileStatus } from './kiosk.js';
 import { promptModal } from './modal.js';
 import { recHoursRounded, roundToQuarterHour, wasRounded } from '../rounding.js';
 import { dayHoursFromSessions, lunchGapIndex } from '../reportMath.js';
+import { LUNCH_CUTOFF_HOUR, LUNCH_CUTOFF_MINUTE } from '../config.js';
 
 const recDate = $('recDate');
 recDate.value = dateStr();
@@ -180,27 +181,35 @@ function singleSessionRow(r, emp){
 // The original clock_out's real photo moves to the new, later session rather than being
 // duplicated or dropped — the day's last session keeps a genuine out_photo, so it never misreads
 // as an unresolved auto-close (see needsReview() in reportMath.js).
-export async function splitForLunch(r, emp, afterSave = renderRecords){
-  const result = await promptModal({
-    title: `Split for lunch — ${emp ? emp.name : 'record'}`,
-    submitLabel: 'Split',
-    fields: [
-      {name:'lunchStart', label:'Lunch start', type:'time'},
-      {name:'lunchEnd', label:'Lunch end', type:'time'}
-    ]
-  });
-  if(!result) return;
-  const mk = hhmm => {
-    const [h, m] = hhmm.split(':').map(Number);
-    const d = new Date(r.date + 'T00:00:00');
-    d.setHours(h, m, 0, 0);
-    return d;
-  };
-  const lunchStart = mk(result.lunchStart), lunchEnd = mk(result.lunchEnd);
-  const clockIn = new Date(r.clock_in), clockOut = new Date(r.clock_out);
-  if(!(clockIn < lunchStart && lunchStart < lunchEnd && lunchEnd < clockOut)){
-    return toast('Lunch must fall strictly between the clock-in and clock-out times.');
+// One click, one hour, no time-picker — the owner reaches for this specifically when a long
+// unbroken session almost certainly hid a real lunch (see isPossibleMissedLunch() in
+// reportMath.js), and picking exact start/end times for a break nobody photographed added
+// friction without adding real accuracy. Defaults the gap to the shop's usual lunch time
+// (LUNCH_CUTOFF_HOUR/MINUTE, ±30min) when that window actually fits inside the session, falling
+// back to the session's own midpoint otherwise (e.g. a shift that doesn't span 1pm at all) — so
+// the split always lands somewhere plausible without ever needing input. Session times are still
+// editable afterward (Edit on either resulting half) if the guess needs nudging.
+function defaultLunchWindow(clockIn, clockOut){
+  const cutoff = new Date(clockIn);
+  cutoff.setHours(LUNCH_CUTOFF_HOUR, LUNCH_CUTOFF_MINUTE, 0, 0);
+  const halfHourMs = 30 * 60000, bufferMs = 5 * 60000;
+  let start = new Date(cutoff - halfHourMs), end = new Date(cutoff.getTime() + halfHourMs);
+  const fitsAtCutoff = (clockIn.getTime() + bufferMs <= start.getTime()) && (end.getTime() + bufferMs <= clockOut.getTime());
+  if(!fitsAtCutoff){
+    const mid = new Date((clockIn.getTime() + clockOut.getTime()) / 2);
+    start = new Date(mid.getTime() - halfHourMs);
+    end = new Date(mid.getTime() + halfHourMs);
   }
+  return {start, end};
+}
+
+export async function splitForLunch(r, emp, afterSave = renderRecords){
+  const clockIn = new Date(r.clock_in), clockOut = new Date(r.clock_out);
+  // Needs a sliver of real work on both sides of the hour-long gap, or the split is meaningless.
+  if((clockOut - clockIn) < 70 * 60000){
+    return toast('This session is too short to split off a 1-hour lunch.');
+  }
+  const {start: lunchStart, end: lunchEnd} = defaultLunchWindow(clockIn, clockOut);
   busy(true);
   try{
     await store.splitSessionForLunch(r.id, lunchStart.toISOString(), lunchEnd.toISOString());
@@ -317,6 +326,42 @@ export async function editRecord(r, emp, afterSave = renderRecords){
   busy(true);
   try{
     await store.updateRecordTimes(r.id, inD.toISOString(), outD ? outD.toISOString() : null);
+    await refreshAll();
+    await afterSave();
+  }catch(err){ toast('Failed: ' + err.message); }
+  busy(false);
+}
+
+// Backfills a punch for a day that has no record at all — an absence turning out to have
+// actually been a missed punch (tablet down, forgot to tap), not a genuine no-show. Only ever
+// reachable for a red "Absent" pill (js/ui/report.js), which by dayOffStatus()'s own gate
+// (reportMath.js) can only be a past-or-today date for an already-hired employee — never the
+// future or before they joined, so no separate date guard is needed here.
+export async function addMissedPunch(emp, date, afterSave = renderRecords){
+  const result = await promptModal({
+    title: `Add a missed punch — ${emp.name}`,
+    submitLabel: 'Add',
+    fields: [
+      {name:'clockIn', label:'Clock in', type:'time'},
+      {name:'clockOut', label:'Clock out (leave empty if still in)', type:'time', required:false}
+    ]
+  });
+  if(!result) return;
+  const mk = hhmm => {
+    const [h, m] = hhmm.split(':').map(Number);
+    const d = new Date(date + 'T00:00:00');
+    d.setHours(h, m, 0, 0);
+    return d;
+  };
+  const inD = mk(result.clockIn);
+  let outD = null;
+  if(result.clockOut){
+    outD = mk(result.clockOut);
+    if(outD < inD) outD = new Date(outD.getTime() + 86400000); // crossed midnight
+  }
+  busy(true);
+  try{
+    await store.addManualRecord(emp.id, date, inD.toISOString(), outD ? outD.toISOString() : null);
     await refreshAll();
     await afterSave();
   }catch(err){ toast('Failed: ' + err.message); }

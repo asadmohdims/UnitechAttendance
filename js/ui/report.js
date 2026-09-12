@@ -3,7 +3,8 @@ import { state } from '../state.js';
 import { store } from '../store/index.js';
 import { applyAvatar } from '../avatars.js';
 import { switchTab } from './shell.js';
-import { setRecordsDate, editRecord, deleteRecordFlow, toggleLunchPaid, splitForLunch } from './records.js';
+import { setRecordsDate, editRecord, deleteRecordFlow, toggleLunchPaid, splitForLunch, addMissedPunch } from './records.js';
+import { infoModal } from './modal.js';
 import { buildDayHours, groupByEmployeeDay, needsReview, dayHoursFromSessions, dayOffStatus, isHalfDay, lunchGapIndex, isPossibleMissedLunch } from '../reportMath.js';
 import { recHoursRounded, roundToQuarterHour, wasRounded } from '../rounding.js';
 
@@ -121,15 +122,21 @@ export async function renderReport(){
   busy(false);
   if(!md) return;
   lastReportData = md;
-  const {ym, days, emps, hours, openFlags, reviewFlags, gapStatus, dockedDays, sessionsByDay, reviewRecords, hasData} = md;
+  const {ym, days, emps, hours, payHours, openFlags, reviewFlags, gapStatus, dockedDays, sessionsByDay, reviewRecords, hasData} = md;
   $('repEmpty').style.display = hasData ? 'none' : '';
   $('reportMonthLabel').textContent = new Date(`${ym}-01T12:00:00`).toLocaleDateString('en-IN', {month:'long', year:'numeric'});
-  let totalHours = 0, attendanceDays = 0;
+  let totalHours = 0, attendanceDays = 0, absentTotal = 0, halfDayTotal = 0;
   const employeeStats = emps.map(e => {
     const {total, daysWorked, hasOpen} = summarizeHours(hours[e.id], days, reviewFlags[e.id]);
     totalHours += total;
     attendanceDays += daysWorked;
     const daysOff = gapStatus[e.id].filter(s => s === 'off').length;
+    absentTotal += daysOff;
+    // Same isHalfDay() call renderDetailCalendar() makes per cell, so this total can never
+    // disagree with what the calendar's own yellow pills show.
+    for(let d=1; d<=days; d++){
+      if(isHalfDay(sessionsByDay[e.id]?.[d], hours[e.id][d])) halfDayTotal++;
+    }
     return {employee:e, total, daysWorked, hasOpen, daysOff};
   });
   $('metricHours').textContent = fmtHours(totalHours);
@@ -137,6 +144,8 @@ export async function renderReport(){
   $('metricReview').textContent = reviewRecords.length ? `${reviewRecords.length} ${reviewRecords.length === 1 ? 'entry' : 'entries'}` : 'None';
   $('metricReview').classList.toggle('good', !reviewRecords.length);
   $('metricReview').classList.toggle('warn', !!reviewRecords.length);
+  $('metricAbsent').textContent = absentTotal;
+  $('metricHalfDay').textContent = halfDayTotal;
   $('reviewAlert').style.display = reviewRecords.length ? '' : 'none';
   if(reviewRecords.length){
     const nameOf = r => state.employees.find(e => e.id === r.emp_id)?.name || 'An employee';
@@ -148,7 +157,7 @@ export async function renderReport(){
     $('reviewTitle').textContent = `${reviewRecords.length} attendance ${reviewRecords.length === 1 ? 'entry needs' : 'entries need'} review`;
     $('reviewText').textContent = parts.join('; ') + '.';
   }
-  renderDetailCalendar({ym, days, emps, hours, openFlags, reviewFlags, gapStatus, dockedDays, sessionsByDay, employeeStats});
+  renderDetailCalendar({ym, days, emps, hours, payHours, openFlags, reviewFlags, gapStatus, dockedDays, sessionsByDay, employeeStats});
 }
 
 // Each day is a status pill, not a number — a day can have more than one session now (a
@@ -156,16 +165,17 @@ export async function renderReport(){
 // pinned (position:sticky) so they're never the ones scrolled out of view; the day columns
 // are what scrolls. Clicking a day expands an inline row with that day's actual session
 // times and lunch gap, reusing the same in/out/lunch vocabulary as the Daily records tab.
-function renderDetailCalendar({ym, days, emps, hours, openFlags, reviewFlags, gapStatus, dockedDays, sessionsByDay, employeeStats}){
+function renderDetailCalendar({ym, days, emps, hours, payHours, openFlags, reviewFlags, gapStatus, dockedDays, sessionsByDay, employeeStats}){
   let h = '<tr><th class="col-emp">Employee</th>';
   for(let d=1; d<=days; d++) h += `<th>${d}</th>`;
-  h += '<th class="col-days">Days</th><th class="col-total">Total hrs</th></tr>';
+  h += '<th class="col-days">Days</th><th class="col-absent">Absent</th><th class="col-total">Total hrs</th></tr>';
   document.querySelector('#reportTable thead').innerHTML = h;
 
   const tbody = document.querySelector('#reportTable tbody');
   tbody.innerHTML = '';
   employeeStats.forEach(({employee: e, total, daysWorked, hasOpen, daysOff}) => {
     const sessionsForEmp = sessionsByDay[e.id] || {};
+    let halfDayCount = 0;
 
     const tr = document.createElement('tr');
     const empCell = document.createElement('td'); empCell.className = 'col-emp';
@@ -212,6 +222,7 @@ function renderDetailCalendar({ym, days, emps, hours, openFlags, reviewFlags, ga
       // an afternoon punch) gets its own color — a single session with close to a full day's
       // hours (worked straight through, no break) stays 'full'. See isHalfDay() in reportMath.js.
       const half = hasHours && isHalfDay(sessions, hours[e.id][d]);
+      if(half) halfDayCount++;
       // A single session that IS a full day's hours has no recorded lunch gap either — could be
       // a genuine no-break shift, or a forgotten lunch punch; punch data alone can't tell which,
       // so this is a quiet corner-dot nudge (not the amber "needs review" treatment), same visual
@@ -224,10 +235,22 @@ function renderDetailCalendar({ym, days, emps, hours, openFlags, reviewFlags, ga
       const docked = gap === 'holiday' && dockedDays[e.id][d];
       const pill = document.createElement('div');
       pill.className = 'daypill' + (open ? ' review' : hasHours ? (half ? ' half' : ' full') : gap ? ` ${gap}` : '')
-        + (flagged ? ' flagged' : '') + (autoInfo ? ' auto' : '') + (unbroken ? ' unbroken' : '') + (docked ? ' docked' : '');
-      pill.textContent = open ? '!' : hasHours ? d : gap === 'holiday' ? 'F' : gap === 'off' ? 'A' : '';
+        + (flagged ? ' flagged' : '') + (autoInfo ? ' auto' : '') + (unbroken ? ' unbroken' : '') + (docked ? ' docked' : '')
+        + (hasHours && !open ? ' has-hours' : '');
+      // The column header above already carries the day-of-month, so the pill itself shows the
+      // one thing that header can't: this day's hours, at a glance, with no click needed (the
+      // owner's ask, 2026-09-12). Shows PAID hours (payHours, the same grace-window-rounded
+      // figure Salary pays on — js/rounding.js) rather than the exact punch-to-punch figure
+      // (2026-09-12, superseding this file's earlier "Report always shows exact times" rule —
+      // see the Payroll rounding section in CLAUDE.md, updated to match). Exact hours (`hours`)
+      // still drive which STATE a day is in (half/full/unbroken all classify off real attendance,
+      // not pay) — only the number printed in the pill changed; the day-detail panel below and
+      // Daily records keep the exact audit-trail times.
+      pill.textContent = open ? '!' : hasHours ? fmtHours(payHours[e.id][d]) : gap === 'holiday' ? 'F' : gap === 'off' ? 'A' : '';
       if(unbroken) pill.title = 'Single session, no recorded break — check whether a lunch punch was missed';
-      if(docked) pill.title = 'Marked unpaid for this employee — click to restore';
+      else if(docked) pill.title = 'Marked unpaid for this employee — click to restore';
+      else if(hasHours) pill.title = `Day ${d} — ${fmtHours(payHours[e.id][d])} paid, click for session detail`;
+      else if(gap === 'off') pill.title = 'Absent — click to add a missed punch';
       if(sessions){
         pill.onclick = () => toggleDayDetail(tr, sessions, e, d, ym);
       }else if(gap === 'holiday'){
@@ -235,17 +258,37 @@ function renderDetailCalendar({ym, days, emps, hours, openFlags, reviewFlags, ga
         // correction belongs (same "click the pill" convention as every other day type) —
         // toggleDayDetail dispatches to renderHolidayDetail when there's no sessions array.
         pill.onclick = () => toggleDayDetail(tr, null, e, d, ym, docked);
+      }else if(gap === 'off'){
+        // The owner's ask (2026-09-12): an absence is sometimes actually a missed punch (kiosk
+        // down, forgot to tap), not a real no-show — let the admin backfill it right from the
+        // pill. Deliberately NOT wired for a blank "no record" pill (gap === null): that state
+        // only ever means a future date or a day before this employee was hired (see
+        // dayOffStatus() in reportMath.js) — exactly the cases that should stay locked, so
+        // there's nothing to add there without a separate, explicit backdating decision.
+        pill.onclick = () => addMissedPunch(e, `${ym}-${pad(d)}`, renderReport);
       }
       const cell = document.createElement('td'); cell.className = 'day-cell';
       cell.appendChild(pill);
       tr.appendChild(cell);
     }
 
+    // Absent days = full absences (gapStatus 'off') plus a half-credit per half day — the
+    // owner's own definition (2026-09-12: "total absent days ... .5 for half days"), not a new
+    // classification of its own, so it can never disagree with the daysOff badge above or the
+    // pills' own colors: same daysOff and halfDayCount this row already computed either way.
+    const absentDaysEq = daysOff + halfDayCount * 0.5;
     const daysCell = document.createElement('td'); daysCell.className = 'col-days';
     daysCell.innerHTML = `<span>Days</span>${daysWorked}`;
+    const absentCell = document.createElement('td'); absentCell.className = 'col-absent';
+    absentCell.innerHTML = `<span>Absent</span>${absentDaysEq % 1 === 0 ? absentDaysEq : absentDaysEq.toFixed(1)}`;
+    if(absentDaysEq > 0){
+      absentCell.classList.add('clickable');
+      absentCell.title = 'Click for the exact dates';
+      absentCell.onclick = () => showAbsenceDetail(e, ym, days, gapStatus[e.id], hours[e.id], sessionsForEmp);
+    }
     const totalCell = document.createElement('td'); totalCell.className = 'col-total';
     totalCell.innerHTML = `<span>Total</span>${fmtHours(total)}`;
-    tr.append(daysCell, totalCell);
+    tr.append(daysCell, absentCell, totalCell);
     tbody.appendChild(tr);
 
     const detailRow = document.createElement('tr'); detailRow.className = 'detail-row';
@@ -276,6 +319,43 @@ function renderDetailCalendar({ym, days, emps, hours, openFlags, reviewFlags, ga
       openDetailKey = null;
     }
   }
+}
+
+// The "Absent" column shows a single combined number (full absences + half-credits) — the
+// owner asked for the actual dates behind it, since a bare "5.5" doesn't say which days those
+// were (2026-09-12). Recomputes fullDays/halfDays directly from the same gapStatus/isHalfDay
+// classification the calendar pills already use, rather than threading a second array through
+// from render time, so this can never disagree with what the pills themselves show.
+function showAbsenceDetail(emp, ym, days, gapArr, hoursArr, sessionsForEmp){
+  const fullDays = [], halfDays = [];
+  for(let d = 1; d <= days; d++){
+    if(gapArr[d] === 'off') fullDays.push(d);
+    else if(hoursArr[d] != null && isHalfDay(sessionsForEmp[d], hoursArr[d])) halfDays.push(d);
+  }
+  const fmtDate = d => new Date(`${ym}-${pad(d)}T12:00:00`).toLocaleDateString('en-IN', {weekday:'short', month:'short', day:'numeric'});
+  const section = (label, dayList, cls) => {
+    const wrap = document.createElement('div'); wrap.className = 'absence-section';
+    const h = document.createElement('h3'); h.className = `absence-heading ${cls}`;
+    h.textContent = `${label} (${dayList.length})`;
+    wrap.appendChild(h);
+    if(!dayList.length){
+      const p = document.createElement('p'); p.className = 'absence-empty'; p.textContent = 'None this month';
+      wrap.appendChild(p);
+    }else{
+      const ul = document.createElement('ul'); ul.className = 'absence-list';
+      dayList.forEach(d => { const li = document.createElement('li'); li.textContent = fmtDate(d); ul.appendChild(li); });
+      wrap.appendChild(ul);
+    }
+    return wrap;
+  };
+  infoModal({
+    title: `${emp.name} — absences this month`,
+    render(container){
+      const body = document.createElement('div'); body.className = 'absence-modal-body';
+      body.append(section('Full absent days', fullDays, 'full'), section('Half days', halfDays, 'half'));
+      container.appendChild(body);
+    }
+  });
 }
 
 // A small "paid 9:15" annotation appended after a punch time, shown only when rounding

@@ -122,6 +122,18 @@ async function clockOut(recordId, blob, atIso){
   if(error) throw error;
 }
 
+// Admin-entered backfill for a day with no punch at all (an absence turning out to be a missed
+// punch, not a genuine no-show) — same "admin desktop edit, write straight to Postgres" category
+// as updateRecordTimes/setLunchPaid below, not a kiosk punch, so it never touches the outbox
+// (there's no offline-tablet scenario to protect here — this is typed in from the admin panel).
+async function addManualRecord(empId, date, clockInIso, clockOutIso){
+  const {data, error} = await sb.from('records')
+    .insert({emp_id:empId, date, clock_in:clockInIso, clock_out:clockOutIso, in_photo:null, out_photo:null})
+    .select().single();
+  if(error) throw error;
+  return data;
+}
+
 async function listRecordsForDate(date){
   let serverRows = [];
   try{
@@ -359,7 +371,7 @@ if(!DEMO_MODE) outbox.startBackgroundSync(runSync);
 
 export const supabaseStore = {
   listEmployees, addEmployee, renameEmployee, setEmployeeActive, setEmployeeAvatar,
-  listOpenSessions, clockIn, clockOut,
+  listOpenSessions, clockIn, clockOut, addManualRecord,
   listRecordsForDate, listRecordsForRange, updateRecordTimes, setLunchPaid, deleteRecord,
   splitSessionForLunch,
   uploadPhoto, getPhotoUrl, getSyncStatus,

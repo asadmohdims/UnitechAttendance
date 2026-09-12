@@ -128,8 +128,12 @@ past 10 minutes rolls to the next one (10:30 is the exact cutover). Not the DOL'
 7-minute rule this started from — the shop wanted a wider "still on time" window, chosen after
 seeing the trade-off (net-neutral over a shift, since both in and out punches round the same way).
 
-- Report and Daily records **keep showing exact punch times** (`recHours()`) — the audit trail
-  tied to the proof photo. Only Salary's `hoursWorked` uses `recHoursRounded()`.
+- Daily records and the Report day-detail panel **keep showing exact punch times** (`recHours()`)
+  — the audit trail tied to the proof photo. The Report calendar's per-day pill number is the one
+  exception (owner's call, 2026-09-12): it shows PAID hours (`recHoursRounded()`, via
+  `monthData()`'s `payHours`) so it reads the same figure Salary pays on at a glance — the day's
+  *classification* (half/full/unbroken) still comes from exact hours, since that's about
+  attendance, not pay. Salary's `hoursWorked` uses `recHoursRounded()` throughout.
 - Wherever rounding moves a punch, a small "→ 9:15 paid" annotation shows next to the exact time
   (`wasRounded()`), in Daily records and the Report day-detail panel — so a pay figure can be
   explained against the exact time if ever challenged.

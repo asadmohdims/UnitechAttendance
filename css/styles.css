@@ -1,6 +1,6 @@
 :root{
   --bg:#0b1220; --card:#151f2e; --raised:#1d2a3b; --ink:#f4f7fb; --muted:#b8c3d1;
-  --green:#22c55e; --green-ink:#052e16; --amber:#f59e0b; --red:#fb7185; --blue:#60a5fa; --violet:#a78bfa; --pink:#f472b6; --border:#2b3b50;
+  --green:#22c55e; --green-ink:#052e16; --amber:#f59e0b; --yellow:#f5dd0a; --red:#fb7185; --blue:#60a5fa; --violet:#a78bfa; --pink:#f472b6; --border:#2b3b50;
 }
 *{box-sizing:border-box; margin:0; padding:0; -webkit-tap-highlight-color:transparent;}
 body{min-height:100vh; font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif; background:radial-gradient(circle at 50% -20%,#223958 0,var(--bg) 43%); color:var(--ink);}
@@ -99,6 +99,17 @@ body.kiosk-active{overflow:hidden;}
 .auth-card .modal-err{color:var(--red);}
 .modal-field-label{display:block; color:var(--muted); font-size:13px; font-weight:650; margin:0 0 6px;}
 .modal-field-label ~ .modal-field-label{margin-top:14px;}
+/* infoModal()'s content for "which exact dates" (js/ui/report.js's showAbsenceDetail) — scrolls
+   internally past a couple of screenfuls of dates rather than growing the modal past the
+   viewport on a month with a lot of absences. */
+.absence-modal-body{max-height:52vh; overflow-y:auto; padding-right:4px;}
+.absence-section + .absence-section{margin-top:16px;}
+.absence-heading{font-size:13px; font-weight:700; margin-bottom:8px;}
+.absence-heading.full{color:var(--red);}
+.absence-heading.half{color:var(--yellow);}
+.absence-empty{color:var(--muted); font-size:13px;}
+.absence-list{list-style:none; display:flex; flex-direction:column; gap:6px;}
+.absence-list li{background:var(--raised); border-radius:9px; padding:8px 12px; font-size:14px; font-weight:650;}
 input:focus-visible{outline:2px solid var(--blue); outline-offset:1px; border-color:var(--blue);}
 .photo-thumb{width:44px; height:44px; object-fit:cover; border-radius:8px; cursor:pointer; background:#ddd;}
 input[type=text], input[type=email], input[type=password], input[type=month], input[type=date], input[type=time], input[type=number]{min-height:48px; padding:10px 12px; border:1px solid var(--border); border-radius:10px; background:#0e1725; color:var(--ink); font-size:16px; width:100%;}
@@ -120,29 +131,44 @@ input[type=time]::-webkit-calendar-picker-indicator, input[type=date]::-webkit-c
 #reportTable th, #reportTable td{padding:0; height:52px; border-bottom:1px solid var(--border); text-align:left;}
 #reportTable thead th{padding:10px 8px; color:var(--muted); font-size:10.5px; font-weight:700; text-transform:uppercase; letter-spacing:.03em; background:var(--card);}
 #reportTable .col-emp{position:sticky; left:0; z-index:2; background:var(--card); padding:0 14px; min-width:150px; border-right:1px solid var(--border);}
-#reportTable .col-days, #reportTable .col-total{position:sticky; z-index:2; background:var(--card); text-align:center;}
-#reportTable .col-days{right:92px; min-width:70px; border-left:1px solid var(--border);}
+#reportTable .col-days, #reportTable .col-absent, #reportTable .col-total{position:sticky; z-index:2; background:var(--card); text-align:center;}
+#reportTable .col-days{right:168px; min-width:70px; border-left:1px solid var(--border);}
+/* Absent = full absences + 0.5 per half day (see renderDetailCalendar()) — red like .daypill.off,
+   so a glance at this column and a glance at the calendar's red pills agree on what "absent"
+   means here. */
+#reportTable .col-absent{right:92px; min-width:76px; color:var(--red);}
+#reportTable .col-absent.clickable{cursor:pointer;}
+#reportTable .col-absent.clickable:hover{text-decoration:underline;}
 #reportTable .col-total{right:0; min-width:92px;}
-#reportTable td.col-days, #reportTable td.col-total{font-weight:700; font-size:14px;}
-#reportTable td.col-days span, #reportTable td.col-total span{display:block; font-size:10px; font-weight:650; color:var(--muted); text-transform:uppercase; margin-bottom:2px;}
+#reportTable td.col-days, #reportTable td.col-absent, #reportTable td.col-total{font-weight:700; font-size:14px;}
+#reportTable td.col-days span, #reportTable td.col-absent span, #reportTable td.col-total span{display:block; font-size:10px; font-weight:650; color:var(--muted); text-transform:uppercase; margin-bottom:2px;}
 /* flex-start, not center: this row can now carry a days-off/review-status line under the name
    (folded in from the old standalone Employee summary card), so the avatar aligns with the name
    at the top rather than the vertical midpoint of a now-taller, multi-line block. */
 .emp-name{display:flex; align-items:flex-start; gap:9px; font-weight:700;}
 .emp-avatar-img{width:26px; height:26px; border-radius:8px; object-fit:cover; background:var(--raised); flex:0 0 auto;}
-#reportTable td.day-cell{padding:9px 4px; text-align:center; width:44px;}
+#reportTable td.day-cell{padding:9px 3px; text-align:center; width:46px;}
 .daypill{
-  width:32px; height:32px; margin:0 auto; border-radius:9px; border:1.5px solid var(--border);
+  width:36px; height:32px; margin:0 auto; border-radius:9px; border:1.5px solid var(--border);
   display:flex; align-items:center; justify-content:center; font-size:11px; font-weight:700;
-  color:var(--muted); position:relative; transition:transform .1s;
+  color:var(--muted); position:relative; transition:transform .1s; font-variant-numeric:tabular-nums;
 }
+/* Showing hours worked (e.g. "3:55") instead of the bare day-of-month the pill used to carry —
+   the column header above already has the day number, so repeating it in every pill was
+   redundant once there was something more useful to show there (the owner's ask, 2026-09-12:
+   see the day's hours without clicking in). Smaller/tighter than the single-character day-number
+   size it replaces, since up to 5 characters ("10:30") need to fit the same pill width. */
+.daypill.has-hours{font-size:9px; letter-spacing:-.02em;}
 .daypill.full{background:rgba(34,197,94,.16); border-color:var(--green); color:#a7f3c0; cursor:pointer;}
 .daypill.review{background:rgba(245,158,11,.20); border-color:var(--amber); color:#fde3a7; cursor:pointer;}
 /* A single-session day with notably fewer hours than a full day (see isHalfDay() in
-   reportMath.js) — pink specifically because it's far from --green on the color wheel; an
-   earlier --teal choice sat close enough to green in both hue and brightness that the two
-   were hard to tell apart at a glance (the actual bug report that prompted this). */
-.daypill.half{background:rgba(244,114,182,.18); border-color:var(--pink); color:#fbcfe8; cursor:pointer;}
+   reportMath.js) — yellow per the shop owner's explicit ask (2026-09-12, live review), so it
+   reads at a glance as "partial attendance" distinct from both a full day (green) and an
+   absence (red, see .off below). --yellow sits at hue 54° specifically, ~16° from --amber's 38°
+   (the "needs review" color) and visibly more lemon/green than amber's orange — an initial
+   #eab308 pick (only 8° from amber) blended into it exactly the way --teal-vs-green and
+   --violet-vs-blue already taught this file to watch for once each. */
+.daypill.half{background:rgba(245,221,10,.20); border-color:var(--yellow); color:#fef9a7; cursor:pointer;}
 .daypill.full:hover, .daypill.half:hover, .daypill.review:hover, .daypill.holiday:hover{transform:translateY(-2px);}
 .daypill.auto::after{content:""; position:absolute; top:-3px; right:-3px; width:7px; height:7px; border-radius:50%; background:var(--blue); border:1.5px solid var(--card);}
 .daypill.full.flagged, .daypill.half.flagged{border-color:var(--amber);}
@@ -154,22 +180,25 @@ input[type=time]::-webkit-calendar-picker-indicator, input[type=date]::-webkit-c
    --pink, not --violet (tried first, reverted 2026-09-12): violet sits only ~40° from --blue on
    the color wheel, hard to tell apart from .auto's dot at 7px — the exact same "too close to an
    already-used color at a glance" issue .half's fill already hit once with teal-vs-green. Pink
-   sits far from both --blue and --amber, and reusing it here (already the .half pill's fill
-   color, just in dot form on a different pill type) doesn't clash since .half and .unbroken
-   are mutually exclusive — a day is never both. */
+   sits far from --blue, --amber, and (now that .half is yellow, not pink) --yellow too, so it
+   stays a safe, unambiguous choice here even though .half's own fill moved off pink. */
 .daypill.full.unbroken::after{content:""; position:absolute; top:-3px; right:-3px; width:7px; height:7px; border-radius:50%; background:var(--pink); border:1.5px solid var(--card);}
 /* Friday's standing paid holiday — filled and lettered like .full/.review, since it's a
    frequent, expected state worth reading at a glance rather than a quiet footnote. Clickable
    (cursor + hover-lift, see .daypill.holiday:hover above) now that it opens the docked-holiday
    toggle in the day-detail panel — .off below stays non-interactive, so it doesn't get either. */
 .daypill.holiday{background:rgba(167,139,250,.20); border-color:var(--violet); color:#ddd6fe; cursor:pointer;}
-/* An inferred day off (no explicit record backs this — see dayOffStatus() in reportMath.js)
-   gets a quieter, dashed treatment from the existing muted/border tokens rather than a second
-   new accent colour — still visibly different from a plain "nothing to show" blank cell, but
-   deliberately not as loud as a real data state. The calendar row's own "● N days off" line
-   under the employee's name (js/ui/report.js's renderDetailCalendar()) is the actually-prominent
-   surface for this, per the shop owner's "very clearly" ask. */
-.daypill.off{background:rgba(184,195,209,.10); border-style:dashed; border-color:var(--muted);}
+/* An inferred day off / absence (no explicit record backs this — see dayOffStatus() in
+   reportMath.js) — red per the shop owner's explicit ask (2026-09-12, live review), superseding
+   an earlier deliberately-muted treatment (this pill used to read as a quiet dashed neutral, with
+   the calendar row's own "● N days off" line under the employee's name carrying the emphasis
+   instead). Still dashed rather than a solid fill, so it stays visually distinct from a real
+   worked full/half day at a glance, not just by color. */
+/* Clickable (2026-09-12): an absence is sometimes actually a missed punch, so this pill opens
+   the same "add a missed punch" flow as any other admin correction — cursor + the same hover
+   lift every other actionable pill gets (see the .full/.half/.review/.holiday hover rule above). */
+.daypill.off{background:rgba(251,113,133,.14); border-style:dashed; border-color:var(--red); color:#fecdd3; cursor:pointer;}
+.daypill.off:hover{transform:translateY(-2px);}
 /* A paid holiday the owner has explicitly excluded from an employee's pay this month (js/ui/
    report.js's day-detail panel on the 'F' pill) — --red, already this app's "something's being
    taken away" colour (the missed-clock-in tile, delete buttons), reused here as a dot since this
@@ -229,11 +258,12 @@ h3{font-size:16px; margin-bottom:10px;}
 .report-period{display:flex; align-items:center; justify-content:center; gap:9px; padding:8px; margin-bottom:16px; background:var(--raised); border-radius:14px;}
 .month-arrow{display:grid; place-items:center; width:42px; height:42px; border:1px solid var(--border); border-radius:10px; background:var(--card); color:var(--ink); font-size:25px; cursor:pointer;}
 .report-period input[type=month]{width:200px; min-height:42px; padding:7px 9px; text-align:center; background:transparent; border:0; font-weight:750;}
-.report-summary{display:grid; grid-template-columns:repeat(3,1fr); gap:12px; margin-bottom:16px;}
+.report-summary{display:grid; grid-template-columns:repeat(5,1fr); gap:12px; margin-bottom:16px;}
 .metric{padding:16px; border:1px solid var(--border); border-radius:15px; background:var(--card);}
 .metric-label{display:block; color:var(--muted); font-size:13px; font-weight:650;}
 .metric-value{display:block; margin-top:7px; font-size:25px; letter-spacing:-.04em; font-weight:780; font-variant-numeric:tabular-nums;}
 .metric-value.good{color:#86efac}.metric-value.warn{color:#fbbf24}
+.metric-value.bad{color:var(--red)}.metric-value.half{color:var(--yellow)}
 .review-alert{display:flex; justify-content:space-between; align-items:center; gap:14px; margin-bottom:16px; padding:14px 16px; background:#3a2c13; border:1px solid #7a5914; border-radius:15px;}
 .review-alert strong{display:block; font-size:15px}.review-alert span{display:block; color:#f8d992; margin-top:3px; font-size:13px;}
 .review-alert.danger{background:#3a1414; border:1px solid #7a2020;}

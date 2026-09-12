@@ -68,6 +68,19 @@ function setEmployeeAvatar(id, path){
   saveEmployees(employees);
 }
 
+// Admin-entered backfill for a day that has no punch at all (an absence turning out to be a
+// missed punch, not a genuine no-show) — never has a photo, since nobody was at the camera.
+// Same "admin desktop edit" category as updateRecordTimes/setLunchPaid, not a kiosk punch.
+function addManualRecord(empId, date, clockInIso, clockOutIso){
+  const id = 'demo-rec-' + Date.now();
+  const nowIso = new Date().toISOString();
+  const data = {id, emp_id:empId, date, clock_in:clockInIso, clock_out:clockOutIso, in_photo:null, out_photo:null, created_at:nowIso};
+  const records = loadRecords();
+  records.push(data);
+  saveRecords(records);
+  return data;
+}
+
 async function clockIn(empId, blob){
   const id = 'demo-rec-' + Date.now();
   const path = `${empId}/${id}-in.jpg`;
@@ -206,7 +219,7 @@ async function getPhotoUrl(path){
 
 export const demoStore = {
   listEmployees, addEmployee, renameEmployee, setEmployeeActive, setEmployeeAvatar,
-  listOpenSessions, clockIn, clockOut,
+  listOpenSessions, clockIn, clockOut, addManualRecord,
   listRecordsForDate, listRecordsForRange, updateRecordTimes, setLunchPaid, deleteRecord,
   splitSessionForLunch,
   uploadPhoto, getPhotoUrl, getSyncStatus,

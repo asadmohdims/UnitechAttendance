@@ -43,6 +43,7 @@ js/
   camera.js                 -- captureFor(emp, mode, onCapture) — owns the camera modal
   salary.js                  -- pure salary math (proration, rate selection) — no store/DOM access
   lunch.js                    -- pure lunch auto-close predicate (cutoff time, shouldAutoCloseForLunch)
+  staleSession.js               -- pure end-of-day auto-close predicate — the lunch check's complement
   reportMath.js                -- pure per-day hours/review-flag/session-grouping math for the report
   rounding.js                   -- pure payroll rounding (grace-window rule) + recHoursRounded()
   store/
@@ -53,7 +54,8 @@ js/
   ui/
     shell.js                    -- tabs, nav, login/logout, admin lock/unlock, live clock
     kiosk.js                     -- home screen, punch flow, refreshAll(), punch confirmation
-    modal.js                     -- promptModal() — styled stand-in for prompt()
+    modal.js                     -- promptModal() (input dialog) + infoModal() (read-only, e.g. the
+                                    absence-dates popup) — both a styled stand-in for prompt()
     employees.js                  -- admin Employees tab
     records.js                     -- admin Daily records tab (same-day session grouping/dividers)
     report.js                       -- admin Monthly report: status-grid calendar + Excel export
@@ -102,16 +104,32 @@ whatever falls *between* sessions, never a separately-deducted amount.
   `LUNCH_CUTOFF_HOUR`/`MINUTE` is "Lunch", the rest render as "Break" (`lunchGapIndex()` in
   `js/reportMath.js`) — fixes a real bug where every gap rendered as a separate "Lunch". Purely a
   label — `dayHoursFromSessions()`'s hours math never cared what a gap was called.
-- **Auto-close safety net** (`js/lunch.js`): anyone still clocked in on a session that started
-  *today*, before `LUNCH_CUTOFF_HOUR`/`MINUTE` (`js/config.js`, placeholder pending the shop
-  owner), gets auto-closed at the cutoff. Client-side and opportunistic
-  (`checkLunchAutoClose()` in `js/ui/kiosk.js`, on load + the 5s poll tick), reusing the outbox
-  write path rather than a server-side cron.
+- **Two complementary auto-close safety nets**, both client-side and opportunistic
+  (`checkLunchAutoClose()`/`checkStaleSessionAutoClose()` in `js/ui/kiosk.js`, on load + the 5s
+  poll tick, reusing the outbox write path rather than a server-side cron — this app has no
+  backend compute at all, so neither can be a scheduled job; each just self-heals whenever the
+  kiosk next happens to be on):
+  - **Lunch** (`js/lunch.js`): anyone still clocked in on a session that started *today*, before
+    `LUNCH_CUTOFF_HOUR`/`MINUTE` (`js/config.js`, placeholder pending the shop owner), gets
+    closed at that exact cutoff time.
+  - **Forgotten end-of-day clock-out** (`js/staleSession.js`, added 2026-09-12): the lunch
+    check's own same-day guard is deliberate (so an offline kiosk waking up days later doesn't
+    slam shut unrelated old sessions using today's lunch time) — but it means a session left open
+    overnight would otherwise sit "currently clocked in" forever, turning the employee's next tap
+    into a bizarre clock-out instead of a fresh start. `shouldAutoCloseStaleSession()` is exactly
+    the complement: any open session that did *not* start today gets closed. Closed at **midnight**
+    (`endOfDayFor()`), not a guessed real punch time — there's no single "end of shift" hour the
+    way `LUNCH_CUTOFF_HOUR` works for lunch (shifts vary in length), and an obviously-artificial
+    timestamp (often a 12+ hour "shift") is a louder, harder-to-miss review signal than a
+    plausible-but-wrong one would be. Runs *before* `renderHome()`, so a stale session is already
+    gone from `state.openSessions` by the time the kiosk draws tiles — the next tap is a clean
+    "tap to start", never confused by the review flag (that only ever surfaces on the admin's
+    Report/Records screens, never on the kiosk itself).
 - **No new column needed to mark an auto-close**: a manual punch always has a real
-  camera-captured photo; an auto-close is the *only* way `clock_out` gets set while `out_photo`
-  stays `null` — that absence alone is the signal. `clockOut(recordId, blob, atIso)` only sets
-  `out_photo` when a real blob is passed, and takes an explicit `atIso` for the exact cutoff
-  instant.
+  camera-captured photo; either auto-close above is the *only* way `clock_out` gets set while
+  `out_photo` stays `null` — that absence alone is the signal. `clockOut(recordId, blob, atIso)`
+  only sets `out_photo` when a real blob is passed, and takes an explicit `atIso` for the exact
+  close instant (the lunch cutoff, or midnight for a stale session).
 - **`needsReview(sessions)`** (`js/reportMath.js`): a day's *last* session having no `out_photo`
   means either genuinely still open or auto-closed-and-never-resumed — both get the same "Review
   required" treatment (Report summary/banner, calendar pills, Daily records' "● Lunch not
@@ -169,17 +187,50 @@ the calendar looks.
   show as a paid holiday; demo mode has no `created_at` so this gate is always skipped there).
   `monthData()` computes `gapStatus[empId][day]` once per render so the calendar and payroll
   math can't disagree about a given day. Calendar: `.daypill.holiday` (violet, "F"),
-  `.daypill.off` (dashed, "A") — an actually-worked day always wins and shows `.full`/`.half`
-  regardless of weekday.
+  `.daypill.off` (dashed, **red**, "A") — an actually-worked day always wins and shows
+  `.full`/`.half` regardless of weekday. `.off` was originally a deliberately muted neutral (the
+  owner's own earlier ask, so the loud states stayed the actually-worked ones) — reversed
+  2026-09-12 on the owner's direct request during a live review; still dashed rather than solid,
+  so it stays distinct from a real worked day by shape too, not just color.
 - **Half day vs. unbroken full day**: a single session under `HALF_DAY_HOUR_THRESHOLD` (75% of
-  `STANDARD_DAY_HOURS`, 6 of 8) is `.half` (pink — an earlier teal was too close to full-day
-  green to tell apart at a glance); at or above that threshold it's `.full` with an `.unbroken`
-  corner dot (`isPossibleMissedLunch()`, pink not violet — violet was too close to the `.auto`
-  dot's blue) — a quiet nudge to check for a missed lunch punch, not a review flag, since punch
-  data alone can't tell a real no-break shift from a missed one. "Split for lunch"
-  (`js/ui/records.js`, `store.splitSessionForLunch`) turns such a session into two around a
-  chosen gap; the new gap defaults `lunch_paid: false` (matches every other path that creates a
-  gap — reaching for Split for lunch usually means a suspected missed punch, not a cosmetic fix).
+  `STANDARD_DAY_HOURS`, 6 of 8) is `.half` (**yellow**, hue 54° — picked 2026-09-12 on the
+  owner's ask; a first attempt at `#eab308` sat only ~8° from `--amber` and was nearly
+  indistinguishable, so it moved to `#f5dd0a`/hue 54° for a real gap from amber's 38°); at or
+  above that threshold it's `.full` with an `.unbroken` corner dot (`isPossibleMissedLunch()`,
+  pink) — a quiet nudge to check for a missed lunch punch, not a review flag, since punch data
+  alone can't tell a real no-break shift from a missed one. **"Split for lunch"** (`js/ui/
+  records.js`, `store.splitSessionForLunch`) is a single click, not a time picker (changed
+  2026-09-12 — picking exact times for a break nobody photographed added friction without real
+  accuracy): `defaultLunchWindow()` centers a 1-hour gap on `LUNCH_CUTOFF_HOUR`/`MINUTE` when
+  that window actually fits inside the session, falling back to the session's own midpoint
+  otherwise (e.g. a shift that never spans 1pm). The new gap still defaults `lunch_paid: false`
+  (reaching for Split for lunch usually means a suspected missed punch); either half's times are
+  still editable afterward via Edit if the guess needs nudging.
+- **Absent-days column + exact-dates detail** (added 2026-09-12, owner's ask): the Report
+  calendar's `Days`/`Total hrs` sticky columns gained a middle `Absent` column — full absences
+  (`gapStatus === 'off'`) plus **0.5 per half day**, computed inline in `renderDetailCalendar()`
+  from the same `gapStatus`/`isHalfDay()` classification the pills themselves use, so it can
+  never disagree with what's on screen. Clicking a non-zero value opens `infoModal()`
+  (`showAbsenceDetail()` in `js/ui/report.js`) listing the *actual dates* under "Full absent
+  days" and "Half days" separately — re-derived on click from the same classification, not a
+  second array threaded through from render time. Note: this column and "Days" (any day with
+  *any* punch, full or half) aren't complements of each other and won't sum to the days in the
+  month — a half day is legitimately counted as attended in one and half-missing in the other.
+  Both are individually correct; reconciling them into one self-checking figure was considered
+  and explicitly declined by the owner (2026-09-12) — actual pay is unaffected either way, since
+  `calcSalary()` is hours-based, never day-count-based.
+- **Backfilling a missed punch on an absence** (added 2026-09-12, owner's ask): an absence is
+  sometimes actually a missed punch (kiosk down, forgot to tap), not a real no-show. Clicking a
+  red `.off` pill opens `addMissedPunch()` (`js/ui/records.js`) — the same clock-in/out
+  time-picker as editing an existing record, but creates a brand-new one via the new
+  `store.addManualRecord(empId, date, clockInIso, clockOutIso)` (added to *both* stores; the
+  Supabase side is a plain `insert`, no outbox — same "admin desktop edit, not a kiosk punch"
+  category as `updateRecordTimes`/`setLunchPaid`). Deliberately **not** wired to a blank "no
+  record" pill (`gapStatus === null`): by `dayOffStatus()`'s own gates, that state can only ever
+  mean a future date or a day before the employee was hired — exactly the cases that should stay
+  locked, so there's nothing safe to backfill there. A backfilled record has no photo (nobody was
+  at the camera), so it's automatically caught by `needsReview()` too — an honest signal that
+  this entry wasn't camera-verified, not a bug.
 - **Docked-holiday pay override**: the owner can exclude one specific paid Friday from one
   employee's pay for a month they've taken more time off than the holiday allowance covers —
   narrower than an arbitrary day off (see Phase 3 below). Schema: `day_pay_overrides(emp_id,
@@ -253,11 +304,15 @@ groups a lunch-break day into `.rec-group` (one header with the combined total, 
 underneath) — a single-session day stays a plain `.rec-row`.
 
 **Report calendar**: a status-grid, not a plain number table — `Employee` pinned left,
-`Days`/`Total hrs` pinned right (`position:sticky`), only the day columns scroll. Each day is a
-`.daypill`; corner dots distinguish sub-states (`.auto` blue = informational, `.flagged` amber =
-needs review, `.unbroken`/half-day pink, `.docked` red = a deliberate pay deduction) from the
-base fill color, and `.calendar-legend` reuses the real `.daypill` markup at small scale so it
-can't visually drift from the actual cells. The calendar is the **primary, always-visible**
+`Days`/`Absent`/`Total hrs` pinned right (`position:sticky`), only the day columns scroll. Each
+day is a `.daypill`; base fill colors are `.full` green, `.half` yellow, `.off` (absent) red,
+`.holiday` violet — corner dots layer sub-states on top (`.auto` blue = informational,
+`.flagged` amber = needs review, `.unbroken` pink = possible missed lunch, `.docked` red = a
+deliberate pay deduction), and `.calendar-legend` reuses the real `.daypill` markup at small
+scale so it can't visually drift from the actual cells. A pill's own number shows **paid**
+hours (e.g. `3:55`), not the day-of-month the header row above it already carries — swapped
+2026-09-12 so the owner reads a day's hours without clicking in; letter pills (`F`/`A`) and the
+still-open `!` are unaffected. The calendar is the **primary, always-visible**
 surface on the Report tab (header → month picker → review-alert → calendar → summary metrics) —
 it used to be a collapsed-by-default card at the bottom, which cost a full scroll and an extra
 click on every visit. Clicking a day/pill opens an inline, actionable detail panel
@@ -318,6 +373,17 @@ unlocked on every admin tab.
   `records` schema or Report/Records' own (exact) hours figures — Salary-only, except the new
   `day_pay_overrides` table. **Phase 3 (arbitrary day-off deduction) is still undecided** — see
   that section.
+- ✅ **Report calendar clarity + backfill pass (2026-09-12, a live review session with the
+  owner)**: absent (red) and half-day (yellow) pills now read clearly apart from the amber
+  "needs review" color; pills show paid hours instead of a redundant day-of-month digit; a new
+  `Absent` column (full absences + 0.5/half day) is clickable for the exact dates; Split for
+  lunch is one click instead of a time picker; an absent pill can backfill a missed punch via the
+  new `store.addManualRecord()`. See "Holiday, day-off, and payroll model" and "Design system"
+  above for the mechanism, and the note there on why `Days` and `Absent` don't sum to the days
+  in the month by design (not a bug — considered and the reconciling alternative was declined).
+- ✅ **Forgotten end-of-day clock-out auto-close (2026-09-12)** — `js/staleSession.js`, see the
+  auto-close bullet in "Lunch-break support" above. Closes at midnight, flagged for review, never
+  a guessed pay-affecting time.
 
 ## Time & attendance backlog — overtime (the one item left)
 
@@ -348,9 +414,11 @@ build step" constraint above (it's testing, not bundling).
   session-grouping; `needsReview`; `dayHoursFromSessions`' lunch-paid merge across several
   chain shapes; `dayOffStatus`'s holiday/off/nothing-to-show classification incl. the
   Friday-before-hire regression; `isHalfDay`/`isPossibleMissedLunch`'s session-count-plus-hours
-  distinction; `lunchGapIndex`'s nearest-cutoff and tie-break logic), and `js/rounding.js`
+  distinction; `lunchGapIndex`'s nearest-cutoff and tie-break logic), `js/rounding.js`
   (both sides of the grace-window cutover, the exact 10:30 tie, hour/day rollovers,
-  `recHoursRounded`'s open-session/zero-length cases).
+  `recHoursRounded`'s open-session/zero-length cases), and `js/staleSession.js` (a session from
+  a prior day vs. earlier today vs. already closed; `endOfDayFor()`'s midnight rollover incl.
+  across a month boundary).
 - Deliberately **not** covered: `supabaseStore.js` (touches the real network/DB — verify via the
   console against the live project instead) and the UI layer (no headless-browser tool set up —
   new tooling, ask first). Both stores share the same pure `salary.js`/`reportMath.js`/

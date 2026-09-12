@@ -4,6 +4,7 @@ import { store } from '../store/index.js';
 import { applyAvatar } from '../avatars.js';
 import { captureFor } from '../camera.js';
 import { shouldAutoCloseForLunch, cutoffTimeFor } from '../lunch.js';
+import { shouldAutoCloseStaleSession, endOfDayFor } from '../staleSession.js';
 import { isMissedClockIn } from '../missedClockIn.js';
 
 // Reloads employees + open sessions from the store into shared state and re-renders the kiosk.
@@ -16,6 +17,7 @@ export async function refreshAll(){
     state.openSessions = await store.listOpenSessions();
     await refreshPunchedToday();
     await checkLunchAutoClose();
+    await checkStaleSessionAutoClose();
     renderHome();
   }catch(err){ toast('Load failed: ' + err.message); }
   busy(false);
@@ -59,6 +61,34 @@ async function checkLunchAutoClose(){
       // foreground action anyone's watching, so leave it in openSessions and retry in 5s
       // rather than surfacing a toast on every failed attempt.
       console.error('Lunch auto-close failed for record', rec.id, err);
+    }
+  }
+  return true;
+}
+
+// Safety net for someone who forgets to clock out at all — the complement of the lunch check
+// above (that one only ever closes a session that started TODAY, so a punch left open overnight
+// would otherwise sit "currently clocked in" forever, forcing the employee's next tap to read as
+// a bizarre clock-OUT instead of a fresh start). Closed at midnight, not a guessed real time
+// (see js/staleSession.js) — same no-photo signal as lunch auto-close, so it lands in the
+// owner's "needs review" list, not silently in someone's pay. Runs in the same places (on load,
+// every periodicCheck() tick) and BEFORE renderHome(), so by the time the kiosk actually draws
+// tiles a stale session is already gone from state.openSessions — the next morning's tap is a
+// normal "tap to start", never blocked or confused by the review flag (that only ever shows up
+// on the admin's Report/Records screens, never on the kiosk).
+async function checkStaleSessionAutoClose(){
+  const now = new Date();
+  const toClose = Object.values(state.openSessions).filter(r => shouldAutoCloseStaleSession(r, now));
+  if(!toClose.length) return false;
+  for(const rec of toClose){
+    try{
+      await store.clockOut(rec.id, null, endOfDayFor(rec).toISOString());
+      delete state.openSessions[rec.emp_id];
+    }catch(err){
+      // Same reasoning as checkLunchAutoClose's own catch: don't let one bad record block the
+      // rest of this tick, and don't surface a toast for a background safety net nobody's
+      // watching — just retry on the next tick.
+      console.error('Stale-session auto-close failed for record', rec.id, err);
     }
   }
   return true;
@@ -197,12 +227,13 @@ async function updateSyncIndicator(){
   el.className = 'sync-status' + (pending ? (stuck ? ' stuck' : ' pending') : '');
   el.textContent = pending ? (stuck ? `${pending} punch${pending > 1 ? 'es' : ''} pending — check Wi-Fi` : `Syncing ${pending}…`) : '';
 }
-// Same 5s cadence covers both checks — no separate timer for the lunch auto-close.
+// Same 5s cadence covers all of these checks — no separate timer for either auto-close.
 // refreshTileStates() (not renderHome()) runs unconditionally, since the missed-clock-in flag
 // can flip purely from time passing the cutoff hour — a full renderHome() rebuild here would
 // re-fetch every employee's avatar from the network on every tick (see refreshTileStates()).
 async function periodicCheck(){
   await checkLunchAutoClose();
+  await checkStaleSessionAutoClose();
   refreshTileStates();
   await updateSyncIndicator();
 }

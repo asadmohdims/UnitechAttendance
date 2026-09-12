@@ -53,6 +53,11 @@ export async function renderSalary(){
     // is credited its own 8h here even though nothing was punched; a docked one just isn't
     // credited (no separate subtraction needed — see calcSalary()'s own comment in js/salary.js).
     const creditedHours = paidFridays * STANDARD_DAY_HOURS;
+    // Manual overtime (js/ui/records.js's addOrEditOvertime), paid at the same hourly rate as
+    // regular hours (the owner's call, no multiplier) — already folded into payHours by
+    // monthData() (see js/ui/report.js), so `total` above already includes it. Recomputed here
+    // only so the breakdown below can call it out as its own line, not to add it a second time.
+    const overtimeTotal = md.overtimeHours[e.id].reduce((a, b) => a + b, 0);
     const hoursForPay = total + creditedHours;
     const standardHours = md.days * STANDARD_DAY_HOURS;
     const rate = pickRateForPeriod(rates[e.id], periodEnd);
@@ -86,10 +91,20 @@ export async function renderSalary(){
       else fridayNote = ` (+ ${paidFridays} paid Friday${paidFridays === 1 ? '' : 's'}, ${dockedCount} marked unpaid)`;
     }
 
-    // "Hours worked" needs to show the Friday credit explicitly once it's part of what Total pay
-    // actually multiplies — otherwise that row and the final formula would silently disagree.
-    const hoursWorkedNote = creditedHours
-      ? ` + ${fmtHours(creditedHours)} (${paidFridays} paid Friday${paidFridays === 1 ? '' : 's'}) = ${fmtHours(hoursForPay)}`
+    // `total` already has overtime folded in (via payHours, in monthData()) — the displayed
+    // base figure here needs it subtracted back out, or listing "+ 4:00 (overtime)" again on
+    // top of a total that already contains it would make the shown equation not add up (e.g.
+    // "12:00 + 4:00 (overtime) = 28:00" when 12:00 already included that 4:00).
+    const basePunchedHours = total - overtimeTotal;
+    // "Hours worked" needs to show every term that feeds into what Total pay actually
+    // multiplies (Friday credit, overtime) — otherwise this row and the final formula could
+    // silently disagree. Built from whichever terms are actually present this month, never
+    // assuming both are there.
+    const hoursWorkedParts = [];
+    if(creditedHours) hoursWorkedParts.push(`${fmtHours(creditedHours)} (${paidFridays} paid Friday${paidFridays === 1 ? '' : 's'})`);
+    if(overtimeTotal) hoursWorkedParts.push(`${fmtHours(overtimeTotal)} (overtime)`);
+    const hoursWorkedNote = hoursWorkedParts.length
+      ? ` + ${hoursWorkedParts.join(' + ')} = ${fmtHours(hoursForPay)}`
       : '';
 
     const detail = document.createElement('div');
@@ -107,7 +122,7 @@ export async function renderSalary(){
            <tr><th>Rate used</th><td>${fmtCurrency(rate.monthly_salary)}/month, effective from ${rate.effective_from}</td></tr>
            <tr><th>Hourly rate</th><td>${fmtCurrency(rate.monthly_salary)} ÷ ${fmtHours(standardHours)} hrs (this month's ${md.days} days × ${STANDARD_DAY_HOURS}h) = ${fmtRate(hourlyRate)}/hr</td></tr>
            <tr><th>Days worked (actual)</th><td>${daysWorked}${fridayNote}</td></tr>
-           <tr><th>Hours worked</th><td>${fmtHours(total)}${hoursWorkedNote}</td></tr>
+           <tr><th>Hours worked</th><td>${fmtHours(basePunchedHours)}${hoursWorkedNote}</td></tr>
            ${dockedCount ? `<tr><th>Docked</th><td>${dockedCount} Friday${dockedCount === 1 ? '' : 's'} not credited this month (−${fmtHours(dockedCount * STANDARD_DAY_HOURS)} vs. a paid Friday)</td></tr>` : ''}
            <tr class="calc-total"><th>Total pay</th><td>${fmtRate(hourlyRate)}/hr × ${fmtHours(hoursForPay)} hrs = ${fmtCurrency(calc.amount)}</td></tr>
          </table>`

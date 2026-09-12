@@ -6,6 +6,7 @@ const DEMO_RECORDS_KEY = 'attendance_demo_records';
 const DEMO_PHOTOS_KEY = 'attendance_demo_photo:';
 const DEMO_SALARY_KEY = 'attendance_demo_salary_rates';
 const DEMO_OVERRIDES_KEY = 'attendance_demo_day_overrides';
+const DEMO_OVERTIME_KEY = 'attendance_demo_overtime';
 const DEMO_PAYMENTS_KEY = 'attendance_demo_payments';
 const DEMO_PAYMENT_RESOLUTIONS_KEY = 'attendance_demo_payment_resolutions';
 
@@ -220,6 +221,28 @@ function setDayOverride(empId, date, paid){
   saveDayOverrides(rows);
 }
 
+function loadOvertime(){ return JSON.parse(localStorage.getItem(DEMO_OVERTIME_KEY) || '[]'); }
+function saveOvertime(rows){ localStorage.setItem(DEMO_OVERTIME_KEY, JSON.stringify(rows)); }
+
+function listOvertimeForRange(fromDate, toDate){
+  return loadOvertime().filter(o => o.date >= fromDate && o.date <= toDate);
+}
+
+// Manual overtime — a specific number of extra hours for one employee's specific day, paid at
+// the same hourly rate as regular hours. One row per (emp_id, date), upserted in place — same
+// shape as setDayOverride above.
+function setOvertimeHours(empId, date, hours){
+  const rows = loadOvertime();
+  const idx = rows.findIndex(r => r.emp_id === empId && r.date === date);
+  if(idx >= 0) rows[idx].hours = hours;
+  else rows.push({id:'demo-overtime-' + Date.now(), emp_id:empId, date, hours, created_at:new Date().toISOString()});
+  saveOvertime(rows);
+}
+
+function deleteOvertimeHours(empId, date){
+  saveOvertime(loadOvertime().filter(r => !(r.emp_id === empId && r.date === date)));
+}
+
 function loadPayments(){ return JSON.parse(localStorage.getItem(DEMO_PAYMENTS_KEY) || '[]'); }
 function savePayments(rows){ localStorage.setItem(DEMO_PAYMENTS_KEY, JSON.stringify(rows)); }
 
@@ -297,6 +320,7 @@ export const demoStore = {
   uploadPhoto, getPhotoUrl, getSyncStatus,
   listSalaryRates, setSalaryRate,
   listDayPayOverrides, setDayOverride,
+  listOvertimeForRange, setOvertimeHours, deleteOvertimeHours,
   addPayment, listPaymentsForRange, listPaymentsForEmployeeRange, updatePayment, deletePayment,
   listPaymentResolutions, setPaymentResolution
 };

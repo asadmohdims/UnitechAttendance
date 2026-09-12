@@ -347,6 +347,27 @@ async function setPaymentResolution(empId, date, resolved, note){
   if(error) throw error;
 }
 
+// Manual overtime: a specific number of extra hours added to one employee's specific day, paid
+// at the same hourly rate as regular hours — the owner's call, no multiplier. One row per
+// (emp_id, date), upserted on add/edit. Needs the `overtime_hours` table added (see
+// supabase-setup.sql).
+async function listOvertimeForRange(fromDate, toDate){
+  const {data, error} = await sb.from('overtime_hours').select('*').gte('date', fromDate).lte('date', toDate);
+  if(error) throw error;
+  return data;
+}
+
+async function setOvertimeHours(empId, date, hours){
+  const {error} = await sb.from('overtime_hours')
+    .upsert({emp_id:empId, date, hours}, {onConflict:'emp_id,date'});
+  if(error) throw error;
+}
+
+async function deleteOvertimeHours(empId, date){
+  const {error} = await sb.from('overtime_hours').delete().eq('emp_id', empId).eq('date', date);
+  if(error) throw error;
+}
+
 async function uploadPhoto(path, blob, {upsert = false} = {}){
   const {error} = await sb.storage.from('photos').upload(path, blob, {contentType:'image/jpeg', upsert});
   if(error) throw error;
@@ -445,6 +466,7 @@ export const supabaseStore = {
   uploadPhoto, getPhotoUrl, getSyncStatus,
   listSalaryRates, setSalaryRate,
   listDayPayOverrides, setDayOverride,
+  listOvertimeForRange, setOvertimeHours, deleteOvertimeHours,
   addPayment, listPaymentsForRange, listPaymentsForEmployeeRange, updatePayment, deletePayment,
   listPaymentResolutions, setPaymentResolution
 };

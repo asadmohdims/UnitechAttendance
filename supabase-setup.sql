@@ -138,3 +138,21 @@ create policy "authenticated full access" on payment_resolutions
 -- Employees tab, not self-service (see js/pin.js for the hash/verify functions).
 alter table employees add column if not exists pin_hash text;
 alter table employees add column if not exists pin_salt text;
+
+-- Manual overtime: lets the owner add a specific number of extra hours to an employee's
+-- specific day, paid at the same hourly rate as regular hours (no multiplier — the owner's
+-- call). One row per (emp_id, date), upserted on add/edit, deleted on remove — same shape as
+-- day_pay_overrides above.
+create table if not exists overtime_hours (
+  id uuid primary key default gen_random_uuid(),
+  emp_id uuid not null references employees(id) on delete cascade,
+  date date not null,
+  hours numeric not null check (hours > 0),
+  created_at timestamptz not null default now(),
+  unique (emp_id, date)
+);
+create index if not exists overtime_hours_emp_idx on overtime_hours(emp_id);
+
+alter table overtime_hours enable row level security;
+create policy "authenticated full access" on overtime_hours
+  for all to authenticated using (true) with check (true);

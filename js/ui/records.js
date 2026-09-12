@@ -111,6 +111,62 @@ function lunchDivider(gapSession, gapHours, auto, isLunch){
   return divider;
 }
 
+// Manual overtime: a specific number of extra hours the owner adds to one employee's specific
+// day, paid at the same hourly rate as regular hours (no multiplier — deliberately simpler than
+// the automatic daily/weekly-threshold overtime originally sketched in the backlog, which would
+// have needed a basis and multiplier nobody had actually decided on). One row per (emp_id,
+// date) — `existingHours` pre-fills the field so this doubles as both Add and Edit. Same
+// override-the-refresh shape as toggleLunchPaid/deleteRecordFlow above, so the Report calendar's
+// day-detail panel can reuse this exact flow instead of a second implementation.
+export async function addOrEditOvertime(empId, empName, date, existingHours, afterSave = renderRecords){
+  const result = await promptModal({
+    title: `${existingHours ? 'Edit' : 'Add'} overtime — ${empName}`,
+    fields: [{name:'hours', label:'Overtime hours', type:'number', value: existingHours || '', placeholder:'e.g. 2', min:0.25}]
+  });
+  if(!result) return;
+  const hours = Number(result.hours);
+  if(!hours || hours <= 0) return toast('Enter a valid number of hours.');
+  busy(true);
+  try{
+    await store.setOvertimeHours(empId, date, hours);
+    await afterSave();
+  }catch(err){ toast('Failed: ' + err.message); }
+  busy(false);
+}
+
+export async function removeOvertime(empId, date, afterSave = renderRecords){
+  busy(true);
+  try{
+    await store.deleteOvertimeHours(empId, date);
+    await afterSave();
+  }catch(err){ toast('Failed: ' + err.message); }
+  busy(false);
+}
+
+// The Add/Edit/Remove overtime controls for one employee's day — shared by both row shapes
+// below (a single-session day's own actions cluster, or a multi-session day's group header),
+// since overtime is a day-level fact that belongs once per employee-day, not once per session.
+function overtimeControls(emp, date, overtimeHours, afterSave){
+  const frag = document.createDocumentFragment();
+  if(!emp) return frag; // no employee to attribute this to (see editRecord's own emp guard)
+  if(overtimeHours){
+    const bEdit = document.createElement('button');
+    bEdit.className = 'btn small ghost'; bEdit.textContent = `OT ${fmtHours(overtimeHours)}`;
+    bEdit.title = 'Edit this day’s overtime hours';
+    bEdit.onclick = () => addOrEditOvertime(emp.id, emp.name, date, overtimeHours, afterSave);
+    const bRemove = document.createElement('button');
+    bRemove.className = 'btn small red'; bRemove.textContent = 'Remove OT';
+    bRemove.onclick = () => removeOvertime(emp.id, date, afterSave);
+    frag.append(bEdit, bRemove);
+  }else{
+    const bAdd = document.createElement('button');
+    bAdd.className = 'btn small ghost'; bAdd.textContent = '+ Overtime';
+    bAdd.onclick = () => addOrEditOvertime(emp.id, emp.name, date, null, afterSave);
+    frag.append(bAdd);
+  }
+  return frag;
+}
+
 // Same override-the-refresh shape as toggleLunchPaid() above, so the Report calendar's
 // day-detail panel can offer the identical delete-with-confirm flow instead of duplicating it.
 export async function deleteRecordFlow(r, emp, afterSave = renderRecords){
@@ -130,11 +186,15 @@ export async function deleteRecordFlow(r, emp, afterSave = renderRecords){
 
 // The punches + this-session's-own hours + edit/delete actions — the part every session has,
 // whether it's rendered as a lone `.rec-row` or as one sub-row inside a multi-session `.rec-group`.
-function sessionContent(r, emp){
+// `overtimeHours` is only ever passed by singleSessionRow (where this one session IS the whole
+// day) — multiSessionGroup's own per-session calls omit it, since overtime is a day-level fact
+// shown once in that group's header, not repeated on every sub-session row.
+function sessionContent(r, emp, overtimeHours){
   const punches = document.createElement('div'); punches.className = 'rec-punches';
   punches.append(punchCell('In', r.clock_in, r.in_photo), punchCell('Out', r.clock_out, r.out_photo));
 
-  const hours = hoursStat(recHours(r), recHoursRounded(r));
+  const paidHours = recHoursRounded(r);
+  const hours = hoursStat(recHours(r), paidHours === null ? (overtimeHours || null) : paidHours + (overtimeHours || 0));
 
   const actions = document.createElement('div'); actions.className = 'rec-actions';
   const bEdit = document.createElement('button'); bEdit.className = 'btn small ghost'; bEdit.textContent = 'Edit'; bEdit.onclick = () => editRecord(r, emp);
@@ -146,7 +206,7 @@ function sessionContent(r, emp){
 }
 
 // A normal, single-session day — unchanged from before: one full-width row, avatar and all.
-function singleSessionRow(r, emp){
+function singleSessionRow(r, emp, overtimeHours){
   const row = document.createElement('div');
   row.className = 'rec-row';
 
@@ -159,7 +219,7 @@ function singleSessionRow(r, emp){
   who.appendChild(name);
   appendBadge(who, [r]);
 
-  const {punches, hours, actions} = sessionContent(r, emp);
+  const {punches, hours, actions} = sessionContent(r, emp, overtimeHours);
   // Only offered on a closed single session — this is how a genuine "worked straight through,
   // no break" day (currently a .half pill in Report, see reportMath.js's isHalfDay) gets turned
   // into the normal two-session shape everywhere else already reads as a full day.
@@ -170,6 +230,7 @@ function singleSessionRow(r, emp){
     bSplit.onclick = () => splitForLunch(r, emp);
     actions.appendChild(bSplit);
   }
+  actions.append(overtimeControls(emp, r.date, overtimeHours, renderRecords));
   row.append(avatar, who, punches, hours, actions);
   return row;
 }
@@ -224,7 +285,7 @@ export async function splitForLunch(r, emp, afterSave = renderRecords){
 // two same-weight rows and a lunch gap in between, with the total left as mental arithmetic.
 // Individual sessions nest underneath, still showing their own exact times/hours (the audit
 // trail), with the lunch toggle between them.
-function multiSessionGroup(sessions, emp){
+function multiSessionGroup(sessions, emp, overtimeHours){
   const group = document.createElement('div'); group.className = 'rec-group';
 
   const header = document.createElement('div'); header.className = 'rec-group-header';
@@ -235,8 +296,14 @@ function multiSessionGroup(sessions, emp){
   const name = document.createElement('div'); name.className = 'report-name'; name.textContent = emp ? emp.name : '?';
   who.appendChild(name);
   appendBadge(who, sessions);
-  const dayTotal = hoursStat(dayHoursFromSessions(sessions, recHours).total, dayHoursFromSessions(sessions, recHoursRounded).total, true);
-  header.append(avatar, who, dayTotal);
+  const rawPaidTotal = dayHoursFromSessions(sessions, recHoursRounded).total;
+  const paidTotal = rawPaidTotal === null ? (overtimeHours || null) : rawPaidTotal + (overtimeHours || 0);
+  const dayTotal = hoursStat(dayHoursFromSessions(sessions, recHours).total, paidTotal, true);
+  // Overtime is a day-level fact (like the total itself), not per-session — sits beside the
+  // total in the header rather than repeated on every session row below.
+  const totalWrap = document.createElement('div'); totalWrap.className = 'row';
+  totalWrap.append(dayTotal, overtimeControls(emp, sessions[0].date, overtimeHours, renderRecords));
+  header.append(avatar, who, totalWrap);
   group.appendChild(header);
 
   const sessionsWrap = document.createElement('div'); sessionsWrap.className = 'rec-group-sessions';
@@ -268,6 +335,13 @@ export async function renderRecords(){
     busy(false);
     return toast('Load failed: ' + err.message);
   }
+  // Best-effort: a fresh environment that hasn't run the overtime_hours migration yet (or a
+  // transient offline read) shouldn't break the rest of the day's records — same fail-soft
+  // spirit as day_pay_overrides elsewhere in this app.
+  let overtimeRows = [];
+  try{ overtimeRows = await store.listOvertimeForRange(recDate.value, recDate.value); }catch(err){ /* see comment above */ }
+  const overtimeByEmp = {};
+  overtimeRows.forEach(o => { overtimeByEmp[o.emp_id] = Number(o.hours); });
   busy(false);
   $('recEmpty').style.display = records.length ? 'none' : '';
   $('recCountLabel').textContent = records.length ? `${records.length} ${records.length === 1 ? 'entry' : 'entries'}` : '';
@@ -282,7 +356,8 @@ export async function renderRecords(){
 
   byEmp.forEach((sessions, empId) => {
     const emp = state.employees.find(e => e.id === empId);
-    list.appendChild(sessions.length > 1 ? multiSessionGroup(sessions, emp) : singleSessionRow(sessions[0], emp));
+    const overtimeHours = overtimeByEmp[empId];
+    list.appendChild(sessions.length > 1 ? multiSessionGroup(sessions, emp, overtimeHours) : singleSessionRow(sessions[0], emp, overtimeHours));
   });
 }
 

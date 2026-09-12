@@ -3,7 +3,7 @@ import { state } from '../state.js';
 import { store } from '../store/index.js';
 import { applyAvatar } from '../avatars.js';
 import { switchTab } from './shell.js';
-import { setRecordsDate, editRecord, deleteRecordFlow, toggleLunchPaid, splitForLunch, addMissedPunch } from './records.js';
+import { setRecordsDate, editRecord, deleteRecordFlow, toggleLunchPaid, splitForLunch, addMissedPunch, addOrEditOvertime, removeOvertime } from './records.js';
 import { infoModal } from './modal.js';
 import { buildDayHours, groupByEmployeeDay, needsReview, dayHoursFromSessions, dayOffStatus, isHalfDay, lunchGapIndex, isPossibleMissedLunch } from '../reportMath.js';
 import { recHoursRounded, roundToQuarterHour, wasRounded } from '../rounding.js';
@@ -63,6 +63,27 @@ export async function monthData(ym){ // ym: 'YYYY-MM'
   try{ overrides = await store.listDayPayOverrides(`${ym}-01`, `${ym}-${pad(days)}`); }catch(err){ /* see comment above */ }
   const dockedSet = new Set(overrides.filter(o => o.paid === false).map(o => `${o.emp_id}:${o.date}`));
 
+  // Manual overtime, fetched the same fail-soft way as overrides above — a missing
+  // overtime_hours migration just means no overtime shows up yet, not a broken Report tab.
+  let overtimeRows = [];
+  try{ overtimeRows = await store.listOvertimeForRange(`${ym}-01`, `${ym}-${pad(days)}`); }catch(err){ /* see comment above */ }
+  const overtimeHours = {};
+  empIds.forEach(id => { overtimeHours[id] = Array(days+1).fill(0); });
+  overtimeRows.forEach(o => {
+    const d = Number(o.date.slice(8,10));
+    if(overtimeHours[o.emp_id]) overtimeHours[o.emp_id][d] = Number(o.hours);
+  });
+  // Overtime is paid time, same as a punch — folded into payHours (what the pill and Salary
+  // both read) for any day that already has real hours. The exact `hours` array is left
+  // untouched — it stays the camera-verified audit trail and still drives half/full/unbroken
+  // classification, which is about attendance, not pay. A day with no punches at all keeps its
+  // holiday/absent letter regardless of overtime — see that day's own detail panel instead.
+  empIds.forEach(id => {
+    for(let d = 1; d <= days; d++){
+      if(overtimeHours[id][d] && payHours[id][d] !== null) payHours[id][d] += overtimeHours[id][d];
+    }
+  });
+
   // reviewFlags is broader than openFlags: it also catches a day whose last session was
   // auto-closed for lunch and never got a follow-up punch — data that looks complete (real
   // hours, no open session) but hasn't actually been confirmed by the employee coming back.
@@ -101,7 +122,7 @@ export async function monthData(ym){ // ym: 'YYYY-MM'
     }
   });
 
-  return {ym, days, emps, hours, payHours, openFlags, reviewFlags, gapStatus, dockedDays, sessionsByDay, recs, reviewRecords, hasData: recs.length > 0};
+  return {ym, days, emps, hours, payHours, openFlags, reviewFlags, gapStatus, dockedDays, overtimeHours, sessionsByDay, recs, reviewRecords, hasData: recs.length > 0};
 }
 
 // Sums one employee's per-day hours array (as produced by monthData) into a period total.
@@ -122,12 +143,17 @@ export async function renderReport(){
   busy(false);
   if(!md) return;
   lastReportData = md;
-  const {ym, days, emps, hours, payHours, openFlags, reviewFlags, gapStatus, dockedDays, sessionsByDay, reviewRecords, hasData} = md;
+  const {ym, days, emps, hours, payHours, openFlags, reviewFlags, gapStatus, dockedDays, overtimeHours, sessionsByDay, reviewRecords, hasData} = md;
   $('repEmpty').style.display = hasData ? 'none' : '';
   $('reportMonthLabel').textContent = new Date(`${ym}-01T12:00:00`).toLocaleDateString('en-IN', {month:'long', year:'numeric'});
   let totalHours = 0, attendanceDays = 0, absentTotal = 0, halfDayTotal = 0;
   const employeeStats = emps.map(e => {
-    const {total, daysWorked, hasOpen} = summarizeHours(hours[e.id], days, reviewFlags[e.id]);
+    const {total: exactTotal, daysWorked, hasOpen} = summarizeHours(hours[e.id], days, reviewFlags[e.id]);
+    // "Total hrs" (this column and the Recorded-hours metric below) is exact punch time same
+    // as always, plus this month's overtime added on top — the same "add it on top of whatever
+    // basis was already there" treatment the pill got above, just against the exact-hours basis
+    // this particular total already used rather than switching it to payHours.
+    const total = exactTotal + overtimeHours[e.id].reduce((a, b) => a + b, 0);
     totalHours += total;
     attendanceDays += daysWorked;
     const daysOff = gapStatus[e.id].filter(s => s === 'off').length;
@@ -157,7 +183,7 @@ export async function renderReport(){
     $('reviewTitle').textContent = `${reviewRecords.length} attendance ${reviewRecords.length === 1 ? 'entry needs' : 'entries need'} review`;
     $('reviewText').textContent = parts.join('; ') + '.';
   }
-  renderDetailCalendar({ym, days, emps, hours, payHours, openFlags, reviewFlags, gapStatus, dockedDays, sessionsByDay, employeeStats});
+  renderDetailCalendar({ym, days, emps, hours, payHours, openFlags, reviewFlags, gapStatus, dockedDays, overtimeHours, sessionsByDay, employeeStats});
 }
 
 // Each day is a status pill, not a number — a day can have more than one session now (a
@@ -165,7 +191,7 @@ export async function renderReport(){
 // pinned (position:sticky) so they're never the ones scrolled out of view; the day columns
 // are what scrolls. Clicking a day expands an inline row with that day's actual session
 // times and lunch gap, reusing the same in/out/lunch vocabulary as the Daily records tab.
-function renderDetailCalendar({ym, days, emps, hours, payHours, openFlags, reviewFlags, gapStatus, dockedDays, sessionsByDay, employeeStats}){
+function renderDetailCalendar({ym, days, emps, hours, payHours, openFlags, reviewFlags, gapStatus, dockedDays, overtimeHours, sessionsByDay, employeeStats}){
   let h = '<tr><th class="col-emp">Employee</th>';
   for(let d=1; d<=days; d++) h += `<th>${d}</th>`;
   h += '<th class="col-days">Days</th><th class="col-absent">Absent</th><th class="col-total">Total hrs</th></tr>';
@@ -252,12 +278,12 @@ function renderDetailCalendar({ym, days, emps, hours, payHours, openFlags, revie
       else if(hasHours) pill.title = `Day ${d} — ${fmtHours(payHours[e.id][d])} paid, click for session detail`;
       else if(gap === 'off') pill.title = 'Absent — click to add a missed punch';
       if(sessions){
-        pill.onclick = () => toggleDayDetail(tr, sessions, e, d, ym);
+        pill.onclick = () => toggleDayDetail(tr, sessions, e, d, ym, undefined, overtimeHours[e.id][d]);
       }else if(gap === 'holiday'){
         // No punches to show for a holiday day, but it's still the one place a per-day
         // correction belongs (same "click the pill" convention as every other day type) —
         // toggleDayDetail dispatches to renderHolidayDetail when there's no sessions array.
-        pill.onclick = () => toggleDayDetail(tr, null, e, d, ym, docked);
+        pill.onclick = () => toggleDayDetail(tr, null, e, d, ym, docked, overtimeHours[e.id][d]);
       }else if(gap === 'off'){
         // The owner's ask (2026-09-12): an absence is sometimes actually a missed punch (kiosk
         // down, forgot to tap), not a real no-show — let the admin backfill it right from the
@@ -312,9 +338,9 @@ function renderDetailCalendar({ym, days, emps, hours, payHours, openFlags, revie
     const sessions = (sessionsByDay[empId] || {})[day];
     const emp = employeeStats.find(s => s.employee.id === empId)?.employee;
     if(matchTr && emp && sessions && sessions.length){
-      renderDayDetail(matchTr._detailRow, matchTr._detailInner, sessions, emp, day);
+      renderDayDetail(matchTr._detailRow, matchTr._detailInner, sessions, emp, day, overtimeHours[empId][day]);
     }else if(matchTr && emp && gapStatus[empId][day] === 'holiday'){
-      renderHolidayDetail(matchTr._detailRow, matchTr._detailInner, emp, ym, day, dockedDays[empId][day]);
+      renderHolidayDetail(matchTr._detailRow, matchTr._detailInner, emp, ym, day, dockedDays[empId][day], overtimeHours[empId][day]);
     }else{
       openDetailKey = null;
     }
@@ -369,7 +395,7 @@ function paidNote(iso){
 // (re)builds it. emp/day identify this panel for openDetailKey so a save made inside it can find
 // its way back open after the table rebuilds. `sessions` is null for a no-punch holiday day —
 // there's nothing to show but the day itself, so it renders through renderHolidayDetail instead.
-function toggleDayDetail(tr, sessions, emp, day, ym, docked){
+function toggleDayDetail(tr, sessions, emp, day, ym, docked, overtimeHoursForDay){
   const row = tr._detailRow;
   const key = `${emp.id}:${day}`;
   if(row.classList.contains('open') && row._key === key){
@@ -378,8 +404,8 @@ function toggleDayDetail(tr, sessions, emp, day, ym, docked){
     return;
   }
   openDetailKey = key;
-  if(sessions) renderDayDetail(row, tr._detailInner, sessions, emp, day);
-  else renderHolidayDetail(row, tr._detailInner, emp, ym, day, docked);
+  if(sessions) renderDayDetail(row, tr._detailInner, sessions, emp, day, overtimeHoursForDay);
+  else renderHolidayDetail(row, tr._detailInner, emp, ym, day, docked, overtimeHoursForDay);
 }
 
 // The day-detail panel for a paid-holiday Friday with no punches at all — there's no session to
@@ -387,7 +413,7 @@ function toggleDayDetail(tr, sessions, emp, day, ym, docked){
 // pay for a month they've taken more time off than the standing holiday allowance covers. Same
 // reversible, no-confirm toggle shape as the lunch-paid chip above (a mistaken tap costs one
 // more tap, not a dialog) — store.setDayOverride() is the write path, mirroring toggleLunchPaid.
-function renderHolidayDetail(row, inner, emp, ym, day, docked){
+function renderHolidayDetail(row, inner, emp, ym, day, docked, overtimeHoursForDay){
   inner.innerHTML = '';
   const dateOnly = `${ym}-${pad(day)}`;
   const dateLabel = document.createElement('span'); dateLabel.className = 'detail-date';
@@ -404,9 +430,36 @@ function renderHolidayDetail(row, inner, emp, ym, day, docked){
   toggle.onclick = () => toggleHolidayPay(emp.id, dateOnly, docked);
   line.append(chip, toggle);
   inner.appendChild(line);
+  // An employee could still pick up overtime on their paid day off — same Add/Edit/Remove flow
+  // as the worked-day panel below, reusing the exact store-backed functions Daily records uses.
+  inner.appendChild(overtimeDetailRow(emp, dateOnly, overtimeHoursForDay, renderReport));
 
   row._key = `${emp.id}:${day}`;
   row.classList.add('open');
+}
+
+// The Add/Edit/Remove overtime row shared by both day-detail panels — same chip+button
+// convention as the lunch-gap row in renderDayDetail() below, calling the same store-backed
+// functions Daily records uses (js/ui/records.js) rather than a second implementation.
+function overtimeDetailRow(emp, dateOnly, overtimeHoursForDay, afterSave){
+  const otRow = document.createElement('div'); otRow.className = 'detail-row-line';
+  if(overtimeHoursForDay){
+    const chip = document.createElement('span'); chip.className = 'chip lunch';
+    chip.textContent = `Overtime ${fmtHours(overtimeHoursForDay)}`;
+    const bEdit = document.createElement('button');
+    bEdit.className = 'btn small ghost'; bEdit.textContent = 'Edit';
+    bEdit.onclick = () => addOrEditOvertime(emp.id, emp.name, dateOnly, overtimeHoursForDay, afterSave);
+    const bRemove = document.createElement('button');
+    bRemove.className = 'btn small red'; bRemove.textContent = 'Remove';
+    bRemove.onclick = () => removeOvertime(emp.id, dateOnly, afterSave);
+    otRow.append(chip, bEdit, bRemove);
+  }else{
+    const bAdd = document.createElement('button');
+    bAdd.className = 'btn small ghost'; bAdd.textContent = '+ Add overtime';
+    bAdd.onclick = () => addOrEditOvertime(emp.id, emp.name, dateOnly, null, afterSave);
+    otRow.appendChild(bAdd);
+  }
+  return otRow;
 }
 
 async function toggleHolidayPay(empId, dateOnly, currentlyDocked){
@@ -427,7 +480,7 @@ async function toggleHolidayPay(empId, dateOnly, currentlyDocked){
 // renderReport() (recomputes the whole month, not just this row) rather than Daily records'
 // default of re-rendering itself, since an edit here can change another day's totals too (e.g.
 // a lunch-paid toggle) and this panel doesn't have its own copy of that data to patch in place.
-function renderDayDetail(row, inner, sessions, emp, day){
+function renderDayDetail(row, inner, sessions, emp, day, overtimeHoursForDay){
   const afterSave = renderReport;
   inner.innerHTML = '';
   const dateLabel = document.createElement('span'); dateLabel.className = 'detail-date';
@@ -490,8 +543,12 @@ function renderDayDetail(row, inner, sessions, emp, day){
     inner.appendChild(sessionRow);
   });
 
+  // A day-level fact, not tied to any one session — its own row after the sessions rather than
+  // living inside a specific sessionRow's own actions cluster.
+  inner.appendChild(overtimeDetailRow(emp, sessions[0].date, overtimeHoursForDay, afterSave));
+
   const totalHours = dayHoursFromSessions(sessions, recHours).total || 0;
-  const totalPaidHours = dayHoursFromSessions(sessions, recHoursRounded).total || 0;
+  const totalPaidHours = (dayHoursFromSessions(sessions, recHoursRounded).total || 0) + (overtimeHoursForDay || 0);
   const stillOpen = sessions.some(s => !s.clock_out);
   // A distinct footer row, separated by a divider line: the total is passive information, the
   // jump button is the one action that leaves this panel for something it can't do (viewing the

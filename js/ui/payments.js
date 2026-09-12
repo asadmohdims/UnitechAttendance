@@ -25,19 +25,17 @@ function monthRange(yearMonth){
   return {fromDate: `${yearMonth}-01`, toDate: `${yearMonth}-${pad(days)}`};
 }
 
-// Two label sets for the same four reconciliation statuses — the kiosk talks to the employee
-// about "the owner"; admin talks to the owner about "you" vs. the employee. Same colors/glyphs
-// either way so the underlying status always reads the same at a glance.
+// Admin-only — reconciliation status (matched/mismatch/awaiting) is never shown to an employee
+// on the kiosk (the owner's call: an employee logging their own payment shouldn't be shown
+// whether it agrees with the owner's side; that's the owner's reconciliation to work through,
+// not something to surface mid-shift on a shared tablet).
 const CHIP_CLASS = {matched:'matched', 'awaiting-owner':'awaiting', 'awaiting-employee':'awaiting', mismatch:'mismatch'};
 const CHIP_GLYPH = {matched:'✓', 'awaiting-owner':'…', 'awaiting-employee':'…', mismatch:'!'};
-const CHIP_LABEL = {
-  kiosk: {matched:'Matches owner’s record', 'awaiting-owner':'Waiting on owner', 'awaiting-employee':'Awaiting your entry', mismatch:'Doesn’t match'},
-  admin: {matched:'Matched', 'awaiting-owner':'Awaiting you', 'awaiting-employee':'Awaiting employee', mismatch:'Mismatch'}
-};
-function chipFor(status, context){
+const CHIP_LABEL = {matched:'Matched', 'awaiting-owner':'Awaiting you', 'awaiting-employee':'Awaiting employee', mismatch:'Mismatch'};
+function chipFor(status){
   const span = document.createElement('span');
   span.className = 'status-chip ' + CHIP_CLASS[status];
-  span.textContent = `${CHIP_GLYPH[status]} ${CHIP_LABEL[context][status]}`;
+  span.textContent = `${CHIP_GLYPH[status]} ${CHIP_LABEL[status]}`;
   return span;
 }
 function resolvedChip(){
@@ -210,24 +208,24 @@ async function renderMonthLanding(){
   list.innerHTML = '';
   $('pmEmpty').style.display = groups.length ? 'none' : '';
   groups.forEach(g => {
-    const r = reconcileDay(g.payments);
     const row = document.createElement('div');
     row.className = 'recent-row';
     const left = document.createElement('div');
     const dateEl = document.createElement('div'); dateEl.className = 'recent-date'; dateEl.textContent = fmtDateLong(g.date);
-    // Only ever shows what THIS employee logged, never the owner's amount — the owner's
-    // number isn't this screen's business, even when the two sides disagree. The chip alone
-    // (matched / awaiting / doesn't match) carries the reconciliation signal. Reconciliation
-    // itself correctly sums same-day entries (see reconcileDay()), but the display must not
-    // silently collapse two real, separately-logged entries into one number — list each one so
-    // logging twice in a day is visibly two entries, not a mysteriously bigger total.
+    // Only ever shows what THIS employee logged, never the owner's amount or whether it
+    // matches — reconciliation is the owner's job to work through on the admin side, not
+    // something to surface to an employee mid-shift on a shared tablet (the owner's explicit
+    // call). Reconciliation itself correctly sums same-day entries (see reconcileDay(), used
+    // only on the admin side now), but this display must not silently collapse two real,
+    // separately-logged entries into one number — list each one so logging twice in a day is
+    // visibly two entries, not a mysteriously bigger total.
     const ownEntries = g.payments.filter(p => p.entered_by === 'employee');
     const metaEl = document.createElement('div'); metaEl.className = 'recent-meta';
     metaEl.textContent = ownEntries.length
       ? ownEntries.map(p => fmtRupee(p.amount)).join(' + ')
       : 'Not yet logged by you';
     left.append(dateEl, metaEl);
-    row.append(left, chipFor(r.status, 'kiosk'));
+    row.append(left);
     list.appendChild(row);
   });
 }
@@ -468,7 +466,7 @@ function renderEmpDateList(container, days, emp, resolvedSet){
     amountEl.textContent = r.status === 'mismatch'
       ? `${fmtRupee(r.employeeTotal)} vs ${fmtRupee(r.ownerTotal)}`
       : fmtRupee(r.employeeTotal || r.ownerTotal);
-    amountWrap.append(amountEl, resolved ? resolvedChip() : chipFor(r.status, 'admin'));
+    amountWrap.append(amountEl, resolved ? resolvedChip() : chipFor(r.status));
 
     const chevron = document.createElement('div'); chevron.className = 'pay-chevron'; chevron.textContent = '›';
 

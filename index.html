@@ -89,7 +89,7 @@
       <div>
         <p class="muted">Attendance overview</p>
         <h2>Monthly attendance</h2>
-        <p class="muted">See the important totals and exceptions first.</p>
+        <p class="muted">Review and correct this month's attendance directly in the calendar below.</p>
       </div>
       <button class="btn small" id="btnExport">Download Excel</button>
     </div>
@@ -98,22 +98,13 @@
       <input type="month" id="repMonth" aria-label="Report month">
       <button class="month-arrow" id="btnNextMonth" aria-label="Next month">›</button>
     </div>
-    <div class="report-summary">
-      <div class="metric"><span class="metric-label">Recorded hours</span><strong class="metric-value" id="metricHours">—</strong></div>
-      <div class="metric"><span class="metric-label">Attendance days</span><strong class="metric-value good" id="metricDays">—</strong></div>
-      <div class="metric"><span class="metric-label">Needs review</span><strong class="metric-value warn" id="metricReview">—</strong></div>
-    </div>
     <div class="review-alert" id="reviewAlert" style="display:none">
       <div><strong id="reviewTitle"></strong><span id="reviewText"></span></div>
       <button class="btn small" id="btnReviewRecords">Review entries</button>
     </div>
-    <div class="card report-list">
-      <div class="report-list-head"><h3>Employee summary</h3><span id="reportMonthLabel"></span></div>
-      <div id="reportEmployeeList"></div>
+    <div class="card" id="reportDetail">
+      <div class="report-list-head"><h3>Attendance calendar</h3><span id="reportMonthLabel"></span></div>
       <p class="muted" id="repEmpty" style="display:none; padding:0 17px 17px">No completed attendance for this month.</p>
-    </div>
-    <button class="report-detail-toggle" id="btnReportDetail">View detailed calendar</button>
-    <div class="card" id="reportDetail" style="display:none">
       <div class="grid-scroll">
         <table id="reportTable"><thead></thead><tbody></tbody></table>
       </div>
@@ -127,6 +118,11 @@
         <div class="legend-item"><span class="daypill off" aria-hidden="true">A</span>Absent / day off</div>
         <div class="legend-item"><span class="daypill" aria-hidden="true"></span>No record</div>
       </div>
+    </div>
+    <div class="report-summary">
+      <div class="metric"><span class="metric-label">Recorded hours</span><strong class="metric-value" id="metricHours">—</strong></div>
+      <div class="metric"><span class="metric-label">Attendance days</span><strong class="metric-value good" id="metricDays">—</strong></div>
+      <div class="metric"><span class="metric-label">Needs review</span><strong class="metric-value warn" id="metricReview">—</strong></div>
     </div>
   </section>
 

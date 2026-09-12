@@ -409,6 +409,61 @@ correctly update the day's/month's totals and the calendar pill color, and the p
 save and stays open on the same day. Not a schema change, not a payroll-math change — existing
 `node --test js/` suite (79 tests) still passes unmodified.
 
+**Panel alignment + jump-button prominence fix (2026-09-12).** Every chip and button for the
+whole day used to be siblings in one flex-wrap container, so a 2-session day wrapped wherever it
+ran out of width rather than at a session boundary — real feedback from a live screenshot, not
+hypothetical. Now each session (and the lunch/break gap before it) is its own `.detail-row-line`,
+and within a session row, Edit/Delete/Split are grouped into a non-wrapping `.detail-actions`
+cluster (same punches/actions split `js/ui/records.js`'s `sessionContent()` already uses) — a
+narrow panel now wraps a whole cluster onto its own line instead of stranding a single button.
+The Worked/Paid total and the jump-to-Daily-records button moved into their own `.detail-footer`
+row (a border-top divider sets it apart as the summary/exit row), and the jump button itself
+changed from a bare 32px icon-only square to a labeled, blue-accented button ("Open in Daily
+records →") — it was easy to miss as a plain icon at the tail of a wrapped chip line before.
+
+**Monthly report restructured around the calendar as the primary surface (2026-09-12).** Once
+the day-detail panel became actionable (Phase 2 above), the page layout still treated the
+calendar like optional supplementary detail: it was the *last* thing on the page, inside a card
+that was `display:none` until a "View detailed calendar" text link was clicked. Every visit cost
+a full scroll-past-everything plus an extra click before you could do anything — a UX review
+prompted by the owner. New order in `index.html`'s `#tab-report`: header → month picker →
+review-alert (conditional) → **the calendar, always rendered, no toggle** → the 3 summary metric
+tiles (Recorded hours / Attendance days / Needs review), now below it as reference info rather
+than the first thing shown.
+- **The standalone "Employee summary" card is gone, not just moved.** It showed avatar, name,
+  days-worked, days-off count, review status, and total hours per employee — but `#reportTable`
+  already had a pinned Employee/Days/Total-hrs column showing four of those five things. Only
+  the days-off count and review-status badge were genuinely unique. `renderDetailCalendar()` in
+  `js/ui/report.js` now builds those two as a small `.report-daysoff`/`.report-state` block
+  under the employee's name in the calendar's own sticky `.col-emp` cell (reusing the exact same
+  CSS classes the old card used, just relocated) — so nothing shown before is actually lost, one
+  whole section is deleted instead of just relocated, and the two views of the same numbers can
+  no longer drift apart from each other. `.emp-name`'s `align-items` changed from `center` to
+  `flex-start` to keep the avatar aligned with the name now that this cell can be multi-line.
+  Dead CSS removed: `.report-person`, `.report-detail-toggle`, `.report-number`,
+  `.report-days-inline` (and their mobile-breakpoint overrides) — checked via `grep -rn` across
+  `js/`/`index.html` first, since `.report-list`/`.report-list-head`/`.report-avatar`/
+  `.report-name`/`.report-detail`/`.report-daysoff`/`.report-state` all turned out to be shared
+  with Daily records, Employees, and/or Salary and had to stay.
+- **The review-alert's "Review entries" button no longer switches to the Daily records tab** —
+  it opens the flagged day's detail panel directly in the calendar below (via the same
+  `renderDayDetail()`/`openDetailKey` machinery a pill click uses) and scrolls it into view. Now
+  that the calendar can actually fix a flagged entry in place, leaving the tab to do it was the
+  one remaining "passive vs. actionable" mismatch on the page — this button is a prompt that
+  leads *into* the tool, not a summary to read *after*, which is also why it's the one thing that
+  stayed positioned above the calendar rather than moving down with the metrics. Needed one more
+  fix once wired up: the calendar's own "click outside an open panel closes it" listener didn't
+  know about this button, which lives outside `.detail-row`/`#promptModal` — without excluding
+  `#btnReviewRecords` too, that same click would close the panel a tick after this handler opened
+  it (found and fixed during verification, not theoretical).
+- The `#reportDetail` card gained its own header ("Attendance calendar" + the resolved month
+  label) since the old toggle button's text was doing that labeling job implicitly; the
+  "No completed attendance for this month" empty-state message moved into this card too.
+- Purely a layout/markup change — no schema, no payroll math touched; all 84 tests pass
+  unmodified. Verified in demo mode (Browser pane): calendar visible with no click needed,
+  days-off/review badges match what the old card showed, review-alert opens the correct day
+  in place, empty-state and mobile (sticky columns, horizontal scroll) all still work.
+
 Pinch-zoom (`user-scalable`) is toggled dynamically on the single `<meta name=viewport>` tag
 in `switchTab()` (`js/ui/shell.js`) — locked only on the kiosk home tab (stops an employee
 mid-queue from accidentally zooming the shared tablet), unlocked on every admin tab so an

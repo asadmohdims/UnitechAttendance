@@ -19,16 +19,20 @@ let openDetailKey = null;
 
 $('btnPrevMonth').onclick = () => shiftMonthInput(repMonth, -1, renderReport);
 $('btnNextMonth').onclick = () => shiftMonthInput(repMonth, 1, renderReport);
-$('btnReportDetail').onclick = () => {
-  const detail = $('reportDetail');
-  const isOpen = detail.style.display !== 'none';
-  detail.style.display = isOpen ? 'none' : '';
-  $('btnReportDetail').textContent = isOpen ? 'View detailed calendar' : 'Hide detailed calendar';
-};
+// Opens the first flagged record's day directly in the calendar below, instead of switching to
+// Daily records — now that the calendar itself can fix a flagged entry (edit/delete/lunch-toggle,
+// see renderDayDetail() below), there's no reason to leave this tab to do it.
 $('btnReviewRecords').onclick = () => {
   const first = lastReportData?.reviewRecords?.[0];
-  if(first) setRecordsDate(first.date);
-  switchTab('records');
+  if(!first) return;
+  const day = Number(first.date.slice(8,10));
+  const tr = Array.from(document.querySelectorAll('#reportTable tbody > tr')).find(t => t._empId === first.emp_id);
+  const sessions = lastReportData.sessionsByDay[first.emp_id]?.[day];
+  const emp = lastReportData.emps.find(e => e.id === first.emp_id);
+  if(!tr || !sessions || !emp) return;
+  openDetailKey = `${first.emp_id}:${day}`;
+  renderDayDetail(tr._detailRow, tr._detailInner, sessions, emp, day);
+  tr.scrollIntoView({block:'center', behavior:'smooth'});
 };
 
 export async function monthData(ym){ // ym: 'YYYY-MM'
@@ -130,32 +134,6 @@ export async function renderReport(){
     $('reviewTitle').textContent = `${reviewRecords.length} attendance ${reviewRecords.length === 1 ? 'entry needs' : 'entries need'} review`;
     $('reviewText').textContent = parts.join('; ') + '.';
   }
-  const list = $('reportEmployeeList');
-  list.innerHTML = '';
-  employeeStats.forEach(({employee, total, daysWorked, hasOpen, daysOff}) => {
-    const row = document.createElement('div');
-    row.className = 'report-person';
-    const avatar = document.createElement('img');
-    avatar.className = 'report-avatar'; avatar.alt = '';
-    applyAvatar(avatar, employee);
-    const who = document.createElement('div');
-    const name = document.createElement('div'); name.className = 'report-name'; name.textContent = employee.name;
-    const days = document.createElement('span'); days.className = 'report-detail report-days-inline'; days.textContent = `${daysWorked} ${daysWorked === 1 ? 'attendance day' : 'attendance days'}`;
-    who.append(name, days);
-    if(daysOff > 0){
-      // Always visible (not the mobile-only pattern .report-days-inline uses above) — this is
-      // the "very clearly" surface for a day off, since the calendar pill alone is small.
-      const offBadge = document.createElement('div'); offBadge.className = 'report-daysoff';
-      offBadge.textContent = `● ${daysOff} ${daysOff === 1 ? 'day off' : 'days off'}`;
-      who.appendChild(offBadge);
-    }
-    const stateEl = document.createElement('div'); stateEl.className = `report-state ${hasOpen ? 'open' : 'ok'}`; stateEl.textContent = hasOpen ? '● Review required' : '● All clear';
-    const daysNumber = document.createElement('div'); daysNumber.className = 'report-number days-worked'; daysNumber.innerHTML = `<span>Days</span><strong>${daysWorked}</strong>`;
-    const hoursNumber = document.createElement('div'); hoursNumber.className = 'report-number'; hoursNumber.innerHTML = `<span>Total hours</span><strong>${fmtHours(total)}</strong>`;
-    row.append(avatar, who, stateEl, daysNumber, hoursNumber);
-    list.appendChild(row);
-  });
-
   renderDetailCalendar({days, emps, hours, openFlags, reviewFlags, gapStatus, sessionsByDay, employeeStats});
 }
 
@@ -172,7 +150,7 @@ function renderDetailCalendar({days, emps, hours, openFlags, reviewFlags, gapSta
 
   const tbody = document.querySelector('#reportTable tbody');
   tbody.innerHTML = '';
-  employeeStats.forEach(({employee: e, total, daysWorked}) => {
+  employeeStats.forEach(({employee: e, total, daysWorked, hasOpen, daysOff}) => {
     const sessionsForEmp = sessionsByDay[e.id] || {};
 
     const tr = document.createElement('tr');
@@ -180,8 +158,23 @@ function renderDetailCalendar({days, emps, hours, openFlags, reviewFlags, gapSta
     const empWrap = document.createElement('div'); empWrap.className = 'emp-name';
     const avatar = document.createElement('img'); avatar.className = 'emp-avatar-img'; avatar.alt = '';
     applyAvatar(avatar, e);
+    const nameWrap = document.createElement('div');
     const nameSpan = document.createElement('span'); nameSpan.textContent = e.name;
-    empWrap.append(avatar, nameSpan);
+    nameWrap.appendChild(nameSpan);
+    // Folded in from the old standalone Employee summary card (removed — this was the only
+    // information it showed that the calendar row itself didn't already have; everything else
+    // it displayed duplicated this row's own avatar/name/Days/Total-hrs columns).
+    if(daysOff > 0){
+      const offBadge = document.createElement('div'); offBadge.className = 'report-daysoff';
+      offBadge.textContent = `● ${daysOff} ${daysOff === 1 ? 'day off' : 'days off'}`;
+      nameWrap.appendChild(offBadge);
+    }
+    if(hasOpen){
+      const stateEl = document.createElement('div'); stateEl.className = 'report-state open';
+      stateEl.textContent = '● Review required';
+      nameWrap.appendChild(stateEl);
+    }
+    empWrap.append(avatar, nameWrap);
     empCell.appendChild(empWrap);
     tr.appendChild(empCell);
     tr._empId = e.id; // lets the reopen-after-save pass below find this row again post-rebuild
@@ -292,6 +285,11 @@ function renderDayDetail(row, inner, sessions, emp, day){
   // Same "only one gap is actually lunch" fix as records.js's lunchDivider() — with 3+ sessions
   // (2+ gaps), every gap used to render as "Lunch", which misreads as multiple lunch breaks in
   // one day. See lunchGapIndex() in reportMath.js.
+  // Each session (and the lunch/break gap before it) is its own row — previously every chip and
+  // button across the whole day was appended as siblings into one flex-wrap container, which
+  // wrapped wherever it ran out of width rather than at session boundaries, so a 2-session day
+  // could wrap into two visually misaligned lines with no relation to which chips belonged to
+  // which session. Grouping per row means the browser only ever wraps a whole row at once.
   const lunchIdx = lunchGapIndex(sessions);
   sessions.forEach((s, i) => {
     if(i > 0){
@@ -300,69 +298,82 @@ function renderDayDetail(row, inner, sessions, emp, day){
       const auto = !gapSession.out_photo;
       const paid = gapSession.lunch_paid;
       const kind = i === lunchIdx ? 'Lunch' : 'Break';
+      const lunchRow = document.createElement('div'); lunchRow.className = 'detail-row-line';
       const lunchChip = document.createElement('span'); lunchChip.className = 'chip lunch';
       lunchChip.textContent = `${kind} ${fmtHours(gapHours)}${auto ? ' (auto)' : ''}${paid ? ' — paid as work' : ''}`;
-      inner.appendChild(lunchChip);
       const bLunch = document.createElement('button');
       bLunch.className = 'btn small ghost';
       bLunch.textContent = paid ? 'Undo' : 'Pay this';
       bLunch.title = paid ? `Stop paying through this ${kind.toLowerCase()} gap` : `Include this ${kind.toLowerCase()} gap as paid work`;
       bLunch.onclick = () => toggleLunchPaid(gapSession, afterSave);
-      inner.appendChild(bLunch);
+      lunchRow.append(lunchChip, bLunch);
+      inner.appendChild(lunchRow);
     }
+    const sessionRow = document.createElement('div'); sessionRow.className = 'detail-row-line';
     const inChip = document.createElement('span'); inChip.className = 'chip';
     inChip.innerHTML = `<span class="lbl">In</span>${fmtTime(s.clock_in)}${paidNote(s.clock_in)}`;
-    inner.appendChild(inChip);
     const outChip = document.createElement('span'); outChip.className = 'chip' + (s.clock_out ? '' : ' review');
     outChip.innerHTML = `<span class="lbl">Out</span>${s.clock_out ? fmtTime(s.clock_out) + paidNote(s.clock_out) : 'Still in'}`;
-    inner.appendChild(outChip);
     const bEdit = document.createElement('button');
     bEdit.className = 'btn small ghost'; bEdit.textContent = 'Edit';
     bEdit.onclick = () => editRecord(s, emp, afterSave);
-    inner.appendChild(bEdit);
     const bDelete = document.createElement('button');
     bDelete.className = 'btn small red'; bDelete.textContent = 'Delete';
     bDelete.onclick = () => deleteRecordFlow(s, emp, afterSave);
-    inner.appendChild(bDelete);
+    // Edit/Delete/Split travel together in their own non-wrapping cluster (same
+    // punches/actions split Daily records uses in js/ui/records.js's sessionContent()) — without
+    // it, a narrow panel could wrap mid-cluster and strand Delete alone on its own line, which is
+    // what actually happened before this and read as broken alignment, not a graceful wrap.
+    const actions = document.createElement('div'); actions.className = 'detail-actions';
+    actions.append(bEdit, bDelete);
     // Same "closed single session" gate as Daily records' own Split for lunch button — a day
     // with more than one session already has its lunch break punched, nothing to split.
     if(sessions.length === 1 && s.clock_out){
       const bSplit = document.createElement('button');
       bSplit.className = 'btn small ghost'; bSplit.textContent = 'Split for lunch';
       bSplit.onclick = () => splitForLunch(s, emp, afterSave);
-      inner.appendChild(bSplit);
+      actions.appendChild(bSplit);
     }
+    sessionRow.append(inChip, outChip, actions);
+    inner.appendChild(sessionRow);
   });
+
   const totalHours = dayHoursFromSessions(sessions, recHours).total || 0;
   const totalPaidHours = dayHoursFromSessions(sessions, recHoursRounded).total || 0;
   const stillOpen = sessions.some(s => !s.clock_out);
+  // A distinct footer row, separated by a divider line: the total is passive information, the
+  // jump button is the one action that leaves this panel for something it can't do (viewing the
+  // punch photos, still Daily-records-only — see CLAUDE.md) — `justify-content:space-between`
+  // pins it to the far edge instead of trailing wherever the last chip happened to end, which is
+  // what made it easy to miss as a plain icon crammed onto the end of a wrapped chip line before.
+  const footer = document.createElement('div'); footer.className = 'detail-footer';
   const totalSpan = document.createElement('span'); totalSpan.className = 'detail-total';
   totalSpan.innerHTML = `Worked <b>${fmtHours(totalHours)}</b>${stillOpen ? ' so far' : ''}`
     + (!stillOpen && totalPaidHours !== totalHours ? ` &middot; Paid <b>${fmtHours(totalPaidHours)}</b>` : '');
-  inner.appendChild(totalSpan);
-  // Kept alongside the new inline actions above — still useful for anything this panel doesn't
-  // cover (viewing the punch photos, for one, which stays Daily-records-only — see CLAUDE.md).
   const jumpBtn = document.createElement('button');
-  jumpBtn.className = 'btn small ghost detail-jump';
-  jumpBtn.textContent = '↗';
-  jumpBtn.title = 'Open in Daily records';
-  jumpBtn.setAttribute('aria-label', 'Open in Daily records');
+  jumpBtn.className = 'btn small detail-jump';
+  jumpBtn.innerHTML = 'Open in Daily records <span aria-hidden="true">&rarr;</span>';
   jumpBtn.onclick = () => {
     setRecordsDate(sessions[0].date);
     switchTab('records');
   };
-  inner.appendChild(jumpBtn);
+  footer.append(totalSpan, jumpBtn);
+  inner.appendChild(footer);
+
   row._key = `${emp.id}:${day}`;
   row.classList.add('open');
 }
 
-// A click anywhere outside an open detail row — and outside the pill that opens one, or the
-// shared prompt modal an inline action opens — closes it. The modal exclusion matters: without
-// it, clicking that modal's own Save button (which lives outside `.detail-row` in the DOM)
-// would bubble up and close/reset this panel a tick before the save's own afterSave callback
-// gets a chance to reopen it, so the panel would appear to close itself on every edit.
+// A click anywhere outside an open detail row — and outside the pill that opens one, the shared
+// prompt modal an inline action opens, or the review-alert's own button — closes it. The modal
+// exclusion matters: without it, clicking that modal's own Save button (which lives outside
+// `.detail-row` in the DOM) would bubble up and close/reset this panel a tick before the save's
+// own afterSave callback gets a chance to reopen it, so the panel would appear to close itself
+// on every edit. Same problem, same fix, for #btnReviewRecords: it opens a panel from OUTSIDE
+// the calendar, so without this exclusion this same listener would close it back immediately,
+// in the very click that opened it.
 document.addEventListener('click', e => {
-  if(e.target.closest('.daypill') || e.target.closest('.detail-row') || e.target.closest('#promptModal')) return;
+  if(e.target.closest('.daypill') || e.target.closest('.detail-row') || e.target.closest('#promptModal') || e.target.closest('#btnReviewRecords')) return;
   document.querySelectorAll('.detail-row.open').forEach(row => row.classList.remove('open'));
   openDetailKey = null;
 });

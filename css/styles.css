@@ -125,7 +125,10 @@ input[type=time]::-webkit-calendar-picker-indicator, input[type=date]::-webkit-c
 #reportTable .col-total{right:0; min-width:92px;}
 #reportTable td.col-days, #reportTable td.col-total{font-weight:700; font-size:14px;}
 #reportTable td.col-days span, #reportTable td.col-total span{display:block; font-size:10px; font-weight:650; color:var(--muted); text-transform:uppercase; margin-bottom:2px;}
-.emp-name{display:flex; align-items:center; gap:9px; font-weight:700;}
+/* flex-start, not center: this row can now carry a days-off/review-status line under the name
+   (folded in from the old standalone Employee summary card), so the avatar aligns with the name
+   at the top rather than the vertical midpoint of a now-taller, multi-line block. */
+.emp-name{display:flex; align-items:flex-start; gap:9px; font-weight:700;}
 .emp-avatar-img{width:26px; height:26px; border-radius:8px; object-fit:cover; background:var(--raised); flex:0 0 auto;}
 #reportTable td.day-cell{padding:9px 4px; text-align:center; width:44px;}
 .daypill{
@@ -150,8 +153,9 @@ input[type=time]::-webkit-calendar-picker-indicator, input[type=date]::-webkit-c
 /* An inferred day off (no explicit record backs this — see dayOffStatus() in reportMath.js)
    gets a quieter, dashed treatment from the existing muted/border tokens rather than a second
    new accent colour — still visibly different from a plain "nothing to show" blank cell, but
-   deliberately not as loud as a real data state. The employee summary's "N days off" badge
-   below is the actually-prominent surface for this, per the shop owner's "very clearly" ask.*/
+   deliberately not as loud as a real data state. The calendar row's own "● N days off" line
+   under the employee's name (js/ui/report.js's renderDetailCalendar()) is the actually-prominent
+   surface for this, per the shop owner's "very clearly" ask. */
 .daypill.off{background:rgba(184,195,209,.10); border-style:dashed; border-color:var(--muted);}
 .detail-row{display:none;}
 .detail-row.open{display:table-row;}
@@ -160,19 +164,31 @@ input[type=time]::-webkit-calendar-picker-indicator, input[type=date]::-webkit-c
    wide, horizontally-scrolling table, so its own visible box is narrower than the viewport;
    wrapping here (rather than at 90vw) keeps every chip on-screen instead of getting clipped
    past the table's scrollport edge. The "paid" annotation chips are what made this bite in
-   practice — long enough that a 2-session day used to render wider than that visible box. */
-.detail-inner{position:sticky; left:0; display:flex; align-items:center; gap:10px; flex-wrap:wrap; padding:14px 18px; width:max-content; max-width:min(90vw, 820px);}
+   practice — long enough that a 2-session day used to render wider than that visible box.
+   A column of rows, not one long flex-wrap line: each session (and the lunch/break gap before
+   it) is its own `.detail-row-line` — grouping per row means a narrow viewport only ever wraps a
+   whole row at once, instead of any chip mid-session, which used to produce two misaligned lines
+   with no visual relationship to which chips belonged to which session. */
+.detail-inner{position:sticky; left:0; display:flex; flex-direction:column; align-items:flex-start; gap:9px; padding:14px 18px; width:max-content; max-width:min(90vw, 820px);}
+.detail-row-line{display:flex; align-items:center; gap:10px; flex-wrap:wrap;}
+/* Edit/Delete/Split as one non-wrapping unit — a narrow row wraps this whole cluster onto its
+   own line rather than splitting a single button off it (which used to strand a lone Delete). */
+.detail-actions{display:flex; align-items:center; gap:8px; flex-wrap:nowrap; flex:0 0 auto;}
 .detail-date{font-weight:750; font-size:13px; color:var(--ink); white-space:nowrap;}
 .chip{background:var(--card); border:1px solid var(--border); border-radius:9px; padding:6px 11px; font-size:12.5px; display:inline-flex; align-items:center; gap:7px; white-space:nowrap;}
 .chip .lbl{color:var(--muted); font-size:10.5px; text-transform:uppercase; letter-spacing:.03em;}
 .chip.lunch{color:#93c5fd; border-color:#2c4870;}
 .chip.review{color:#fde3a7; border-color:#7a5914;}
-.detail-total{margin-left:6px; font-size:13px; color:var(--muted); white-space:nowrap;}
-/* Icon-only (a title/aria-label carry the meaning) so it reads as a quiet affordance on an
-   otherwise read-only info strip, not another same-weight action competing with the chips.
-   `.btn.small` (two classes) outranks a plain `.detail-jump` on specificity alone, so this
-   needs `.btn.small.detail-jump` to actually override its min-height/padding/font-size. */
-.btn.small.detail-jump{margin-left:10px; width:32px; height:32px; min-height:0; padding:0; font-size:15px; line-height:1;}
+/* The one row that isn't a session — a divider (border-top) sets it apart as a summary/exit
+   row rather than another correction to make, and `justify-content:space-between` pins the jump
+   button to the far edge so it can't end up trailing wherever the last chip happens to end. */
+.detail-footer{display:flex; align-items:center; justify-content:space-between; gap:16px; width:100%; margin-top:2px; padding-top:11px; border-top:1px solid var(--border);}
+.detail-total{font-size:13px; color:var(--muted); white-space:nowrap;}
+/* A real label + accent color (the same blue used for lunch chips elsewhere), not the icon-only
+   ghost square this used to be — that read as a quiet, easy-to-miss affordance right when it
+   needed to be the one clearly-findable way out of this panel to the punch photos. */
+.btn.small.detail-jump{background:rgba(96,165,250,.12); color:#93c5fd; border:1px solid #2c4870; white-space:nowrap;}
+.btn.small.detail-jump:hover{background:rgba(96,165,250,.22);}
 .detail-total b{color:var(--ink); font-size:15px;}
 
 /* Key for the calendar's status pills — sits below the scrollable table itself, not above
@@ -206,12 +222,9 @@ h3{font-size:16px; margin-bottom:10px;}
 .report-list{padding:0; overflow:hidden;}
 .report-list-head{display:flex; align-items:baseline; justify-content:space-between; padding:17px; border-bottom:1px solid var(--border);}
 .report-list-head h3{margin:0; font-size:16px}.report-list-head span{font-size:13px; color:var(--muted);}
-.report-person{display:grid; grid-template-columns:46px minmax(110px,1.25fr) 1fr 72px 88px; align-items:center; gap:12px; padding:14px 17px; border-bottom:1px solid var(--border);}
-.report-person:last-child{border-bottom:0}.report-avatar{width:43px; height:43px; border:2px solid #33465f; border-radius:50%; object-fit:cover;}
+.report-avatar{width:43px; height:43px; border:2px solid #33465f; border-radius:50%; object-fit:cover;}
 .report-name{font-size:16px; font-weight:750}.report-detail{display:block; margin-top:3px; color:var(--muted); font-size:13px;}.report-state{font-size:14px; font-weight:750;}.report-state.ok{color:#86efac}.report-state.open{color:#fbbf24}
 .report-daysoff{margin-top:3px; font-size:13px; font-weight:700; color:var(--muted);}
-.report-number{text-align:right; font-variant-numeric:tabular-nums}.report-number strong{font-size:16px}.report-number span{display:block; color:var(--muted); font-size:12px; margin-bottom:2px;}
-.report-detail-toggle{display:block; width:max-content; margin:16px auto 0; border:0; padding:12px; background:none; color:#93c5fd; text-decoration:underline; font-size:14px; font-weight:700; cursor:pointer;}
 #reportDetail{margin-top:16px;}
 .salary-person{display:grid; grid-template-columns:46px minmax(110px,1.2fr) 1fr auto; align-items:center; gap:12px; padding:14px 17px; border-bottom:1px solid var(--border);}
 .salary-who{min-width:0;}
@@ -222,11 +235,6 @@ h3{font-size:16px; margin-bottom:10px;}
 .salary-calc-detail{padding:0 17px 16px; margin-top:-6px; font-size:13px; color:var(--muted); line-height:1.6;}
 .salary-calc-detail p{margin:2px 0;}
 .salary-calc-detail b{color:var(--ink);}
-/* Report's per-employee "days worked" figure: the numbered tile is the desktop source of
-   truth; this inline text duplicates it there, so it's hidden above the breakpoint where the
-   numbered tile gets hidden instead (see the days-worked rule in the 620px query below). */
-.report-days-inline{display:none;}
-
 /* Employees tab — grid-list row, matching the Report/Salary pattern above */
 .emp-row{display:grid; grid-template-columns:46px 1fr auto; align-items:center; gap:12px; padding:14px 17px; border-bottom:1px solid var(--border);}
 .emp-row:last-child{border-bottom:0;}
@@ -280,7 +288,7 @@ h3{font-size:16px; margin-bottom:10px;}
 .rec-lunch-divider.paid .lunch-paid-toggle{border-color:#2c4870; color:#93c5fd;}
 
 @media (max-width:520px){header{padding:15px 16px} main{padding:8px 16px 70px} #clock{font-size:12px}.card{padding:14px}}
-@media (max-width:620px){.report-summary{grid-template-columns:1fr}.report-top{align-items:stretch; flex-direction:column}.report-top .btn{width:100%}.report-person{grid-template-columns:43px 1fr 82px; gap:10px}.report-person .report-state{grid-column:2; grid-row:2}.report-person .days-worked{display:none}.report-days-inline{display:block;}.report-person .report-number:last-child{grid-column:3; grid-row:1 / span 2}.review-alert{align-items:flex-start; flex-direction:column}.review-alert .btn{width:100%}.salary-person{grid-template-columns:43px 1fr; row-gap:8px}.salary-amount,.salary-actions{grid-column:2}.salary-amount{text-align:left}}
+@media (max-width:620px){.report-summary{grid-template-columns:1fr}.report-top{align-items:stretch; flex-direction:column}.report-top .btn{width:100%}.review-alert{align-items:flex-start; flex-direction:column}.review-alert .btn{width:100%}.salary-person{grid-template-columns:43px 1fr; row-gap:8px}.salary-amount,.salary-actions{grid-column:2}.salary-amount{text-align:left}}
 @media (max-width:620px){
   .emp-row{grid-template-columns:40px 1fr; row-gap:10px;}
   .emp-actions{grid-column:1 / -1; justify-content:flex-start;}

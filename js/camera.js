@@ -30,6 +30,13 @@ export async function captureFor(emp, mode, onCapture){
   $('btnCamCancel').onclick = stopCam;
   $('btnCapture').onclick = async () => {
     if(!stream) return;
+    // Fires on the tap itself, before the canvas draw/blob encode below — the shutter cue
+    // should land the instant the button is pressed, not after the async work that follows it.
+    // Removing the class before re-adding forces a reflow so back-to-back captures (e.g. a
+    // retry after a failed save) always restart the flash instead of a no-op if it's still
+    // mid-animation from the last tap.
+    const flash = $('camFlash');
+    flash.classList.remove('flash'); void flash.offsetWidth; flash.classList.add('flash');
     const video = $('video');
     const c = document.createElement('canvas');
     const scale = 320 / video.videoWidth;

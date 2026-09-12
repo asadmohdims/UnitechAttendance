@@ -238,7 +238,10 @@
 <div id="camModal" class="modal-overlay">
   <h2 id="camTitle"></h2>
   <p class="camera-help">Look at the camera, then take your photo.</p>
-  <video id="video" autoplay playsinline muted></video>
+  <div class="video-wrap">
+    <video id="video" autoplay playsinline muted></video>
+    <div id="camFlash"></div>
+  </div>
   <div id="camBtns">
     <button class="btn green" id="btnCapture">📷 Take photo</button>
     <button class="btn ghost" id="btnCamCancel">Cancel</button>
@@ -262,7 +265,7 @@
 <!-- Punch confirmation -->
 <div id="punchConfirm">
   <img id="pcPhoto" alt="">
-  <div id="pcCheck">✓</div>
+  <div id="pcCheck"><svg viewBox="0 0 24 24" width="28" height="28" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path pathLength="1" d="M4.5 12.5l5 5L19.5 6.5"/></svg></div>
   <div id="pcAction"></div>
   <div id="pcName"></div>
   <div id="pcDetail" class="muted"></div>
@@ -337,7 +340,7 @@
 
 <!-- Payments: save confirmation -->
 <div id="paymentConfirm">
-  <div id="pymCheck">✓</div>
+  <div id="pymCheck"><svg viewBox="0 0 24 24" width="28" height="28" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path pathLength="1" d="M4.5 12.5l5 5L19.5 6.5"/></svg></div>
   <div id="pymAction">Payment logged</div>
   <div id="pymName"></div>
   <div id="pymDetail" class="muted"></div>

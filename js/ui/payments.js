@@ -1,4 +1,4 @@
-import { $, busy, toast, pad, dateStr, shiftMonthInput } from '../utils.js';
+import { $, busy, toast, pad, dateStr, shiftMonthInput, hapticSuccess, hapticError } from '../utils.js';
 import { state } from '../state.js';
 import { store } from '../store/index.js';
 import { applyAvatar } from '../avatars.js';
@@ -120,9 +120,18 @@ function openPinModal(){
 }
 
 function updatePinDots(error){
-  [...$('pinDots').children].forEach((dot, i) => {
+  const dotsEl = $('pinDots');
+  [...dotsEl.children].forEach((dot, i) => {
     dot.className = 'pin-dot' + (error ? ' error' : i < pinDigits.length ? ' filled' : '');
   });
+  if(error){
+    // Remove-then-reflow-then-add so three wrong PINs in a row each get their own shake,
+    // rather than the 2nd/3rd being a no-op because the class was already present.
+    dotsEl.classList.remove('shake');
+    void dotsEl.offsetWidth;
+    dotsEl.classList.add('shake');
+    hapticError();
+  }
 }
 
 $('pinKeypad').addEventListener('click', e => {
@@ -281,6 +290,7 @@ function showPaymentConfirm(name, amount, occurredOn){
   $('pymName').textContent = name;
   $('pymDetail').innerHTML = `${fmtRupee(amount)} · ${fmtDateLong(occurredOn)}<br>This will show in your payments this month`;
   $('paymentConfirm').classList.add('open');
+  hapticSuccess();
   clearTimeout(showPaymentConfirm._t);
   showPaymentConfirm._t = setTimeout(finishPaymentFlow, 1800);
 }

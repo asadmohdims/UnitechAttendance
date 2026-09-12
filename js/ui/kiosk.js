@@ -1,4 +1,4 @@
-import { $, busy, toast, fmtTime, fmtHours, dateStr } from '../utils.js';
+import { $, busy, toast, fmtTime, fmtHours, dateStr, hapticSuccess } from '../utils.js';
 import { state } from '../state.js';
 import { store } from '../store/index.js';
 import { applyAvatar } from '../avatars.js';
@@ -232,6 +232,7 @@ function showPunchConfirm(emp, action, blob, priorOpen){
     ? `Started at ${fmtTime(new Date().toISOString())}`
     : `Worked ${fmtHours((Date.now() - new Date(priorOpen.clock_in))/3600000)} hrs today`;
   el.classList.add('open');
+  hapticSuccess();
   clearTimeout(showPunchConfirm._t);
   showPunchConfirm._t = setTimeout(() => el.classList.remove('open'), 1800);
 }

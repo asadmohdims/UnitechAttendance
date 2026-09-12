@@ -24,6 +24,14 @@ export function fmtHours(h){
 
 export function recHours(r){ return r.clock_out ? Math.max(0,(new Date(r.clock_out) - new Date(r.clock_in))/3600000) : null; }
 
+// navigator.vibrate is Android/Chrome only — a silent no-op everywhere else (iOS Safari,
+// desktop), so these are safe to call unconditionally from anywhere. Reserved for the two
+// moments that actually need reinforcing (a confirmed punch/payment, a rejected PIN) — not
+// wired into ordinary button/tile presses, for the same reason a sound cue on every tap was
+// ruled out: at kiosk-all-day frequency, a buzz on every press would wear thin fast.
+export function hapticSuccess(){ navigator.vibrate?.(20); }
+export function hapticError(){ navigator.vibrate?.([30, 40, 30]); }
+
 // Moves a <input type="month"> value by `change` months (±1 for prev/next arrows) and re-renders.
 // Shared by the Report and Salary tabs' identical month-picker pattern.
 export function shiftMonthInput(input, change, onChange){

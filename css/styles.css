@@ -1,6 +1,9 @@
 :root{
   --bg:#0b1220; --card:#151f2e; --raised:#1d2a3b; --ink:#f4f7fb; --muted:#b8c3d1;
   --green:#22c55e; --green-ink:#052e16; --amber:#f59e0b; --yellow:#f5dd0a; --red:#fb7185; --blue:#60a5fa; --violet:#a78bfa; --pink:#f472b6; --border:#2b3b50;
+  /* One shared "settle" easing for every release/pop motion in the app (tile release, confirm
+     pop-ins) so they all read as the same spring rather than several unrelated tunings. */
+  --spring:cubic-bezier(.34,1.56,.64,1);
 }
 *{box-sizing:border-box; margin:0; padding:0; -webkit-tap-highlight-color:transparent;}
 body{min-height:100vh; font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif; background:radial-gradient(circle at 50% -20%,#223958 0,var(--bg) 43%); color:var(--ink);}
@@ -42,22 +45,33 @@ body.kiosk-active{overflow:hidden;}
    one-child layout. */
 .kiosk-main{flex:1; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:28px; padding:32px; overflow:auto;}
 .kiosk-badges{display:grid; grid-template-columns:repeat(auto-fit,minmax(188px,224px)); justify-content:center; gap:clamp(16px,2.2vw,26px); width:100%; max-width:980px;}
-.badge-tile{position:relative; background:var(--card); border:1.5px solid var(--border); border-radius:16px; padding:24px 16px 20px; text-align:center; cursor:pointer; box-shadow:0 10px 24px rgba(0,0,0,.28); transition:transform .14s,background .14s,border-color .14s,box-shadow .14s;}
-.badge-tile:active{transform:scale(.96); background:var(--raised);}
+/* --lift is each tile's own resting transform (plain tiles: none; in/lunch/missed: a small
+   raise) — kept as a variable, not a literal `transform` on .in/.lunch/.missed, specifically so
+   :active can compose var(--lift) + the press scale into ONE transform instead of two rules of
+   equal specificity fighting over the same property. Before this, .badge-tile.in (etc.), being
+   declared later in the file, silently won that tie every time — any already-clocked-in/lunch/
+   missed tile showed no press feedback at all, only ever-plain tiles (like the Payments grid's,
+   which never gets these state classes) did. */
+.badge-tile{position:relative; background:var(--card); border:1.5px solid var(--border); border-radius:16px; padding:24px 16px 20px; text-align:center; cursor:pointer; box-shadow:0 10px 24px rgba(0,0,0,.28); --lift:translateY(0); transform:var(--lift); transition:transform .22s var(--spring),background .14s,border-color .14s,box-shadow .14s;}
+/* Press-down uses its own fast, non-springy transition (scoped to :active, so it only wins
+   while pressed) so the tap itself feels instant; releasing falls through to the base rule's
+   --spring easing above for a slight settle-bounce back to rest. Same transform property, two
+   different feels depending on direction — cheaper than a JS-driven animation. */
+.badge-tile:active{transform:var(--lift) scale(.96); background:var(--raised); transition:transform .08s ease-out,background .08s ease-out;}
 .badge-tile:focus-visible{outline:3px solid var(--blue); outline-offset:3px;}
 .badge-tile .avatar{display:block; width:clamp(64px,7vw,88px); height:clamp(64px,7vw,88px); margin:0 auto 14px; border:2.5px solid #293b53; border-radius:14px; object-fit:cover; background:#293b53;}
 .badge-tile .name{font-weight:700; font-size:17px; margin-bottom:7px;}
 .badge-tile .status{font-size:13px; color:var(--muted); font-weight:600; line-height:1.35;}
-.badge-tile.in{border-color:var(--green); background:linear-gradient(160deg,#123524,var(--card)); box-shadow:0 10px 26px rgba(34,197,94,.32); transform:translateY(-3px);}
+.badge-tile.in{border-color:var(--green); background:linear-gradient(160deg,#123524,var(--card)); box-shadow:0 10px 26px rgba(34,197,94,.32); --lift:translateY(-3px);}
 .badge-tile.in .avatar{border-color:var(--green);}
 .badge-tile.in .status{color:#a7f3c0;}
 .badge-tile .state-badge{position:absolute; top:-10px; right:-10px; width:28px; height:28px; border-radius:50%; display:grid; place-items:center; font-size:12px; font-weight:800; background:var(--raised); color:var(--muted); border:2px solid var(--bg);}
 .badge-tile.in .state-badge{background:var(--green); color:var(--green-ink);}
-.badge-tile.lunch{border-color:var(--amber); background:linear-gradient(160deg,#3a2a0f,var(--card)); box-shadow:0 10px 26px rgba(245,158,11,.28); transform:translateY(-3px);}
+.badge-tile.lunch{border-color:var(--amber); background:linear-gradient(160deg,#3a2a0f,var(--card)); box-shadow:0 10px 26px rgba(245,158,11,.28); --lift:translateY(-3px);}
 .badge-tile.lunch .avatar{border-color:var(--amber);}
 .badge-tile.lunch .status{color:#fcd34d;}
 .badge-tile.lunch .state-badge{background:var(--amber); color:#3a2a0f;}
-.badge-tile.missed{border-color:var(--red); background:linear-gradient(160deg,#3a1420,var(--card)); box-shadow:0 10px 26px rgba(251,113,133,.28); transform:translateY(-3px);}
+.badge-tile.missed{border-color:var(--red); background:linear-gradient(160deg,#3a1420,var(--card)); box-shadow:0 10px 26px rgba(251,113,133,.28); --lift:translateY(-3px);}
 .badge-tile.missed .avatar{border-color:var(--red);}
 .badge-tile.missed .status{color:#fca5a5;}
 .badge-tile.missed .state-badge{background:var(--red); color:#500716;}
@@ -78,25 +92,55 @@ body.kiosk-active{overflow:hidden;}
   .kiosk-date{font-size:13px; margin-top:3px;}
   .kiosk-admin-link{position:absolute; bottom:-6px; left:18px; padding:4px 0;}
 }
-#punchConfirm{position:fixed; inset:0; background:rgba(4,9,17,.97); display:none; flex-direction:column; align-items:center; justify-content:center; z-index:140; padding:20px; text-align:center; cursor:pointer;}
-#punchConfirm.open{display:flex;}
+/* Same fade-in idiom as .modal-overlay (opacity/visibility/pointer-events, not a display:none/
+   flex hard cut) — this is the single most-repeated screen in the app (every punch, every
+   employee), so it shouldn't be the one overlay that pops in with zero transition while every
+   other overlay in the app fades. */
+#punchConfirm{position:fixed; inset:0; background:rgba(4,9,17,.97); display:flex; flex-direction:column; align-items:center; justify-content:center; z-index:140; padding:20px; text-align:center; cursor:pointer; opacity:0; visibility:hidden; pointer-events:none; transition:opacity .2s ease;}
+#punchConfirm.open{opacity:1; visibility:visible; pointer-events:auto;}
 #pcPhoto{width:150px; height:150px; border-radius:50%; object-fit:cover; border:4px solid var(--green); margin-bottom:18px;}
 #punchConfirm.out #pcPhoto{border-color:var(--blue);}
-#pcCheck{width:56px; height:56px; border-radius:50%; background:var(--green); color:var(--green-ink); font-size:32px; font-weight:900; display:grid; place-items:center; margin-bottom:14px;}
+/* Staggered pop-in (photo, then the check a beat later) is tied to the .open selector itself —
+   removing .open removes the animation outright, so re-adding it on the next punch always
+   starts fresh with no JS replay logic needed. */
+#punchConfirm.open #pcPhoto{animation:popIn .3s var(--spring) both;}
+#pcCheck{width:56px; height:56px; border-radius:50%; background:var(--green); color:var(--green-ink); display:grid; place-items:center; margin-bottom:14px;}
+#punchConfirm.open #pcCheck{animation:popIn .3s .1s var(--spring) both;}
 #punchConfirm.out #pcCheck{background:var(--blue); color:#07111d;}
+#pcCheck svg{display:block;}
+/* pathLength="1" on the <path> (index.html) lets this draw-on animate as a plain 0→1 dash
+   offset regardless of the path's real geometry — no hand-measured stroke length to keep in
+   sync if the checkmark shape ever changes. */
+#pcCheck svg path{stroke-dasharray:1; stroke-dashoffset:1;}
+#punchConfirm.open #pcCheck svg path{animation:checkDraw .35s .3s cubic-bezier(.65,0,.35,1) forwards;}
 #pcAction{font-size:28px; font-weight:800; margin-bottom:4px;}
 #pcName{font-size:20px; color:var(--muted); margin-bottom:10px;}
 #pcDetail{font-size:15px; color:var(--muted);}
 /* Payment save confirmation — same full-screen overlay language as #punchConfirm, minus the
    photo (there's no camera step in this flow). Kept as its own element rather than overloading
    #punchConfirm's photo-specific markup/classes. */
-#paymentConfirm{position:fixed; inset:0; background:rgba(4,9,17,.97); display:none; flex-direction:column; align-items:center; justify-content:center; z-index:140; padding:20px; text-align:center; cursor:pointer;}
-#paymentConfirm.open{display:flex;}
-#pymCheck{width:56px; height:56px; border-radius:50%; background:var(--green); color:var(--green-ink); font-size:32px; font-weight:900; display:grid; place-items:center; margin-bottom:14px;}
+#paymentConfirm{position:fixed; inset:0; background:rgba(4,9,17,.97); display:flex; flex-direction:column; align-items:center; justify-content:center; z-index:140; padding:20px; text-align:center; cursor:pointer; opacity:0; visibility:hidden; pointer-events:none; transition:opacity .2s ease;}
+#paymentConfirm.open{opacity:1; visibility:visible; pointer-events:auto;}
+#pymCheck{width:56px; height:56px; border-radius:50%; background:var(--green); color:var(--green-ink); display:grid; place-items:center; margin-bottom:14px;}
+#paymentConfirm.open #pymCheck{animation:popIn .3s var(--spring) both;}
+#pymCheck svg{display:block;}
+#pymCheck svg path{stroke-dasharray:1; stroke-dashoffset:1;}
+#paymentConfirm.open #pymCheck svg path{animation:checkDraw .35s .2s cubic-bezier(.65,0,.35,1) forwards;}
 #pymAction{font-size:28px; font-weight:800; margin-bottom:4px;}
 #pymName{font-size:20px; color:var(--muted); margin-bottom:10px;}
 #pymDetail{font-size:15px; color:var(--muted);}
+/* Same instant-down/spring-up language as .badge-tile and the two keypads above — filter:
+   brightness() rather than a per-variant background swap, so one rule darkens .btn's press
+   state correctly across blue/green/red/ghost without listing each color separately. */
 .btn{display:inline-flex; align-items:center; justify-content:center; min-height:52px; border:none; border-radius:13px; padding:13px 20px; font-size:16px; font-weight:750; cursor:pointer; color:#07111d; background:var(--blue);}
+/* Shared with the other simple (non-tile) tappable controls below — .month-arrow, the admin
+   tab pills, and the payments resolve-toggle all get the exact same instant-down/spring-up
+   scale + brightness dim from this one pair of rules, so the whole app tunes together instead
+   of drifting across several near-identical copies. (.badge-tile and the two number keypads
+   keep their own versions — a --lift composition and a literal background swap respectively —
+   since neither fits this simpler scale+filter shape.) */
+.btn, .month-arrow, .admin-panel button, .resolve-toggle{transition:transform .18s var(--spring),filter .1s;}
+.btn:active, .month-arrow:active, .admin-panel button:active, .resolve-toggle:active{transform:scale(.93); filter:brightness(.88); transition:transform .07s ease-out,filter .07s ease-out;}
 .btn.green{background:var(--green); color:var(--green-ink);} .btn.red{background:var(--red); color:#500716;}
 .btn.ghost{background:transparent; color:var(--ink); border:1px solid var(--border);}
 .btn.small{min-height:38px; padding:8px 12px; font-size:13px; border-radius:10px;}
@@ -105,7 +149,13 @@ body.kiosk-active{overflow:hidden;}
 .modal-overlay.open{opacity:1; visibility:visible; pointer-events:auto;}
 #camModal h2{color:#fff; margin-bottom:8px; font-size:24px; text-align:center;}
 .camera-help{color:var(--muted); margin-bottom:18px; text-align:center; font-size:15px;}
-#video{width:100%; max-width:440px; border:2px solid var(--border); border-radius:20px; background:#000; transform:scaleX(-1);}
+.video-wrap{position:relative; width:100%; max-width:440px;}
+#video{display:block; width:100%; border:2px solid var(--border); border-radius:20px; background:#000; transform:scaleX(-1);}
+/* Shutter flash — the universal "a photo was just taken" cue, missing before this: a brief
+   white flash over the live feed, timed to the tap itself rather than the async blob encode
+   that follows it. */
+#camFlash{position:absolute; inset:0; background:#fff; border-radius:20px; opacity:0; pointer-events:none;}
+#camFlash.flash{animation:shutterFlash .28s ease-out;}
 #camBtns{width:100%; max-width:440px; margin-top:18px; display:flex; gap:12px;}
 #camBtns .btn{flex:1;}
 .modal-err{color:#ffb3b3; margin-top:10px; text-align:center; font-size:14px; max-width:340px;}
@@ -262,11 +312,31 @@ input[type=time]::-webkit-calendar-picker-indicator, input[type=date]::-webkit-c
 .legend-item{display:flex; align-items:center; gap:9px; font-size:12.5px; color:var(--muted);}
 .legend-item .daypill{width:20px; height:20px; margin:0; font-size:9px; flex:0 0 auto;}
 .legend-item .daypill, .legend-item .daypill:hover{cursor:default; transform:none;}
-.toast{position:fixed; bottom:28px; left:50%; transform:translateX(-50%); background:var(--green); color:var(--green-ink); padding:16px 24px; border-radius:14px; font-size:16px; font-weight:750; z-index:120; opacity:0; transition:opacity .25s; pointer-events:none; max-width:90%; text-align:center; box-shadow:0 12px 30px rgba(0,0,0,.35);}
-.toast.show{opacity:1;}
+.toast{position:fixed; bottom:28px; left:50%; transform:translateX(-50%) translateY(10px); background:var(--green); color:var(--green-ink); padding:16px 24px; border-radius:14px; font-size:16px; font-weight:750; z-index:120; opacity:0; transition:opacity .25s,transform .25s var(--spring); pointer-events:none; max-width:90%; text-align:center; box-shadow:0 12px 30px rgba(0,0,0,.35);}
+.toast.show{opacity:1; transform:translateX(-50%) translateY(0);}
 h3{font-size:16px; margin-bottom:10px;}
 #busy{position:fixed; top:0; left:0; right:0; height:3px; background:var(--blue); display:none; z-index:130; animation:busy 1s linear infinite;}
 @keyframes busy{0%{transform:scaleX(.1); transform-origin:left}50%{transform:scaleX(1)}100%{transform:scaleX(.1); transform-origin:right}}
+@keyframes popIn{from{opacity:0; transform:scale(.55);} to{opacity:1; transform:scale(1);}}
+@keyframes checkDraw{to{stroke-dashoffset:0;}}
+@keyframes shutterFlash{0%{opacity:.85;} 100%{opacity:0;}}
+@keyframes shake{
+  10%,90%{transform:translateX(-1px);}
+  20%,80%{transform:translateX(2px);}
+  30%,50%,70%{transform:translateX(-4px);}
+  40%,60%{transform:translateX(4px);}
+}
+/* Respect the OS-level motion preference: keep every state still readable (checkmarks land
+   fully drawn, tiles/confirms just appear) but drop the bounce/pop/draw/flash/shake motion. */
+@media (prefers-reduced-motion: reduce){
+  .badge-tile, .badge-tile:active, .pin-keypad button, .pay-keypad button, .pin-keypad button:active, .pay-keypad button:active{transition:background .01ms,border-color .01ms,box-shadow .01ms;}
+  .btn, .btn:active, .month-arrow, .month-arrow:active, .admin-panel button, .admin-panel button:active, .resolve-toggle, .resolve-toggle:active{transition:background .01ms,filter .01ms;}
+  .toast{transition:opacity .25s;}
+  #punchConfirm.open #pcPhoto, #punchConfirm.open #pcCheck, #paymentConfirm.open #pymCheck,
+  #pcCheck svg path, #pymCheck svg path{animation:none;}
+  #pcCheck svg path, #pymCheck svg path{stroke-dashoffset:0;}
+  #camFlash.flash, .pin-dots.shake{animation:none;}
+}
 .admin-panel{display:flex; gap:8px; padding:8px; margin-bottom:16px; overflow:auto; background:var(--raised); border-radius:14px;}
 .admin-panel button{white-space:nowrap; min-height:40px; padding:8px 12px; border:1px solid transparent; border-radius:9px; background:transparent; color:var(--muted); cursor:pointer; font-weight:700;}
 .admin-panel button.active{background:var(--card); color:var(--ink); border-color:var(--border);}
@@ -382,13 +452,21 @@ h3{font-size:16px; margin-bottom:10px;}
 .pin-title{font-size:18px; font-weight:750; margin-bottom:4px;}
 .pin-sub{color:var(--muted); font-size:13px; margin-bottom:22px;}
 .pin-dots{display:flex; justify-content:center; gap:14px; margin-bottom:14px;}
+/* Wrong-PIN shake — the globally recognized "incorrect" cue (iOS lock screen, etc.). Scoped to
+   the dots row, not the whole card, so it reads as "that entry was wrong" without relocating
+   the keypad the employee's thumb is about to tap again. */
+.pin-dots.shake{animation:shake .4s ease;}
 .pin-dot{width:16px; height:16px; border-radius:50%; border:2px solid var(--border); background:transparent;}
 .pin-dot.filled{background:var(--ink); border-color:var(--ink);}
 .pin-dot.error{background:var(--red); border-color:var(--red);}
 .pin-error-text{color:var(--red); font-size:13px; font-weight:650; margin-bottom:14px; min-height:18px;}
 .pin-locked-msg{background:rgba(251,113,133,.12); border:1px solid #7a2020; color:#fca5a5; border-radius:12px; padding:14px; font-size:13.5px; font-weight:650; margin-bottom:18px; text-align:left;}
 .pin-keypad, .pay-keypad{display:grid; grid-template-columns:repeat(3,1fr); gap:10px; margin-bottom:18px;}
-.pin-keypad button, .pay-keypad button{min-height:56px; border-radius:13px; background:var(--raised); border:1px solid var(--border); color:var(--ink); font-size:21px; font-weight:700;}
+.pin-keypad button, .pay-keypad button{min-height:56px; border-radius:13px; background:var(--raised); border:1px solid var(--border); color:var(--ink); font-size:21px; font-weight:700; transition:transform .16s var(--spring),background .1s;}
+/* Same press/release split as .badge-tile — instant down, a quick settle on release — but
+   shorter (.06s vs .08s, no stagger) since digits get tapped in rapid succession and shouldn't
+   feel like they're queuing behind their own animation. */
+.pin-keypad button:active, .pay-keypad button:active{transform:scale(.88); background:var(--card); transition:transform .06s ease-out,background .06s ease-out;}
 .pin-keypad button:disabled, .pay-keypad button:disabled{background:transparent; border:0;}
 .pin-keypad.disabled{opacity:.35; pointer-events:none;}
 .pin-cancel{color:var(--muted); font-size:14px; text-decoration:underline; background:none; border:0; padding:4px 0;}

@@ -258,10 +258,23 @@ deduction shares the same number instead of a second hardcoded `8`.
   auto-close, which is also why its lunch divider reads "(auto)" in Daily records even though
   a human did this, not the cutoff safety net. Cosmetic only (no functional effect), flagged as
   a known label overlap rather than fixed, since disambiguating would need a new column for a
-  minor wording issue. The split defaults `lunch_paid: true` on the earlier session so the
-  day's total pay is unchanged unless the owner deliberately un-marks it afterward — the point
-  is reclassifying the calendar pill, not accidentally docking pay for a break that was never
-  actually taken.
+  minor wording issue. **Defaults `lunch_paid: false` on the earlier session (changed
+  2026-09-12, was `true`)** — real usage showed the original "unchanged pay by default" choice
+  was backwards: reaching for Split for lunch almost always means the owner has spotted a
+  suspected missed lunch punch (see `isPossibleMissedLunch()` below) and wants that gap
+  *unpaid*, and the old default made them undo it every single time. `false` also matches every
+  other path that creates a lunch gap (a normal clock-out, the auto-close safety net) — the old
+  `true` was the one inconsistent case, not a deliberate exception. Still one tap to flip via the
+  existing "Pay this" toggle if a split really was just cosmetic and pay shouldn't change.
+- **"Possible missed lunch" indicator (added 2026-09-12, `isPossibleMissedLunch()` in
+  `js/reportMath.js`):** a single closed session with full-day hours — eligible for Split for
+  lunch — used to render as a plain `.full` pill, identical to a genuine no-break shift. Punch
+  data can't actually tell the two apart (only the owner/employee knows), so this isn't treated
+  as a data problem: a new `.daypill.full.unbroken` corner dot (pink — violet was tried first but
+  reverted the same day, too close to `.auto`'s blue dot to tell apart at 7px; same quiet weight
+  as `.auto`, not the amber `.flagged` "needs review" treatment) just nudges the owner to glance
+  at it, with a hover title spelling out why. Clicking it opens the same day-detail panel Split
+  for lunch already lives in — no new UI surface, just a reason to look.
 - **Employee summary**: an always-visible "● N days off" line under the employee's name
   (`.report-daysoff` — muted, bold) is the actually-prominent surface for this, per the owner's
   "very clearly" ask; the calendar pill alone is small enough to miss when scanning.

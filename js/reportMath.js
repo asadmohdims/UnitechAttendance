@@ -104,13 +104,30 @@ export function dayOffStatus({date, weekday, employeeSince, today = dateStr()}){
 // routinely punched separately (see the Lunch-break section in CLAUDE.md) — reads as attendance
 // for only part of the day, worth its own calendar color rather than blending into a normal
 // full day. The hours check is what tells "only worked the morning" (a real half day) apart
-// from "worked a full day in one continuous punch with no lunch break taken" (still a full
-// day's work, just not chained into two sessions) — session count alone can't distinguish them.
+// from "worked a full day in one continuous punch with no lunch break taken" — session count
+// alone can't distinguish them. See isPossibleMissedLunch() below for that second case: it's NOT
+// treated as a plain, unremarkable full day either, on the same "worth a glance" logic.
 // `hoursWorked` is the day's already-computed total (buildDayHours' `hours[empId][day]`), not
 // re-derived here, so this never disagrees with what the day's own hours figure says.
 export function isHalfDay(sessions, hoursWorked){
   if(!sessions || sessions.length !== 1) return false;
   return hoursWorked != null && hoursWorked < HALF_DAY_HOUR_THRESHOLD;
+}
+
+// A day with exactly one CLOSED session that's long enough to count as a full day (the same
+// threshold isHalfDay() uses, just the other side of it) — meaning no second session, so no
+// lunch gap was ever recorded either. Punch data alone can't tell this apart from someone who
+// genuinely worked straight through with no break at all (that's a real, legitimate shape too —
+// covering the shop alone through lunch rush, say) — only the owner or employee actually knows
+// which one happened. What this flags is deliberately just "worth a glance", not a data problem:
+// a shop where lunch breaks are the routine, expected shape (see the Lunch-break section in
+// CLAUDE.md) makes a single long unbroken session plausible enough to double-check that it earns
+// a quiet nudge on the calendar (`.daypill.full.unbroken` in css/styles.css) rather than the
+// amber "needs review" treatment reserved for an actual open/abandoned session. Split for lunch
+// (js/ui/records.js) is the fix if it turns out a break really was taken but never punched.
+export function isPossibleMissedLunch(sessions, hoursWorked){
+  return !!sessions && sessions.length === 1 && !!sessions[0].clock_out
+    && hoursWorked != null && hoursWorked >= HALF_DAY_HOUR_THRESHOLD;
 }
 
 // Given a day's chronologically-sorted sessions, returns the index (into `sessions`) of the

@@ -3,7 +3,7 @@
 //   node --test js/
 import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
-import { buildDayHours, groupByEmployeeDay, needsReview, dayOffStatus, isHalfDay, lunchGapIndex } from './reportMath.js';
+import { buildDayHours, groupByEmployeeDay, needsReview, dayOffStatus, isHalfDay, lunchGapIndex, isPossibleMissedLunch } from './reportMath.js';
 
 describe('buildDayHours', () => {
   const morning = { emp_id: 'e1', date: '2026-09-05', clock_in: '2026-09-05T09:00:00.000Z', clock_out: '2026-09-05T13:00:00.000Z' }; // 4h
@@ -220,6 +220,38 @@ describe('isHalfDay', () => {
   test('hoursWorked missing (e.g. a still-open session) is not treated as a half day', () => {
     assert.equal(isHalfDay([morning], null), false);
     assert.equal(isHalfDay([morning], undefined), false);
+  });
+});
+
+describe('isPossibleMissedLunch', () => {
+  const noBreak = { clock_in: '2026-09-11T09:00:00.000Z', clock_out: '2026-09-11T18:00:00.000Z' };
+  const stillOpen = { clock_in: '2026-09-11T09:00:00.000Z', clock_out: null };
+  const morning = { clock_in: '2026-09-11T09:00:00.000Z', clock_out: '2026-09-11T13:00:00.000Z' };
+  const afternoon = { clock_in: '2026-09-11T13:00:00.000Z', clock_out: '2026-09-11T17:00:00.000Z' };
+
+  test('a single closed session with full-day hours is flagged as possibly missing a lunch punch', () => {
+    assert.equal(isPossibleMissedLunch([noBreak], 9), true);
+  });
+
+  test('right at the threshold (6h) is flagged too — same boundary as isHalfDay, just the other side', () => {
+    assert.equal(isPossibleMissedLunch([morning], 6), true);
+  });
+
+  test('a single short session (a real half day) is not flagged', () => {
+    assert.equal(isPossibleMissedLunch([morning], 4), false);
+  });
+
+  test('a morning + afternoon pair (lunch already recorded) is never flagged, regardless of hours', () => {
+    assert.equal(isPossibleMissedLunch([morning, afternoon], 8), false);
+  });
+
+  test('a still-open single session is not flagged — nothing to split until it is closed', () => {
+    assert.equal(isPossibleMissedLunch([stillOpen], null), false);
+  });
+
+  test('no sessions is not flagged', () => {
+    assert.equal(isPossibleMissedLunch([], 9), false);
+    assert.equal(isPossibleMissedLunch(undefined, 9), false);
   });
 });
 

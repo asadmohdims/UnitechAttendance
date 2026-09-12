@@ -147,6 +147,17 @@ input[type=time]::-webkit-calendar-picker-indicator, input[type=date]::-webkit-c
 .daypill.auto::after{content:""; position:absolute; top:-3px; right:-3px; width:7px; height:7px; border-radius:50%; background:var(--blue); border:1.5px solid var(--card);}
 .daypill.full.flagged, .daypill.half.flagged{border-color:var(--amber);}
 .daypill.full.flagged::after, .daypill.half.flagged::after{content:""; position:absolute; top:-3px; right:-3px; width:7px; height:7px; border-radius:50%; background:var(--amber); border:1.5px solid var(--card);}
+/* A single full-day session with no recorded lunch gap (see isPossibleMissedLunch() in
+   reportMath.js) — a quiet corner-dot nudge, same visual weight as .auto (informational) rather
+   than .flagged (amber, "needs review"): this isn't a data problem, punch data genuinely can't
+   tell a missed lunch punch apart from a real no-break shift, so it's "worth a glance" only.
+   --pink, not --violet (tried first, reverted 2026-09-12): violet sits only ~40° from --blue on
+   the color wheel, hard to tell apart from .auto's dot at 7px — the exact same "too close to an
+   already-used color at a glance" issue .half's fill already hit once with teal-vs-green. Pink
+   sits far from both --blue and --amber, and reusing it here (already the .half pill's fill
+   color, just in dot form on a different pill type) doesn't clash since .half and .unbroken
+   are mutually exclusive — a day is never both. */
+.daypill.full.unbroken::after{content:""; position:absolute; top:-3px; right:-3px; width:7px; height:7px; border-radius:50%; background:var(--pink); border:1.5px solid var(--card);}
 /* Friday's standing paid holiday — filled and lettered like .full/.review, since it's a
    frequent, expected state worth reading at a glance rather than a quiet footnote. */
 .daypill.holiday{background:rgba(167,139,250,.20); border-color:var(--violet); color:#ddd6fe;}

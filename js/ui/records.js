@@ -165,6 +165,7 @@ function singleSessionRow(r, emp){
   if(r.clock_out){
     const bSplit = document.createElement('button');
     bSplit.className = 'btn small ghost'; bSplit.textContent = 'Split for lunch';
+    bSplit.title = 'The new lunch gap is unpaid by default — use "Pay this" after if it should be paid';
     bSplit.onclick = () => splitForLunch(r, emp);
     actions.appendChild(bSplit);
   }

@@ -182,8 +182,14 @@ async function setLunchPaid(recordId, paid){
 // morning half (its real in_photo, but no out_photo — the split point itself was never
 // photographed) and a new record covers the afternoon half, carrying the ORIGINAL out_photo/
 // out_photo_blob (the one real "end of day" photo, moved rather than duplicated or lost) so
-// the day's last session still keeps a genuine out_photo. Defaults lunch_paid: true on the
-// morning half so splitting doesn't change total pay unless the owner deliberately un-marks it.
+// the day's last session still keeps a genuine out_photo. Defaults lunch_paid: false on the
+// morning half — same as every other path that creates a lunch gap (a normal clock-out, the
+// auto-close safety net): an earlier version of this defaulted to true "so splitting doesn't
+// change total pay", but that fought the actual common case (see isPossibleMissedLunch() in
+// reportMath.js) — an owner reaching for Split for lunch almost always means "this gap should be
+// unpaid", and had to immediately undo the default every time. Still one tap to flip via the
+// "Pay this" toggle (js/ui/records.js) if a split really was just cosmetic and pay shouldn't
+// change.
 async function splitSessionForLunch(recordId, lunchStartIso, lunchEndIso){
   const rec = await outbox.getItem(recordId);
   if(rec){
@@ -197,7 +203,7 @@ async function splitSessionForLunch(recordId, lunchStartIso, lunchEndIso){
     rec.clock_out = lunchStartIso;
     rec.out_photo = null;
     rec.out_photo_blob = null;
-    rec.lunch_paid = true;
+    rec.lunch_paid = false;
     await outbox.putItem(rec);
     await outbox.putItem(afternoon);
     outbox.kick();
@@ -216,7 +222,7 @@ async function splitSessionForLunch(recordId, lunchStartIso, lunchEndIso){
   });
   if(insertError) throw insertError;
   const {error: updateError} = await sb.from('records')
-    .update({clock_out: lunchStartIso, out_photo: null, lunch_paid: true})
+    .update({clock_out: lunchStartIso, out_photo: null, lunch_paid: false})
     .eq('id', recordId);
   if(updateError) throw updateError;
 }

@@ -4,7 +4,7 @@ import { store } from '../store/index.js';
 import { applyAvatar } from '../avatars.js';
 import { switchTab } from './shell.js';
 import { setRecordsDate, editRecord, deleteRecordFlow, toggleLunchPaid, splitForLunch } from './records.js';
-import { buildDayHours, groupByEmployeeDay, needsReview, dayHoursFromSessions, dayOffStatus, isHalfDay, lunchGapIndex } from '../reportMath.js';
+import { buildDayHours, groupByEmployeeDay, needsReview, dayHoursFromSessions, dayOffStatus, isHalfDay, lunchGapIndex, isPossibleMissedLunch } from '../reportMath.js';
 import { recHoursRounded, roundToQuarterHour, wasRounded } from '../rounding.js';
 
 const repMonth = $('repMonth');
@@ -198,10 +198,16 @@ function renderDetailCalendar({days, emps, hours, openFlags, reviewFlags, gapSta
       // an afternoon punch) gets its own color — a single session with close to a full day's
       // hours (worked straight through, no break) stays 'full'. See isHalfDay() in reportMath.js.
       const half = hasHours && isHalfDay(sessions, hours[e.id][d]);
+      // A single session that IS a full day's hours has no recorded lunch gap either — could be
+      // a genuine no-break shift, or a forgotten lunch punch; punch data alone can't tell which,
+      // so this is a quiet corner-dot nudge (not the amber "needs review" treatment), same visual
+      // language as .auto below. See isPossibleMissedLunch() in reportMath.js.
+      const unbroken = hasHours && !half && isPossibleMissedLunch(sessions, hours[e.id][d]);
       const pill = document.createElement('div');
       pill.className = 'daypill' + (open ? ' review' : hasHours ? (half ? ' half' : ' full') : gap ? ` ${gap}` : '')
-        + (flagged ? ' flagged' : '') + (autoInfo ? ' auto' : '');
+        + (flagged ? ' flagged' : '') + (autoInfo ? ' auto' : '') + (unbroken ? ' unbroken' : '');
       pill.textContent = open ? '!' : hasHours ? d : gap === 'holiday' ? 'F' : gap === 'off' ? 'A' : '';
+      if(unbroken) pill.title = 'Single session, no recorded break — check whether a lunch punch was missed';
       if(sessions){
         pill.onclick = () => toggleDayDetail(tr, sessions, e, d);
       }
@@ -331,6 +337,7 @@ function renderDayDetail(row, inner, sessions, emp, day){
     if(sessions.length === 1 && s.clock_out){
       const bSplit = document.createElement('button');
       bSplit.className = 'btn small ghost'; bSplit.textContent = 'Split for lunch';
+      bSplit.title = 'The new lunch gap is unpaid by default — use "Pay this" after if it should be paid';
       bSplit.onclick = () => splitForLunch(s, emp, afterSave);
       actions.appendChild(bSplit);
     }

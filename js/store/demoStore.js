@@ -129,8 +129,13 @@ function setLunchPaid(recordId, paid){
 // morning half (its real in_photo, but no out_photo — the split point itself was never
 // photographed) and a new record covers the afternoon half, carrying the ORIGINAL out_photo
 // (the one real "end of day" photo, moved rather than duplicated or lost) so the day's last
-// session still has a genuine out_photo. Defaults lunch_paid: true on the morning half so
-// splitting doesn't change total pay unless the owner deliberately un-marks it afterward.
+// session still has a genuine out_photo. Defaults lunch_paid: false on the morning half — same
+// as every other path that creates a lunch gap (a normal clock-out, the auto-close safety net):
+// an earlier version of this defaulted to true "so splitting doesn't change total pay", but that
+// fought the actual common case (see isPossibleMissedLunch() in reportMath.js) — an owner
+// reaching for Split for lunch almost always means "this gap should be unpaid", and had to
+// immediately undo the default every time. Still one tap to flip via the "Pay this" toggle
+// (js/ui/records.js) if a split really was just cosmetic and pay shouldn't change.
 function splitSessionForLunch(recordId, lunchStartIso, lunchEndIso){
   const records = loadRecords();
   const idx = records.findIndex(x => x.id === recordId);
@@ -141,7 +146,7 @@ function splitSessionForLunch(recordId, lunchStartIso, lunchEndIso){
     clock_in: lunchEndIso, clock_out: original.clock_out,
     in_photo: null, out_photo: original.out_photo, created_at: new Date().toISOString()
   };
-  records[idx] = {...original, clock_out: lunchStartIso, out_photo: null, lunch_paid: true};
+  records[idx] = {...original, clock_out: lunchStartIso, out_photo: null, lunch_paid: false};
   records.push(afternoon);
   saveRecords(records);
 }

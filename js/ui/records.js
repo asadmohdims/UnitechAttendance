@@ -5,7 +5,7 @@ import { applyAvatar } from '../avatars.js';
 import { refreshAll, tileStatus } from './kiosk.js';
 import { promptModal } from './modal.js';
 import { recHoursRounded, roundToQuarterHour, wasRounded } from '../rounding.js';
-import { dayHoursFromSessions } from '../reportMath.js';
+import { dayHoursFromSessions, lunchGapIndex } from '../reportMath.js';
 
 const recDate = $('recDate');
 recDate.value = dateStr();
@@ -81,25 +81,50 @@ function appendBadge(who, sessions){
 // gapSession: the session whose clock_out starts the gap — `lunch_paid` lives on it, and it's
 // what setLunchPaid() targets. Toggling is the only mechanism here: no separate confirm step,
 // because the flag is instantly reversible by tapping again — a mistaken tap costs one more tap.
-function lunchDivider(gapSession, gapHours, auto){
+// `afterSave` defaults to re-rendering this tab, but is overridable so another screen (the
+// Report calendar's day-detail panel) can reuse the exact same toggle and refresh itself instead.
+export async function toggleLunchPaid(gapSession, afterSave = renderRecords){
+  busy(true);
+  try{
+    await store.setLunchPaid(gapSession.id, !gapSession.lunch_paid);
+    await refreshAll();
+    await afterSave();
+  }catch(err){ toast('Failed: ' + err.message); }
+  busy(false);
+}
+
+// `isLunch` distinguishes the day's one real lunch break (see lunchGapIndex() in reportMath.js)
+// from any other gap a day with 3+ sessions can have — those render as a plain "Break" instead
+// of a second (or third) "Lunch", which is what actually surfaced this: multiple gaps were all
+// labeled "Lunch" unconditionally, misreading as several lunch breaks in one day.
+function lunchDivider(gapSession, gapHours, auto, isLunch){
   const divider = document.createElement('div');
   divider.className = 'rec-lunch-divider' + (gapSession.lunch_paid ? ' paid' : '');
   const label = document.createElement('span');
-  label.textContent = `Lunch: ${fmtHours(gapHours)}${auto ? ' (auto)' : ''}`;
+  label.textContent = `${isLunch ? 'Lunch' : 'Break'}: ${fmtHours(gapHours)}${auto ? ' (auto)' : ''}`;
   const toggle = document.createElement('button');
   toggle.className = 'btn small ghost lunch-paid-toggle';
   toggle.textContent = gapSession.lunch_paid ? '✓ Paid as work — undo' : 'Include as paid work';
-  toggle.onclick = async () => {
-    busy(true);
-    try{
-      await store.setLunchPaid(gapSession.id, !gapSession.lunch_paid);
-      await refreshAll();
-      await renderRecords();
-    }catch(err){ toast('Failed: ' + err.message); }
-    busy(false);
-  };
+  toggle.onclick = () => toggleLunchPaid(gapSession);
   divider.append(label, toggle);
   return divider;
+}
+
+// Same override-the-refresh shape as toggleLunchPaid() above, so the Report calendar's
+// day-detail panel can offer the identical delete-with-confirm flow instead of duplicating it.
+export async function deleteRecordFlow(r, emp, afterSave = renderRecords){
+  const confirmed = await promptModal({
+    title: `Delete this record for ${emp ? emp.name : 'this employee'}?`,
+    submitLabel: 'Delete', danger: true, fields: []
+  });
+  if(!confirmed) return;
+  busy(true);
+  try{
+    await store.deleteRecord(r);
+    await refreshAll();
+    await afterSave();
+  }catch(err){ toast('Failed: ' + err.message); }
+  busy(false);
 }
 
 // The punches + this-session's-own hours + edit/delete actions — the part every session has,
@@ -113,20 +138,7 @@ function sessionContent(r, emp){
   const actions = document.createElement('div'); actions.className = 'rec-actions';
   const bEdit = document.createElement('button'); bEdit.className = 'btn small ghost'; bEdit.textContent = 'Edit'; bEdit.onclick = () => editRecord(r, emp);
   const bDel = document.createElement('button'); bDel.className = 'btn small red'; bDel.textContent = 'Delete';
-  bDel.onclick = async () => {
-    const confirmed = await promptModal({
-      title: `Delete this record for ${emp ? emp.name : 'this employee'}?`,
-      submitLabel: 'Delete', danger: true, fields: []
-    });
-    if(!confirmed) return;
-    busy(true);
-    try{
-      await store.deleteRecord(r);
-      await refreshAll();
-      await renderRecords();
-    }catch(err){ toast('Failed: ' + err.message); }
-    busy(false);
-  };
+  bDel.onclick = () => deleteRecordFlow(r, emp);
   actions.append(bEdit, bDel);
 
   return {punches, hours, actions};
@@ -167,7 +179,7 @@ function singleSessionRow(r, emp){
 // The original clock_out's real photo moves to the new, later session rather than being
 // duplicated or dropped — the day's last session keeps a genuine out_photo, so it never misreads
 // as an unresolved auto-close (see needsReview() in reportMath.js).
-async function splitForLunch(r, emp){
+export async function splitForLunch(r, emp, afterSave = renderRecords){
   const result = await promptModal({
     title: `Split for lunch — ${emp ? emp.name : 'record'}`,
     submitLabel: 'Split',
@@ -192,7 +204,7 @@ async function splitForLunch(r, emp){
   try{
     await store.splitSessionForLunch(r.id, lunchStart.toISOString(), lunchEnd.toISOString());
     await refreshAll();
-    await renderRecords();
+    await afterSave();
   }catch(err){ toast('Failed: ' + err.message); }
   busy(false);
 }
@@ -218,12 +230,13 @@ function multiSessionGroup(sessions, emp){
   group.appendChild(header);
 
   const sessionsWrap = document.createElement('div'); sessionsWrap.className = 'rec-group-sessions';
+  const lunchIdx = lunchGapIndex(sessions);
   sessions.forEach((r, i) => {
     if(i > 0){
       const gapSession = sessions[i - 1];
       const gapHours = (new Date(r.clock_in) - new Date(gapSession.clock_out)) / 3600000;
       const auto = !gapSession.out_photo; // out_photo is null only for an auto-close — a manual punch always has one
-      sessionsWrap.appendChild(lunchDivider(gapSession, gapHours, auto));
+      sessionsWrap.appendChild(lunchDivider(gapSession, gapHours, auto, i === lunchIdx));
     }
     const {punches, hours, actions} = sessionContent(r, emp);
     const sessionRow = document.createElement('div'); sessionRow.className = 'rec-session-row';
@@ -279,7 +292,7 @@ function renderMissedAlert(){
   }
 }
 
-async function editRecord(r, emp){
+export async function editRecord(r, emp, afterSave = renderRecords){
   const result = await promptModal({
     title: `Edit — ${emp ? emp.name : 'record'}`,
     fields: [
@@ -304,7 +317,7 @@ async function editRecord(r, emp){
   try{
     await store.updateRecordTimes(r.id, inD.toISOString(), outD ? outD.toISOString() : null);
     await refreshAll();
-    await renderRecords();
+    await afterSave();
   }catch(err){ toast('Failed: ' + err.message); }
   busy(false);
 }

@@ -3,14 +3,19 @@ import { state } from '../state.js';
 import { store } from '../store/index.js';
 import { applyAvatar } from '../avatars.js';
 import { switchTab } from './shell.js';
-import { setRecordsDate } from './records.js';
-import { buildDayHours, groupByEmployeeDay, needsReview, dayHoursFromSessions, dayOffStatus, isHalfDay } from '../reportMath.js';
+import { setRecordsDate, editRecord, deleteRecordFlow, toggleLunchPaid, splitForLunch } from './records.js';
+import { buildDayHours, groupByEmployeeDay, needsReview, dayHoursFromSessions, dayOffStatus, isHalfDay, lunchGapIndex } from '../reportMath.js';
 import { recHoursRounded, roundToQuarterHour, wasRounded } from '../rounding.js';
 
 const repMonth = $('repMonth');
 repMonth.value = dateStr().slice(0,7);
 repMonth.onchange = renderReport;
 let lastReportData = null;
+// Which day's detail panel (if any) should stay open across a re-render — set on open/close,
+// read by renderDetailCalendar() to restore it after an inline edit rebuilds the whole table.
+// Keyed by employee id + day-of-month rather than a DOM reference, since a save always rebuilds
+// every row from scratch.
+let openDetailKey = null;
 
 $('btnPrevMonth').onclick = () => shiftMonthInput(repMonth, -1, renderReport);
 $('btnNextMonth').onclick = () => shiftMonthInput(repMonth, 1, renderReport);
@@ -179,6 +184,7 @@ function renderDetailCalendar({days, emps, hours, openFlags, reviewFlags, gapSta
     empWrap.append(avatar, nameSpan);
     empCell.appendChild(empWrap);
     tr.appendChild(empCell);
+    tr._empId = e.id; // lets the reopen-after-save pass below find this row again post-rebuild
 
     for(let d=1; d<=days; d++){
       const sessions = sessionsForEmp[d];
@@ -204,7 +210,7 @@ function renderDetailCalendar({days, emps, hours, openFlags, reviewFlags, gapSta
         + (flagged ? ' flagged' : '') + (autoInfo ? ' auto' : '');
       pill.textContent = open ? '!' : hasHours ? d : gap === 'holiday' ? 'F' : gap === 'off' ? 'A' : '';
       if(sessions){
-        pill.onclick = () => toggleDayDetail(tr, sessions);
+        pill.onclick = () => toggleDayDetail(tr, sessions, e, d);
       }
       const cell = document.createElement('td'); cell.className = 'day-cell';
       cell.appendChild(pill);
@@ -227,6 +233,23 @@ function renderDetailCalendar({days, emps, hours, openFlags, reviewFlags, gapSta
     tr._detailRow = detailRow;
     tr._detailInner = detailInner;
   });
+
+  // An inline edit/delete/split/lunch-toggle from the detail panel below calls renderReport(),
+  // which rebuilds this whole table from scratch — without this, saving a change would silently
+  // close the very panel the admin is looking at. Only reopens if that day still has sessions
+  // (e.g. wasn't the one just-deleted record) and still belongs to a row on this page.
+  if(openDetailKey){
+    const [empId, dayStr] = openDetailKey.split(':');
+    const day = Number(dayStr);
+    const matchTr = Array.from(tbody.children).find(t => t._empId === empId);
+    const sessions = (sessionsByDay[empId] || {})[day];
+    if(matchTr && sessions && sessions.length){
+      const emp = employeeStats.find(s => s.employee.id === empId)?.employee;
+      renderDayDetail(matchTr._detailRow, matchTr._detailInner, sessions, emp, day);
+    }else{
+      openDetailKey = null;
+    }
+  }
 }
 
 // A small "paid 9:15" annotation appended after a punch time, shown only when rounding
@@ -237,27 +260,55 @@ function paidNote(iso){
 }
 
 // Toggles the row's detail panel: closes if the same day's pill is clicked again, otherwise
-// rebuilds it from that day's sessions (same in/out/lunch chip vocabulary as Daily records).
-function toggleDayDetail(tr, sessions){
-  const row = tr._detailRow, inner = tr._detailInner;
-  if(row.classList.contains('open') && row._sessions === sessions){
+// (re)builds it from that day's sessions. emp/day identify this panel for openDetailKey so a
+// save made inside it (see renderDayDetail) can find its way back open after the table rebuilds.
+function toggleDayDetail(tr, sessions, emp, day){
+  const row = tr._detailRow;
+  const key = `${emp.id}:${day}`;
+  if(row.classList.contains('open') && row._key === key){
     row.classList.remove('open');
+    openDetailKey = null;
     return;
   }
+  openDetailKey = key;
+  renderDayDetail(row, tr._detailInner, sessions, emp, day);
+}
+
+// Builds the day-detail panel's contents — same in/out/lunch chip vocabulary as Daily records,
+// but now actionable in place (Phase 2 of the holiday/day-off visibility work: "make the
+// monthly view's corrections actionable instead of read-only"): edit or delete any session,
+// toggle a lunch gap paid, or split a single straight-through session — all via the exact same
+// store-backed flows Daily records itself uses (js/ui/records.js), so there's exactly one
+// implementation of each to ever disagree with itself. Every action's `afterSave` is
+// renderReport() (recomputes the whole month, not just this row) rather than Daily records'
+// default of re-rendering itself, since an edit here can change another day's totals too (e.g.
+// a lunch-paid toggle) and this panel doesn't have its own copy of that data to patch in place.
+function renderDayDetail(row, inner, sessions, emp, day){
+  const afterSave = renderReport;
   inner.innerHTML = '';
   const dateLabel = document.createElement('span'); dateLabel.className = 'detail-date';
   dateLabel.textContent = new Date(sessions[0].date + 'T00:00:00').toLocaleDateString('en-IN', {month:'short', day:'numeric'});
   inner.appendChild(dateLabel);
+  // Same "only one gap is actually lunch" fix as records.js's lunchDivider() — with 3+ sessions
+  // (2+ gaps), every gap used to render as "Lunch", which misreads as multiple lunch breaks in
+  // one day. See lunchGapIndex() in reportMath.js.
+  const lunchIdx = lunchGapIndex(sessions);
   sessions.forEach((s, i) => {
     if(i > 0){
-      const gapHours = (new Date(s.clock_in) - new Date(sessions[i-1].clock_out)) / 3600000;
-      const auto = !sessions[i-1].out_photo;
-      const paid = sessions[i-1].lunch_paid;
+      const gapSession = sessions[i-1];
+      const gapHours = (new Date(s.clock_in) - new Date(gapSession.clock_out)) / 3600000;
+      const auto = !gapSession.out_photo;
+      const paid = gapSession.lunch_paid;
+      const kind = i === lunchIdx ? 'Lunch' : 'Break';
       const lunchChip = document.createElement('span'); lunchChip.className = 'chip lunch';
-      // Read-only here — the toggle itself lives in Daily records (see js/ui/records.js);
-      // this just needs to not silently disagree with what that screen shows.
-      lunchChip.textContent = `Lunch ${fmtHours(gapHours)}${auto ? ' (auto)' : ''}${paid ? ' — paid as work' : ''}`;
+      lunchChip.textContent = `${kind} ${fmtHours(gapHours)}${auto ? ' (auto)' : ''}${paid ? ' — paid as work' : ''}`;
       inner.appendChild(lunchChip);
+      const bLunch = document.createElement('button');
+      bLunch.className = 'btn small ghost';
+      bLunch.textContent = paid ? 'Undo' : 'Pay this';
+      bLunch.title = paid ? `Stop paying through this ${kind.toLowerCase()} gap` : `Include this ${kind.toLowerCase()} gap as paid work`;
+      bLunch.onclick = () => toggleLunchPaid(gapSession, afterSave);
+      inner.appendChild(bLunch);
     }
     const inChip = document.createElement('span'); inChip.className = 'chip';
     inChip.innerHTML = `<span class="lbl">In</span>${fmtTime(s.clock_in)}${paidNote(s.clock_in)}`;
@@ -265,6 +316,22 @@ function toggleDayDetail(tr, sessions){
     const outChip = document.createElement('span'); outChip.className = 'chip' + (s.clock_out ? '' : ' review');
     outChip.innerHTML = `<span class="lbl">Out</span>${s.clock_out ? fmtTime(s.clock_out) + paidNote(s.clock_out) : 'Still in'}`;
     inner.appendChild(outChip);
+    const bEdit = document.createElement('button');
+    bEdit.className = 'btn small ghost'; bEdit.textContent = 'Edit';
+    bEdit.onclick = () => editRecord(s, emp, afterSave);
+    inner.appendChild(bEdit);
+    const bDelete = document.createElement('button');
+    bDelete.className = 'btn small red'; bDelete.textContent = 'Delete';
+    bDelete.onclick = () => deleteRecordFlow(s, emp, afterSave);
+    inner.appendChild(bDelete);
+    // Same "closed single session" gate as Daily records' own Split for lunch button — a day
+    // with more than one session already has its lunch break punched, nothing to split.
+    if(sessions.length === 1 && s.clock_out){
+      const bSplit = document.createElement('button');
+      bSplit.className = 'btn small ghost'; bSplit.textContent = 'Split for lunch';
+      bSplit.onclick = () => splitForLunch(s, emp, afterSave);
+      inner.appendChild(bSplit);
+    }
   });
   const totalHours = dayHoursFromSessions(sessions, recHours).total || 0;
   const totalPaidHours = dayHoursFromSessions(sessions, recHoursRounded).total || 0;
@@ -273,30 +340,31 @@ function toggleDayDetail(tr, sessions){
   totalSpan.innerHTML = `Worked <b>${fmtHours(totalHours)}</b>${stillOpen ? ' so far' : ''}`
     + (!stillOpen && totalPaidHours !== totalHours ? ` &middot; Paid <b>${fmtHours(totalPaidHours)}</b>` : '');
   inner.appendChild(totalSpan);
-  // The chips above are read-only (see the lunch-chip comment) — this is the one action this
-  // panel offers, and it's the whole point of it: jump straight to that date in Daily records
-  // instead of closing this, opening Daily records, and re-picking the date by hand.
+  // Kept alongside the new inline actions above — still useful for anything this panel doesn't
+  // cover (viewing the punch photos, for one, which stays Daily-records-only — see CLAUDE.md).
   const jumpBtn = document.createElement('button');
   jumpBtn.className = 'btn small ghost detail-jump';
   jumpBtn.textContent = '↗';
-  jumpBtn.title = 'Edit in Daily records';
-  jumpBtn.setAttribute('aria-label', 'Edit in Daily records');
+  jumpBtn.title = 'Open in Daily records';
+  jumpBtn.setAttribute('aria-label', 'Open in Daily records');
   jumpBtn.onclick = () => {
     setRecordsDate(sessions[0].date);
     switchTab('records');
   };
   inner.appendChild(jumpBtn);
-  row._sessions = sessions;
+  row._key = `${emp.id}:${day}`;
   row.classList.add('open');
 }
 
-// A click anywhere outside an open detail row — and outside the pill that opens one — closes
-// it. Clicks on a pill are excluded so this never fights toggleDayDetail's own open/close
-// logic, and clicks inside an open row (e.g. on a chip) are excluded so the row doesn't
-// immediately close itself while you're still looking at it.
+// A click anywhere outside an open detail row — and outside the pill that opens one, or the
+// shared prompt modal an inline action opens — closes it. The modal exclusion matters: without
+// it, clicking that modal's own Save button (which lives outside `.detail-row` in the DOM)
+// would bubble up and close/reset this panel a tick before the save's own afterSave callback
+// gets a chance to reopen it, so the panel would appear to close itself on every edit.
 document.addEventListener('click', e => {
-  if(e.target.closest('.daypill') || e.target.closest('.detail-row')) return;
+  if(e.target.closest('.daypill') || e.target.closest('.detail-row') || e.target.closest('#promptModal')) return;
   document.querySelectorAll('.detail-row.open').forEach(row => row.classList.remove('open'));
+  openDetailKey = null;
 });
 
 $('btnExport').onclick = async () => {

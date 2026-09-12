@@ -3,7 +3,7 @@
 //   node --test js/
 import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
-import { buildDayHours, groupByEmployeeDay, needsReview, dayOffStatus, isHalfDay } from './reportMath.js';
+import { buildDayHours, groupByEmployeeDay, needsReview, dayOffStatus, isHalfDay, lunchGapIndex } from './reportMath.js';
 
 describe('buildDayHours', () => {
   const morning = { emp_id: 'e1', date: '2026-09-05', clock_in: '2026-09-05T09:00:00.000Z', clock_out: '2026-09-05T13:00:00.000Z' }; // 4h
@@ -220,5 +220,50 @@ describe('isHalfDay', () => {
   test('hoursWorked missing (e.g. a still-open session) is not treated as a half day', () => {
     assert.equal(isHalfDay([morning], null), false);
     assert.equal(isHalfDay([morning], undefined), false);
+  });
+});
+
+describe('lunchGapIndex', () => {
+  // Local-time constructor (not ISO 'Z' strings) — same convention as js/lunch.test.mjs, since
+  // this reads LUNCH_CUTOFF_HOUR/MINUTE the exact same way js/lunch.js's cutoffTimeFor() does.
+  const at = (h, m, durationMin) => {
+    const clockIn = new Date(2026, 8, 11, h, m);
+    return { clock_in: clockIn.toISOString(), clock_out: new Date(clockIn.getTime() + durationMin * 60000).toISOString() };
+  };
+
+  test('no sessions, or just one: no gap to pick', () => {
+    assert.equal(lunchGapIndex([]), null);
+    assert.equal(lunchGapIndex(undefined), null);
+    assert.equal(lunchGapIndex([at(9, 0, 240)]), null);
+  });
+
+  test('exactly one gap is always the lunch gap, regardless of what time it falls at', () => {
+    const morning = at(9, 0, 240);     // 9:00-13:00
+    const lateEvening = at(20, 0, 60); // an unusually late second session, 8-9pm — still "lunch"
+    assert.equal(lunchGapIndex([morning, lateEvening]), 1);
+  });
+
+  // The actual bug this guards against: before this function existed, EVERY gap in a 3+ session
+  // day rendered as "Lunch" — this is the regression, not a hypothetical.
+  test('multiple gaps: only the one nearest the configured lunch cutoff (1:00 PM) is "lunch"', () => {
+    const s1 = at(9, 0, 30);    // ends 9:30 — an early errand, nowhere near lunch
+    const s2 = at(10, 0, 180);  // ends 13:00 exactly — this gap IS lunch
+    const s3 = at(13, 30, 270); // 1:30-6:00
+    assert.equal(lunchGapIndex([s1, s2, s3]), 2); // the gap after s2, before s3
+  });
+
+  test('a tie between two equally-distant gaps deterministically picks the earlier one', () => {
+    const s1 = at(9, 0, 180);  // ends 12:00 — 1h before the 1:00 PM cutoff
+    const s2 = at(12, 30, 90); // ends 14:00 — 1h after the cutoff
+    const s3 = at(14, 30, 210);
+    assert.equal(lunchGapIndex([s1, s2, s3]), 1);
+  });
+
+  test('three gaps: the middle one nearest lunch wins over two flanking non-lunch gaps', () => {
+    const s1 = at(6, 0, 30);    // ends 6:30 — well before lunch
+    const s2 = at(7, 0, 330);   // ends 12:30 — 30 min before the cutoff
+    const s3 = at(13, 0, 240);  // ends 17:00 — 4h after the cutoff
+    const s4 = at(18, 0, 60);
+    assert.equal(lunchGapIndex([s1, s2, s3, s4]), 2); // the gap after s2, before s3
   });
 });

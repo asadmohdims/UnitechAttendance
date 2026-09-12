@@ -106,6 +106,22 @@ per in/out session"), so a lunch break is just an ordinary second clock-in/out p
 hours are simply Σ(session durations) — the lunch gap is whatever falls *between* sessions,
 never an inferred or separately-deducted amount.
 
+- **Only one gap per day is actually "lunch" (fixed 2026-09-12)** — a real bug, not just messy
+  test data: `js/ui/records.js` and `js/ui/report.js` both labeled *every* gap between sessions
+  "Lunch: Xh Ym", which was fine for the 2-session case (exactly one gap) but wrong the moment a
+  day had 3+ sessions — an extra punch (a forgotten tap, a same-day errand, or what actually
+  surfaced this: repeated test taps on the real kiosk) meant 2+ gaps, and all of them rendered as
+  separate lunch breaks in one day. `lunchGapIndex(sessions)` in `js/reportMath.js` fixes this:
+  with exactly one gap it's always "lunch" (unchanged — real usage is almost always one break a
+  day, no reason to second-guess what time it happened to fall at), but with more than one gap,
+  only the one nearest the shop's configured lunch time (`LUNCH_CUTOFF_HOUR`/`MINUTE` — the same
+  constant the auto-close safety net below already uses) gets called "Lunch"; every other gap
+  renders as a plain "Break" instead. Purely a labeling fix — `dayHoursFromSessions()`'s hours
+  math never cared what a gap was called (a gap is just unpaid time unless `lunch_paid` is set,
+  regardless of label), so no payroll figure changed. Covered in `js/reportMath.test.mjs`: the
+  single-gap case, a multi-gap case where the nearest-to-cutoff gap wins over an early-morning
+  errand, an equidistant tie (picks the earlier gap deterministically), and a 4-session case
+  with the winning gap in the middle.
 - **Auto-close safety net** (`js/lunch.js`): the one real gap the multi-session model doesn't
   cover by itself — an employee who forgets to tap out for lunch would otherwise sit in one
   long open session and get paid through it. `LUNCH_CUTOFF_HOUR`/`LUNCH_CUTOFF_MINUTE` in
@@ -365,6 +381,34 @@ is itself `position:sticky; left:0` so it stays in view regardless of horizontal
 position, and a document-level click listener closes it on any click outside a pill or the
 open row itself.
 
+**Report calendar day-detail made actionable — Phase 2 of holiday/day-off visibility**
+(2026-09-12): the day-detail panel above (`toggleDayDetail()`) was purely read-only except for
+the Phase-1-era jump-to-Daily-records button — any correction still meant leaving the calendar,
+finding the date again in Daily records, and coming back. `renderDayDetail()` (split out of
+`toggleDayDetail()`, which now just tracks open/closed) adds Edit and Delete per session, a
+lunch-gap paid-work toggle, and Split for lunch (on a closed single session) directly inline —
+by calling the exact same store-backed flows Daily records itself uses
+(`editRecord`/`deleteRecordFlow`/`toggleLunchPaid`/`splitForLunch`, all now exported from
+`js/ui/records.js` with an optional `afterSave` override, defaulting to `renderRecords` so
+Daily records' own behavior is unchanged) rather than a second implementation of any of them.
+Two things worth knowing if this area gets touched again:
+- Every action's `afterSave` is `renderReport()`, not a targeted DOM patch — an edit here can
+  change another day's totals too (a lunch-paid toggle moves hours across the month total), and
+  this panel has no local copy of `monthData` to patch in place. `renderReport()` rebuilds the
+  whole table from scratch, which would otherwise silently close whichever day's panel the admin
+  was looking at mid-edit — `openDetailKey` (`empId:day`) is tracked at module scope specifically
+  so `renderDetailCalendar()` can reopen the same day's panel, with fresh data, right after.
+- `promptModal()` (Edit/Delete/Split all use it) renders as a separate overlay elsewhere in the
+  DOM, not nested inside `.detail-row` — the calendar's own "click outside closes the open
+  panel" listener has to explicitly exclude `#promptModal` too, not just `.detail-row`/`.daypill`,
+  or clicking that modal's own Save button bubbles up and closes the panel a tick before the
+  save's `afterSave` gets a chance to reopen it (verified this was a real failure mode before the
+  exclusion was added, not just a theoretical one).
+Verified end-to-end in demo mode (Browser pane): edit, delete, lunch-paid toggle, and split all
+correctly update the day's/month's totals and the calendar pill color, and the panel survives a
+save and stays open on the same day. Not a schema change, not a payroll-math change — existing
+`node --test js/` suite (79 tests) still passes unmodified.
+
 Pinch-zoom (`user-scalable`) is toggled dynamically on the single `<meta name=viewport>` tag
 in `switchTab()` (`js/ui/shell.js`) — locked only on the kiosk home tab (stops an employee
 mid-queue from accidentally zooming the shared tablet), unlocked on every admin tab so an
@@ -431,12 +475,61 @@ admin isn't blocked from zooming Records/Report/Employees/Salary on their own ph
   loop in `js/ui/kiosk.js` also now isolates one record's failure so it can't block the rest of
   that tick. Not yet re-verified against the live project with a real second device — worth
   doing before relying on it for real multi-week usage.
-- 🔶 **Holiday & day-off visibility — Phase 1 done** (2026-09-11, branch
-  `feature/holiday-dayoff-visibility`): see the dedicated section above. Friday's paid holiday
-  and an inferred day off are now visible in the monthly report's calendar and employee
-  summary — no schema change, purely derived from existing data. **Phases 2 (make the monthly
-  view's corrections actionable) and 3 (day-off-aware salary deduction, manual per
-  employee/month per the owner's call) are not started.**
+- 🔶 **Holiday & day-off visibility — Phases 1 and 2 done** (Phase 1: 2026-09-11; Phase 2:
+  2026-09-12, still on branch `feature/holiday-dayoff-visibility`): see the dedicated sections
+  above. Friday's paid holiday and an inferred day off are visible in the monthly report;
+  the calendar's day-detail panel is now actionable in place (edit/delete/lunch-paid/split)
+  instead of read-only. Neither phase touched a schema or any payroll figure.
+  **Phase 3 (day-off-aware salary deduction) was deliberately left un-started on 2026-09-12** —
+  see "Autonomous session — decisions deferred, not skipped" below for why and for the two
+  candidate designs to choose between.
+
+## Autonomous session (2026-09-12) — decisions deferred, not skipped
+
+Asad asked Claude to clear the entire remaining backlog unattended in one session, calling out
+any decision points rather than pausing for approval. Everything engineering-scoped and
+unambiguous got built (Phase 2 above). Three items were deliberately left alone instead of
+guessed at, because guessing them wrong means a real employee gets paid the wrong amount, or
+this file starts asserting shop facts nobody actually confirmed — both worse outcomes than
+waiting one more day for a two-line answer:
+
+- **Overtime (the time & attendance backlog item below) — not attempted.** Not an oversight:
+  Asad himself deferred this "until just before going live" on 2026-09-11, one day before this
+  session. Building it anyway would have overridden that call rather than executed it. The open
+  questions below (daily vs. weekly basis, separate line vs. folded ratio, and now also: what
+  multiplier — 1.5x is the common convention but was never actually discussed here) are exactly
+  the kind of thing this file's own "ask before a significant choice" convention exists for.
+- **Phase 3, day-off-aware salary deduction — not attempted.** The backlog line itself
+  ("manual per employee/month per the owner's call") is honestly ambiguous between two real
+  designs, and they move pay in opposite directions:
+  1. *A paid-leave credit* — a per-day toggle (symmetric to the existing `lunch_paid` override)
+     that adds `STANDARD_DAY_HOURS` back into that period's `hoursWorked` for a specific inferred
+     "off" day, so a day the owner authorizes doesn't cost the employee the automatic ratio
+     reduction it causes today.
+  2. *An extra deduction* — the owner flags a specific unauthorized absence for a penalty
+     *beyond* the automatic ratio reduction that already happens today (an "off" day already
+     contributes zero hours toward `STANDARD_MONTHLY_HOURS`, which already reduces pay
+     proportionally — this only matters if that automatic effect is considered insufficient).
+  Note also that today's `STANDARD_MONTHLY_HOURS = 8 × 26` already assumes the weekly holiday as
+  a non-work day baked into the 26, so Friday itself likely needs no separate salary handling at
+  all — only genuine "off" days do. Picking wrong here means shipping a live payroll feature
+  that moves real pay in a direction nobody asked for; this needs one direct question to Asad,
+  not an inferred answer.
+- **Config placeholders unchanged** (`STANDARD_MONTHLY_HOURS`, `LUNCH_CUTOFF_HOUR`,
+  `MISSED_CLOCKIN_HOUR`, `WEEKLY_HOLIDAY_DAY` in `js/config.js`) — these are the shop's own
+  operating facts (actual hours/days worked, actual lunch/missed-clock-in cutoffs), not
+  engineering judgment calls. Left exactly as before.
+- **Cross-device clock-out fix — still only code-reviewed, not re-verified live.** The Status
+  entry above already flagged this as needing a real second device; that's still true. This
+  session didn't attempt it against the live Supabase project either — the sandboxed preview
+  browser can't drive the camera, and deliberately avoided writing synthetic test rows into the
+  live production `records` table to fake the "opened on another device" case, since that's
+  real shop data and the risk (a stray row, however briefly) wasn't worth taking unsupervised.
+  Re-read `clockOut()`/`updateRecordTimes()`/`setLunchPaid()`/`splitSessionForLunch()`'s
+  "not in local outbox → write straight to Postgres" fallback in `supabaseStore.js` line by
+  line instead — the logic is sound on inspection, but "logic looks right" and "verified against
+  two real devices" are different claims, and only the second is the one CLAUDE.md originally
+  asked for.
 
 ## Time & attendance backlog — overtime (the one item left)
 
@@ -473,10 +566,12 @@ not bundling).
   lunch-paid merge — not flagged, flagged on the last session of a day, a chain of 3+ sessions,
   merging under a rounding `hoursFn`, and a still-open session after a flagged one; and
   `dayOffStatus`'s holiday/off/nothing-to-show classification, including the Friday-before-hire
-  precedence regression and the "no `employeeSince`" demo-mode case; and `isHalfDay`'s
+  precedence regression and the "no `employeeSince`" demo-mode case; `isHalfDay`'s
   session-count-plus-hours distinction, including the regression this guards against — a
-  single session with close to a full day's hours must NOT read as a half day), and
-  `js/rounding.js` (both
+  single session with close to a full day's hours must NOT read as a half day; and
+  `lunchGapIndex`'s single-gap-is-always-lunch case, a multi-gap case where the nearest-to-
+  cutoff gap wins over an early-morning errand, a deterministic tie-break, and a 4-session case
+  with the winning gap in the middle), and `js/rounding.js` (both
   sides of the 10/11-minute grace-window cutover, the exact 10:30 tie, hour/day rollovers, and
   `recHoursRounded`'s open-session and zero-length cases).
 - Deliberately **not** covered by automated tests: `supabaseStore.js` (touches the real

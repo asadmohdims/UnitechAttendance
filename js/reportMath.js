@@ -1,7 +1,7 @@
 // Pure day-hours accumulation for report.js's monthData() — no store/DOM access, so it's
 // testable in isolation the same way js/salary.js is.
 import { recHours, dateStr } from './utils.js';
-import { WEEKLY_HOLIDAY_DAY, STANDARD_DAY_HOURS } from './config.js';
+import { WEEKLY_HOLIDAY_DAY, STANDARD_DAY_HOURS, LUNCH_CUTOFF_HOUR, LUNCH_CUTOFF_MINUTE } from './config.js';
 
 // A single session's hours below which it reads as attendance for only part of the day, rather
 // than a full day worked straight through with no break — see isHalfDay() below. 6 of 8 standard
@@ -111,4 +111,33 @@ export function dayOffStatus({date, weekday, employeeSince, today = dateStr()}){
 export function isHalfDay(sessions, hoursWorked){
   if(!sessions || sessions.length !== 1) return false;
   return hoursWorked != null && hoursWorked < HALF_DAY_HOUR_THRESHOLD;
+}
+
+// Given a day's chronologically-sorted sessions, returns the index (into `sessions`) of the
+// session whose gap-before-it is the day's actual lunch break — i.e. the gap sits between
+// sessions[i-1] and sessions[i] — or null if there's no gap at all (a single session).
+// With exactly one gap, that gap simply IS lunch: real usage is almost always one clock-out/
+// back-in pair a day, so there's nothing to disambiguate and no reason to second-guess what
+// time it happened to fall at (an employee's one break is their break, whenever they took it).
+// The bug this guards against only shows up with MORE than one gap — an extra punch from a
+// forgotten tap, a same-day errand, or (what actually surfaced this) repeated test taps — every
+// gap used to render as "Lunch" unconditionally, which reads as multiple lunch breaks in one
+// day. Only the gap nearest the shop's configured lunch time (LUNCH_CUTOFF_HOUR/MINUTE — the
+// same constant js/lunch.js's auto-close safety net already uses) is the real lunch break; every
+// other gap is just an ordinary break (still unpaid unless the owner explicitly marks it paid,
+// same lunch_paid mechanism either way — see dayHoursFromSessions above).
+// Uses local (kiosk-device) time, same convention as js/lunch.js's cutoffTimeFor() — this app
+// has never needed to reason about time zones beyond "wherever the kiosk physically is".
+export function lunchGapIndex(sessions){
+  if(!sessions || sessions.length < 2) return null;
+  if(sessions.length === 2) return 1;
+  const cutoffMinutes = LUNCH_CUTOFF_HOUR * 60 + LUNCH_CUTOFF_MINUTE;
+  let bestIdx = 1, bestDist = Infinity;
+  for(let i = 1; i < sessions.length; i++){
+    const gapStart = new Date(sessions[i-1].clock_out);
+    const gapMinutes = gapStart.getHours() * 60 + gapStart.getMinutes();
+    const dist = Math.abs(gapMinutes - cutoffMinutes);
+    if(dist < bestDist){ bestDist = dist; bestIdx = i; }
+  }
+  return bestIdx;
 }

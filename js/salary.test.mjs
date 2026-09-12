@@ -3,7 +3,7 @@
 //   node --test js/
 import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
-import { periodEndDate, pickRateForPeriod, calcSalary, fmtCurrency } from './salary.js';
+import { periodEndDate, pickRateForPeriod, calcSalary, fmtCurrency, fmtRate } from './salary.js';
 
 describe('periodEndDate', () => {
   test('a fully elapsed month uses its own last day, regardless of today', () => {
@@ -96,8 +96,10 @@ describe('calcSalary', () => {
   });
 
   // Documented current behavior, not a bug: v1 has no overtime cap, so hours above the
-  // standard produce more than the full monthly salary. Flagged for the owner conversation
-  // about STANDARD_MONTHLY_HOURS — this test just pins down what "no cap" actually does.
+  // standard produce more than the full monthly salary — this test just pins down what "no cap"
+  // actually does. `standardHours` here is a plain number the caller supplies; js/ui/salary.js
+  // is what computes it per month (calendar days × STANDARD_DAY_HOURS, the owner's own call,
+  // 2026-09-12) — this pure function doesn't care where it came from.
   test('hours above the standard are not capped', () => {
     const {amount} = calcSalary({monthlySalary: 18000, hoursWorked: 416, standardHours: 208});
     assert.equal(amount, 36000);
@@ -116,5 +118,19 @@ describe('fmtCurrency', () => {
 
   test('uses Indian digit grouping (lakhs), not thousands', () => {
     assert.equal(fmtCurrency(1234567), '₹12,34,567');
+  });
+});
+
+describe('fmtRate', () => {
+  test('null/undefined render as an em dash', () => {
+    assert.equal(fmtRate(null), '—');
+    assert.equal(fmtRate(undefined), '—');
+  });
+
+  // Unlike fmtCurrency, this must NOT round to the nearest rupee — a rate is a multiplicand
+  // shown so an owner can multiply it back out and land on the same headline total; rounding it
+  // the way a final pay figure rounds would make that check fail.
+  test('keeps two decimal places, not rounded to the nearest rupee like fmtCurrency', () => {
+    assert.equal(fmtRate(16000 / 208), '₹76.92');
   });
 });

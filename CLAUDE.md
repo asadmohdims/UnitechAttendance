@@ -126,7 +126,7 @@ never an inferred or separately-deducted amount.
   cover by itself — an employee who forgets to tap out for lunch would otherwise sit in one
   long open session and get paid through it. `LUNCH_CUTOFF_HOUR`/`LUNCH_CUTOFF_MINUTE` in
   `js/config.js` (default 1:00pm — a placeholder pending the shop owner, same status as
-  `STANDARD_MONTHLY_HOURS`) mark the cutoff; anyone still clocked in on a session that started
+  `MISSED_CLOCKIN_HOUR`) mark the cutoff; anyone still clocked in on a session that started
   *today* and before the cutoff gets auto-closed at the cutoff time. Deliberately
   **client-side and opportunistic** (`checkLunchAutoClose()` in `js/ui/kiosk.js`, run once on
   load and again on the same 5s tick as the sync-status poll — not a server-side cron), so it
@@ -206,9 +206,12 @@ day-off-aware salary deduction. Phases 2 and 3 are not started yet.
 This phase is **purely visibility — no schema change, no new store method**. `WEEKLY_HOLIDAY_DAY`
 (`js/config.js`, default 5/Friday, same "placeholder pending the owner" status as
 `LUNCH_CUTOFF_HOUR`/`MISSED_CLOCKIN_HOUR`) is the one thing that would need to change if the
-shop's weekly off day is ever something other than Friday. `STANDARD_DAY_HOURS = 8` was pulled
-out of `STANDARD_MONTHLY_HOURS` (still `= STANDARD_DAY_HOURS * 26`) so Phase 3's per-day salary
-deduction shares the same number instead of a second hardcoded `8`.
+shop's weekly off day is ever something other than Friday. `STANDARD_DAY_HOURS = 8`
+(`js/config.js`) is the one per-day constant everything else here shares — what a paid Friday is
+credited as, what a docked Friday loses, and (as of the calendar-day payroll model, see the
+dedicated section below) the multiplier `js/ui/salary.js` applies to a given month's actual day
+count to get that month's standard hours, instead of the fixed-26-day `STANDARD_MONTHLY_HOURS`
+constant that used to live here.
 
 - **A day off is inferred, not recorded** — a deliberate call (owner's, 2026-09-11): rather than
   requiring the owner to explicitly mark every day off, any active employee's day with zero
@@ -292,6 +295,153 @@ deduction shares the same number instead of a second hardcoded `8`.
   `setRecordsDate()` + `switchTab('records')` pair the review banner's "Review entries" button
   already used for the *first* flagged entry — now available from *any* day's detail panel, not
   just the first flagged one.
+
+## Docked-holiday pay override (2026-09-12)
+
+Lets the owner exclude a specific paid Friday from one employee's pay for a month they've taken
+more time off than the standing holiday allowance covers — a real request, narrower than and
+separate from Phase 3 below (Phase 3 is about an arbitrary inferred day *off*; this is only ever
+about the standing weekly *holiday*). Scoped deliberately to Fridays only for now, on Asad's own
+call — see the "Autonomous session" section's Phase 3 discussion for why the general case is
+still open.
+
+- **Schema**: `day_pay_overrides(emp_id, date, paid)` (see `supabase-setup.sql`), one row per
+  `(emp_id, date)`, upserted in place — a no-punch day has no `records` row to attach a flag to,
+  so this can't reuse `lunch_paid`'s column-on-a-record trick. `paid` is stored explicitly
+  (rather than the table only ever meaning "unpaid") so the same table could later cover the
+  opposite direction too (crediting an inferred day off, if Phase 3 ever gets picked up) without
+  another migration — only the "dock a holiday" direction has UI today.
+  `store.listDayPayOverrides()`/`setDayOverride()` in both `demoStore.js`/`supabaseStore.js`.
+  Needs the migration applied to the live project before the toggle works there — same caveat as
+  every other schema addition here (`lunch_paid`, `salary_rates`).
+- **Where the control lives**: the Report calendar's day-detail panel, same as every other
+  per-day correction (edit/delete/lunch-paid/split) — clicking an `'F'` pill now opens a small
+  panel with a "Mark unpaid" / "Restore as paid" toggle (`renderHolidayDetail()`/
+  `toggleHolidayPay()` in `js/ui/report.js`). Before this, a no-punch day's pill had no
+  `onclick` at all (`if(sessions){...}` gated it) — Salary itself owns no day-level editing, by
+  design, so this stays consistent with "Salary reads, Report/Records correct" rather than
+  growing a second place corrections happen. Same reversible, no-confirm shape as the lunch-paid
+  toggle — one tap docks it, one tap undoes it, no dialog.
+- **Math**: originally implemented as a flat subtraction inside `calcSalary()` (a
+  `deductedHours` param, clamped at 0) — **superseded the same day by the calendar-day payroll
+  model below**, which changed how docking is expressed rather than removing it: a docked Friday
+  now simply isn't credited (see that section), so `calcSalary()` reverted to plain ratio math
+  with no knowledge of Fridays at all. `monthData()` in `js/ui/report.js` still computes
+  `dockedDays[empId][day]` alongside `gapStatus` exactly as before (only true where the day is
+  *actually* a `'holiday'` gap — an override surviving a later change, e.g. a punch added back
+  for that day, is ignored rather than misapplied); `js/ui/salary.js` is what turns that into
+  "this Friday doesn't get its 8h credit" now, not a subtraction. The overrides fetch itself
+  still fails soft to `[]` (a fresh environment without the migration, or an offline read, just
+  means the feature is quietly unavailable that load — doesn't break the rest of Report/Salary).
+- **Calendar visual**: `.daypill.holiday.docked` — a small corner dot, same visual language as
+  `.auto`/`.flagged`/`.unbroken`, in `--red` (already this app's "something's being taken away"
+  colour — the missed-clock-in tile, delete buttons) since this is the one daypill state that's
+  a deliberate pay deduction rather than an informational nudge or a needs-review flag. New
+  legend row in `index.html`.
+- **Salary calc-panel cleanup, done alongside this** (the actual trigger for this whole pass —
+  Asad's own critique of the panel, refined over several rounds of his own feedback and one
+  relayed from the shop owner). Went through three iterations:
+  1. First pass: removed the punch-rounding boilerplate paragraph (repeated verbatim per
+     employee — a property of the whole system, not that person's pay) and the separate "Hours
+     paid"/"Standard hours" paragraphs, folding both numbers into a single Formula line. Also
+     fixed a real inconsistency: the Formula showed hours as a decimal (`194.5`) right below a
+     line showing the same number as `194:30` — every hours figure now goes through
+     `fmtHours()`, so there's one notation on the whole panel.
+  2. Second pass (Asad's own follow-up critique): the border lived on `.salary-person` itself,
+     so it separated a row from *its own* calc-detail below it but left nothing between that
+     detail and the *next* employee's row — an opened panel visually ran into whoever came
+     next. Fixed by moving the border to a new `.salary-item` wrapper (row + detail travel
+     together as one unit, mirroring `.rec-group`'s existing header+nested-content pattern).
+     The detail panel itself gained proper `padding-top` (was a `margin-top:-6px` hack) and its
+     own `background:var(--raised)` + `border-top`, and the whole thing became a real
+     `<table class="calc-table">` (visible borders, not just column alignment — an explicit ask,
+     "for ease of accounting") with `Days worked` reinstated as its own row and the final line
+     renamed `Total pay`, visually emphasized (`.calc-total`, tinted background) as the number
+     everything above it built up to.
+  3. Third pass: added a `Hourly rate` row (`monthly_salary ÷` the standard-hours denominator,
+     via `fmtRate()` in `js/salary.js` — 2 decimal places, *not* rounded to the nearest rupee
+     like `fmtCurrency`, since a rate is a multiplicand shown so the math can be checked by hand:
+     rounding it would make `rate × hours` stop reproducing the shown total) and reframed the
+     final row as `hourly rate × hours = pay` instead of the ratio form — mathematically
+     identical, more legible to a non-technical reader. `Days worked` also now calls out paid
+     Fridays explicitly (`totalFridays`/`paidFridays` from `md.gapStatus`) so a paid holiday's
+     absence from that count doesn't read as an unexplained gap.
+     **First relayed owner note (2026-09-12): "the hourly rate is calculated from the days in
+     the month, not the actual days worked."** At the time this only needed a wording fix — the
+     math already divided by the fixed `STANDARD_MONTHLY_HOURS` constant (26-day standard month
+     × 8h), never by `daysWorked`, but the Hourly rate row's "(26 days × 8h)" sat directly above
+     a "Days worked" row also saying "days", reading as a possible contradiction. Reworded and
+     relabeled the row below it "Days worked (actual)".
+  4. **Fourth pass, the same day — a real math change, not wording**: a second, more specific
+     owner note ("It should be the days of the month so January 31 days, February 28 days...
+     not 26 days") turned out to mean the fixed 26-day denominator itself was wrong, not just
+     its label. See the dedicated "Calendar-day payroll model" section below for the full
+     mechanism (`STANDARD_MONTHLY_HOURS` no longer exists; standard hours are now computed per
+     month, and a paid Friday is credited hours rather than just excluded from a smaller
+     denominator).
+- Verified in demo mode (Chrome, not just the sandboxed Browser pane, per Asad's own request):
+  marking a Friday unpaid puts the red dot on the pill, the Salary panel picks up the `Docked`
+  row and the reduced pay figure, and "Restore as paid" fully reverts both; every row of the
+  final table (Rate → Hourly rate → Days worked → Hours worked → Docked → Total pay) checked
+  against both a docked and an undocked employee, both before and after the calendar-day model
+  change. 92 tests pass (`deductedHours`'s tests were removed along with the param itself once
+  the calendar-day model made it unnecessary; `fmtRate`'s precision test remains). Not a schema
+  change to `records`, no change to Report/Records' own hours figures — Salary-only.
+
+## Calendar-day payroll model (2026-09-12)
+
+**Resolves the `STANDARD_MONTHLY_HOURS` placeholder** that `js/config.js`/CLAUDE.md had flagged
+since Salary v1 as "pending confirmation with the shop owner" — the owner's direct answer,
+relayed by Asad: standard hours must be based on the actual days in that specific calendar
+month (January 31, February 28, March 31, ...), not a fixed 26-day approximation. This is the
+standard "calendar-day method" of salary proration (common in Indian payroll, as opposed to the
+"fixed standard days" method the app launched with) — the shop owner's own convention, not an
+engineering guess.
+
+- **Why this isn't a one-line swap**: the old `208 (= 26 × 8)` was deliberately *less* than a
+  full month's hours specifically so the weekly holiday (Friday) never cost anyone pay — the
+  ~4-5 Fridays a month were already priced out of that denominator. Swapping the denominator for
+  the literal calendar day count (which includes every Friday) without changing anything else
+  would have put Fridays back into the denominator while they still contribute zero hours to the
+  numerator — a silent pay cut for every employee, every month, worse in months with more
+  Fridays. Caught and confirmed with Asad before writing any code (see the "Autonomous session"
+  section below for why this project's convention is to ask rather than guess on anything that
+  moves real pay) — his call: keep Friday free by crediting it, not by leaving the model broken.
+- **The mechanism (`js/ui/salary.js`)**: for each employee, `standardHours = md.days *
+  STANDARD_DAY_HOURS` (that month's actual day count from `monthData()`, not a constant
+  anymore — `STANDARD_MONTHLY_HOURS` no longer exists in `js/config.js`). Every paid (non-docked)
+  Friday is credited its own `STANDARD_DAY_HOURS` into the numerator even though nothing was
+  punched (`creditedHours = paidFridays * STANDARD_DAY_HOURS`; `hoursForPay = total +
+  creditedHours`) — full attendance now equals full pay in *every* month regardless of length or
+  Friday count, exactly by construction, rather than the old model's rough 26-day average (which
+  was already slightly off in either direction depending on how many Fridays a given month
+  actually had).
+- **Docking a Friday is now "don't credit it", not "subtract from it"**: the docked-holiday
+  override (previous section) used to subtract `STANDARD_DAY_HOURS` from the numerator via
+  `calcSalary()`'s `deductedHours` param. Under this model that's unnecessary — a docked Friday
+  is simply excluded from `paidFridays`, so it was never credited in the first place, same
+  treatment as any other absence. `calcSalary()` in `js/salary.js` reverted to plain ratio math
+  (`ratio = hoursWorked / standardHours`) with no knowledge of Fridays, docking, or clamping at
+  all — that logic all lives in `js/ui/salary.js` now, which is where Friday-specific business
+  rules already lived (`totalFridays`/`paidFridays`/`dockedCount`, all from `md.gapStatus`/
+  `md.dockedDays`).
+- **UI**: the "Hourly rate" row now reads `monthly_salary ÷ (this month's N days × 8h)` — N
+  varies by month, so the row's own wording carries the actual figure rather than a hardcoded
+  "26". "Hours worked" shows the credit inline when one applies (`8:45 + 8:00 (1 paid Friday) =
+  16:45`) so it never silently disagrees with what "Total pay" multiplies. A docked month's
+  "Docked" row now reads "N Friday(s) not credited this month" rather than "N unpaid holidays
+  (−Xh)", matching the credit-based mechanism instead of implying a subtraction that no longer
+  happens.
+- Verified in demo mode (Chrome): both an undocked employee (credit applied, higher pay than the
+  old fixed-26 model for the same attendance, since September's Fridays are now fully credited
+  rather than glossed over by an approximate denominator) and a docked one (credit withheld,
+  `Total pay` uses only real punched hours) — the panel's own arithmetic checks out by hand in
+  both cases. 92 tests pass (`calcSalary`'s three original tests are unchanged in behavior; the
+  `deductedHours`-specific tests were removed along with the param).
+- **Not touched**: `WEEKLY_HOLIDAY_DAY`, `LUNCH_CUTOFF_HOUR`, `MISSED_CLOCKIN_HOUR` remain
+  placeholders pending the shop owner, same as before — this only resolved
+  `STANDARD_MONTHLY_HOURS`. Report/Records' own hours figures are untouched (still exact punch
+  data); this is Salary's ratio math only.
 
 ## Kiosk "on lunch" tile state (2026-09-11)
 
@@ -495,9 +645,10 @@ admin isn't blocked from zooming Records/Report/Employees/Salary on their own ph
   the time — which is nearly always, since syncs usually finish before the next 5s poll).
 - ✅ Salary v1 (commit `a770548`): pure proration math in `js/salary.js` (retroactive
   rate-selection rule, tested), the `salary_rates` table, and the Salary admin tab
-  (`js/ui/salary.js`) built on the same grid-list design as Report. `STANDARD_MONTHLY_HOURS`
-  in `js/config.js` is a placeholder pending confirmation with the shop owner; no overtime cap
-  yet (see "Time & attendance backlog" below).
+  (`js/ui/salary.js`) built on the same grid-list design as Report. The standard-hours
+  denominator was a placeholder (`STANDARD_MONTHLY_HOURS`, fixed 26-day month) pending
+  confirmation with the shop owner — resolved 2026-09-12, see the dedicated "Calendar-day
+  payroll model" section; no overtime cap yet (see "Time & attendance backlog" below).
 - ✅ **Stage 2 — admin UX** (from the original audit, done 2026-09-11): `js/ui/records.js`'s
   edit/delete now go through `promptModal()` (see `js/ui/modal.js`, which gained `danger`
   styling for destructive confirms and optional/`required:false` fields) instead of native
@@ -523,7 +674,7 @@ admin isn't blocked from zooming Records/Report/Employees/Salary on their own ph
 - ✅ Missed clock-in highlight (commit `3951074`): resolved as "not currently clocked in as of
   now" — the simpler of the two forks, no schedule/shift-time concept added. `MISSED_CLOCKIN_HOUR`
   in `js/config.js` is a placeholder pending the shop owner, same status as
-  `STANDARD_MONTHLY_HOURS`/`LUNCH_CUTOFF_HOUR`. Kiosk tile + a Daily records banner
+  `LUNCH_CUTOFF_HOUR`/`WEEKLY_HOLIDAY_DAY`. Kiosk tile + a Daily records banner
   (`js/missedClockIn.js`).
 - ✅ Kiosk tile redesign (commit `2089f2e`) and a perf fix (commit `acd0510`) stopping
   `refreshTileStates()`'s 5s tick from re-fetching every avatar's signed URL on every poll —
@@ -548,9 +699,22 @@ admin isn't blocked from zooming Records/Report/Employees/Salary on their own ph
   above. Friday's paid holiday and an inferred day off are visible in the monthly report;
   the calendar's day-detail panel is now actionable in place (edit/delete/lunch-paid/split)
   instead of read-only. Neither phase touched a schema or any payroll figure.
-  **Phase 3 (day-off-aware salary deduction) was deliberately left un-started on 2026-09-12** —
-  see "Autonomous session — decisions deferred, not skipped" below for why and for the two
-  candidate designs to choose between.
+  **Phase 3 (day-off-aware salary deduction, for an arbitrary inferred day *off*) is still
+  un-started** — see "Autonomous session — decisions deferred, not skipped" below for why and
+  for the two candidate designs to choose between. Note this is distinct from the item below.
+- ✅ **Docked-holiday pay override** (2026-09-12, see the dedicated section above): a narrower,
+  separate feature from Phase 3 — lets the owner exclude one specific paid Friday from an
+  employee's pay, not any arbitrary day off. New `day_pay_overrides` table (needs the migration
+  applied to the live project, same as every other schema addition here), the toggle lives in
+  the Report calendar's day-detail panel on the `'F'` pill. Also folded in a multi-round cleanup
+  of the Salary calc panel itself (see that section's "Salary calc-panel cleanup" bullet for all
+  four passes) — the thing that actually prompted this pass.
+- ✅ **Calendar-day payroll model** (2026-09-12, see the dedicated section above): resolves the
+  `STANDARD_MONTHLY_HOURS` placeholder from Salary v1 — standard hours are now the actual days
+  in a given month × `STANDARD_DAY_HOURS`, per the shop owner's own instruction, with a paid
+  Friday credited into the numerator so it still costs nothing (same property the old fixed
+  26-day model had, just computed exactly per month instead of approximated). `calcSalary()`
+  reverted to plain ratio math with no Friday-specific logic of its own. 92 tests pass.
 
 ## Autonomous session (2026-09-12) — decisions deferred, not skipped
 
@@ -576,17 +740,20 @@ waiting one more day for a two-line answer:
      reduction it causes today.
   2. *An extra deduction* — the owner flags a specific unauthorized absence for a penalty
      *beyond* the automatic ratio reduction that already happens today (an "off" day already
-     contributes zero hours toward `STANDARD_MONTHLY_HOURS`, which already reduces pay
+     contributed zero hours toward the standard-hours denominator, which already reduced pay
      proportionally — this only matters if that automatic effect is considered insufficient).
-  Note also that today's `STANDARD_MONTHLY_HOURS = 8 × 26` already assumes the weekly holiday as
-  a non-work day baked into the 26, so Friday itself likely needs no separate salary handling at
-  all — only genuine "off" days do. Picking wrong here means shipping a live payroll feature
-  that moves real pay in a direction nobody asked for; this needs one direct question to Asad,
-  not an inferred answer.
+  At the time, an "off" day already reduced pay proportionally because the fixed 26-day
+  denominator excluded Fridays from the total. **Superseded 2026-09-12 by the calendar-day
+  payroll model** (see its own section): the mechanism changed (a non-Friday "off" day still
+  isn't credited anything, same net effect), but this paragraph's specific reasoning about
+  *why* — "`STANDARD_MONTHLY_HOURS = 8 × 26` already assumes the weekly holiday" — no longer
+  applies, since that constant doesn't exist anymore. Phase 3 itself is still un-started;
+  only the unrelated `STANDARD_MONTHLY_HOURS` placeholder mentioned here got resolved.
 - **Config placeholders unchanged** (`STANDARD_MONTHLY_HOURS`, `LUNCH_CUTOFF_HOUR`,
-  `MISSED_CLOCKIN_HOUR`, `WEEKLY_HOLIDAY_DAY` in `js/config.js`) — these are the shop's own
-  operating facts (actual hours/days worked, actual lunch/missed-clock-in cutoffs), not
-  engineering judgment calls. Left exactly as before.
+  `MISSED_CLOCKIN_HOUR`, `WEEKLY_HOLIDAY_DAY` in `js/config.js`) — true as of this autonomous
+  session; `STANDARD_MONTHLY_HOURS` was resolved (and removed) later the same day by the
+  calendar-day payroll model above, once the owner gave a direct answer. The other three
+  remain open, same as before.
 - **Cross-device clock-out fix — still only code-reviewed, not re-verified live.** The Status
   entry above already flagged this as needing a real second device; that's still true. This
   session didn't attempt it against the live Supabase project either — the sandboxed preview
@@ -621,7 +788,10 @@ not bundling).
   extension is what lets Node treat them as ES modules with zero config, no `package.json`
   needed.
 - Covered so far: `js/salary.js` (the money math — proration, the retroactive rate-selection
-  rule, boundary/leap-year dates), `js/store/demoStore.js` (a regression suite for a real
+  rule, boundary/leap-year dates, `fmtRate()`'s precision vs. `fmtCurrency`'s rounding), the
+  calendar-day payroll model's own Friday-crediting logic lives in `js/ui/salary.js` (the UI
+  layer, deliberately not automated-tested — see below), `js/store/demoStore.js` (a regression
+  suite for a real
   bug found 2026-09-09: the employee loader was silently reverting any rename back to the
   hardcoded seed name on every subsequent read — see the "rename survives a subsequent read"
   test, which fails against the old code and passes against the fix), `js/lunch.js` (the

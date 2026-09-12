@@ -28,6 +28,13 @@ export function pickRateForPeriod(rates, periodEnd){
     })[0] || null;
 }
 
+// Plain ratio math — `standardHours` is the caller's job to get right (the calendar-day method:
+// the actual number of days in THIS month × the shop's standard day length, computed in
+// js/ui/salary.js from monthData()'s own `days`, not a fixed constant here). `hoursWorked` is
+// likewise whatever the caller decides should count — including, for a paid Friday, a credited
+// 8h even though nothing was punched (see js/ui/salary.js's `creditedHours`). Docking a holiday
+// is therefore just *not* including its credit, not a separate subtraction step here — this
+// function doesn't need to know Fridays exist at all.
 export function calcSalary({monthlySalary, hoursWorked, standardHours}){
   const ratio = hoursWorked / standardHours;
   return {ratio, amount: monthlySalary * ratio};
@@ -35,4 +42,12 @@ export function calcSalary({monthlySalary, hoursWorked, standardHours}){
 
 export function fmtCurrency(amount){
   return amount == null ? '—' : '₹' + Math.round(amount).toLocaleString('en-IN');
+}
+
+// A per-hour rate needs more precision than a headline pay figure — fmtCurrency's rounding to
+// the nearest rupee is fine for "the total you'll pay", but rounding the RATE the same way means
+// rate × hours no longer reproduces the shown total, which defeats the point of showing the rate
+// at all (an owner should be able to multiply it out and get the same number back).
+export function fmtRate(amount){
+  return amount == null ? '—' : '₹' + amount.toFixed(2);
 }

@@ -74,3 +74,23 @@ create policy "authenticated full access" on salary_rates
 -- worked time. Stored on the earlier of the two sessions the gap sits between — a flag, never
 -- a change to the punch times themselves, so un-checking it in Daily records fully reverts it.
 alter table records add column if not exists lunch_paid boolean not null default false;
+
+-- Per-day pay overrides: lets the owner exclude a specific paid Friday holiday from an
+-- employee's pay for a month they took more time off than the standing holiday allowance
+-- covers. A day with no row here keeps today's default (a Friday is paid, same as always).
+-- `paid` is stored explicitly (rather than a table that only ever means "unpaid") so the same
+-- mechanism could later cover the opposite direction too (crediting an inferred day off)
+-- without another migration — only the "dock a holiday" direction is wired up in the UI today.
+create table if not exists day_pay_overrides (
+  id uuid primary key default gen_random_uuid(),
+  emp_id uuid not null references employees(id) on delete cascade,
+  date date not null,
+  paid boolean not null,
+  created_at timestamptz not null default now(),
+  unique (emp_id, date)
+);
+create index if not exists day_pay_overrides_emp_idx on day_pay_overrides(emp_id);
+
+alter table day_pay_overrides enable row level security;
+create policy "authenticated full access" on day_pay_overrides
+  for all to authenticated using (true) with check (true);

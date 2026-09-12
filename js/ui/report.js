@@ -54,6 +54,14 @@ export async function monthData(ym){ // ym: 'YYYY-MM'
   const {hours: payHours} = buildDayHours(recs, empIds, days, recHoursRounded);
   const sessionsByDay = groupByEmployeeDay(recs);
 
+  // Overrides fetched best-effort: a fresh environment that hasn't run the day_pay_overrides
+  // migration yet (or a transient offline read) shouldn't break the rest of the month's data —
+  // the docking feature just isn't available for this load, same fail-soft spirit as the rest
+  // of this app's offline handling.
+  let overrides = [];
+  try{ overrides = await store.listDayPayOverrides(`${ym}-01`, `${ym}-${pad(days)}`); }catch(err){ /* see comment above */ }
+  const dockedSet = new Set(overrides.filter(o => o.paid === false).map(o => `${o.emp_id}:${o.date}`));
+
   // reviewFlags is broader than openFlags: it also catches a day whose last session was
   // auto-closed for lunch and never got a follow-up punch — data that looks complete (real
   // hours, no open session) but hasn't actually been confirmed by the employee coming back.
@@ -72,21 +80,27 @@ export async function monthData(ym){ // ym: 'YYYY-MM'
   // this employee) — computed once here so the calendar pills and the employee summary's
   // days-off count can never disagree about a given day, the same way `hours` already keeps
   // Report/Records/Salary in sync.
-  const gapStatus = {};
+  // dockedDays[empId][day] marks a paid-holiday Friday the owner has explicitly excluded from
+  // that employee's pay this month (js/ui/report.js's day-detail panel on the 'F' pill) — kept
+  // as its own parallel array, same pattern as openFlags/reviewFlags, rather than folded into
+  // gapStatus's own 'holiday'/'off' classification, so a docked Friday still reads as a Friday.
+  const gapStatus = {}, dockedDays = {};
   emps.forEach(e => {
     gapStatus[e.id] = Array(days+1).fill(null);
+    dockedDays[e.id] = Array(days+1).fill(false);
     const since = e.created_at ? dateStr(new Date(e.created_at)) : undefined;
     for(let d=1; d<=days; d++){
       if(hours[e.id][d] !== null || openFlags[e.id][d]) continue; // has real punch data that day
-      gapStatus[e.id][d] = dayOffStatus({
-        date: `${ym}-${pad(d)}`,
-        weekday: new Date(y, m-1, d).getDay(),
-        employeeSince: since
-      });
+      const date = `${ym}-${pad(d)}`;
+      gapStatus[e.id][d] = dayOffStatus({date, weekday: new Date(y, m-1, d).getDay(), employeeSince: since});
+      // Only a genuine paid-holiday gap can be docked — an override surviving from before a
+      // punch was added back for this day (or before WEEKLY_HOLIDAY_DAY changed) is simply
+      // ignored rather than misapplied, same defensive spirit as dayOffStatus's employeeSince gate.
+      if(gapStatus[e.id][d] === 'holiday' && dockedSet.has(`${e.id}:${date}`)) dockedDays[e.id][d] = true;
     }
   });
 
-  return {ym, days, emps, hours, payHours, openFlags, reviewFlags, gapStatus, sessionsByDay, recs, reviewRecords, hasData: recs.length > 0};
+  return {ym, days, emps, hours, payHours, openFlags, reviewFlags, gapStatus, dockedDays, sessionsByDay, recs, reviewRecords, hasData: recs.length > 0};
 }
 
 // Sums one employee's per-day hours array (as produced by monthData) into a period total.
@@ -107,7 +121,7 @@ export async function renderReport(){
   busy(false);
   if(!md) return;
   lastReportData = md;
-  const {ym, days, emps, hours, openFlags, reviewFlags, gapStatus, sessionsByDay, reviewRecords, hasData} = md;
+  const {ym, days, emps, hours, openFlags, reviewFlags, gapStatus, dockedDays, sessionsByDay, reviewRecords, hasData} = md;
   $('repEmpty').style.display = hasData ? 'none' : '';
   $('reportMonthLabel').textContent = new Date(`${ym}-01T12:00:00`).toLocaleDateString('en-IN', {month:'long', year:'numeric'});
   let totalHours = 0, attendanceDays = 0;
@@ -134,7 +148,7 @@ export async function renderReport(){
     $('reviewTitle').textContent = `${reviewRecords.length} attendance ${reviewRecords.length === 1 ? 'entry needs' : 'entries need'} review`;
     $('reviewText').textContent = parts.join('; ') + '.';
   }
-  renderDetailCalendar({days, emps, hours, openFlags, reviewFlags, gapStatus, sessionsByDay, employeeStats});
+  renderDetailCalendar({ym, days, emps, hours, openFlags, reviewFlags, gapStatus, dockedDays, sessionsByDay, employeeStats});
 }
 
 // Each day is a status pill, not a number — a day can have more than one session now (a
@@ -142,7 +156,7 @@ export async function renderReport(){
 // pinned (position:sticky) so they're never the ones scrolled out of view; the day columns
 // are what scrolls. Clicking a day expands an inline row with that day's actual session
 // times and lunch gap, reusing the same in/out/lunch vocabulary as the Daily records tab.
-function renderDetailCalendar({days, emps, hours, openFlags, reviewFlags, gapStatus, sessionsByDay, employeeStats}){
+function renderDetailCalendar({ym, days, emps, hours, openFlags, reviewFlags, gapStatus, dockedDays, sessionsByDay, employeeStats}){
   let h = '<tr><th class="col-emp">Employee</th>';
   for(let d=1; d<=days; d++) h += `<th>${d}</th>`;
   h += '<th class="col-days">Days</th><th class="col-total">Total hrs</th></tr>';
@@ -203,13 +217,24 @@ function renderDetailCalendar({days, emps, hours, openFlags, reviewFlags, gapSta
       // so this is a quiet corner-dot nudge (not the amber "needs review" treatment), same visual
       // language as .auto below. See isPossibleMissedLunch() in reportMath.js.
       const unbroken = hasHours && !half && isPossibleMissedLunch(sessions, hours[e.id][d]);
+      // A Friday the owner has explicitly excluded from this employee's pay this month — see
+      // the day-detail panel opened by clicking the pill below. Still reads as 'holiday' (the
+      // day itself didn't stop being a Friday), just with the same quiet corner-dot treatment
+      // .auto/.flagged/.unbroken already use for "worth noticing" states on top of a base pill.
+      const docked = gap === 'holiday' && dockedDays[e.id][d];
       const pill = document.createElement('div');
       pill.className = 'daypill' + (open ? ' review' : hasHours ? (half ? ' half' : ' full') : gap ? ` ${gap}` : '')
-        + (flagged ? ' flagged' : '') + (autoInfo ? ' auto' : '') + (unbroken ? ' unbroken' : '');
+        + (flagged ? ' flagged' : '') + (autoInfo ? ' auto' : '') + (unbroken ? ' unbroken' : '') + (docked ? ' docked' : '');
       pill.textContent = open ? '!' : hasHours ? d : gap === 'holiday' ? 'F' : gap === 'off' ? 'A' : '';
       if(unbroken) pill.title = 'Single session, no recorded break — check whether a lunch punch was missed';
+      if(docked) pill.title = 'Marked unpaid for this employee — click to restore';
       if(sessions){
-        pill.onclick = () => toggleDayDetail(tr, sessions, e, d);
+        pill.onclick = () => toggleDayDetail(tr, sessions, e, d, ym);
+      }else if(gap === 'holiday'){
+        // No punches to show for a holiday day, but it's still the one place a per-day
+        // correction belongs (same "click the pill" convention as every other day type) —
+        // toggleDayDetail dispatches to renderHolidayDetail when there's no sessions array.
+        pill.onclick = () => toggleDayDetail(tr, null, e, d, ym, docked);
       }
       const cell = document.createElement('td'); cell.className = 'day-cell';
       cell.appendChild(pill);
@@ -242,9 +267,11 @@ function renderDetailCalendar({days, emps, hours, openFlags, reviewFlags, gapSta
     const day = Number(dayStr);
     const matchTr = Array.from(tbody.children).find(t => t._empId === empId);
     const sessions = (sessionsByDay[empId] || {})[day];
-    if(matchTr && sessions && sessions.length){
-      const emp = employeeStats.find(s => s.employee.id === empId)?.employee;
+    const emp = employeeStats.find(s => s.employee.id === empId)?.employee;
+    if(matchTr && emp && sessions && sessions.length){
       renderDayDetail(matchTr._detailRow, matchTr._detailInner, sessions, emp, day);
+    }else if(matchTr && emp && gapStatus[empId][day] === 'holiday'){
+      renderHolidayDetail(matchTr._detailRow, matchTr._detailInner, emp, ym, day, dockedDays[empId][day]);
     }else{
       openDetailKey = null;
     }
@@ -259,9 +286,10 @@ function paidNote(iso){
 }
 
 // Toggles the row's detail panel: closes if the same day's pill is clicked again, otherwise
-// (re)builds it from that day's sessions. emp/day identify this panel for openDetailKey so a
-// save made inside it (see renderDayDetail) can find its way back open after the table rebuilds.
-function toggleDayDetail(tr, sessions, emp, day){
+// (re)builds it. emp/day identify this panel for openDetailKey so a save made inside it can find
+// its way back open after the table rebuilds. `sessions` is null for a no-punch holiday day —
+// there's nothing to show but the day itself, so it renders through renderHolidayDetail instead.
+function toggleDayDetail(tr, sessions, emp, day, ym, docked){
   const row = tr._detailRow;
   const key = `${emp.id}:${day}`;
   if(row.classList.contains('open') && row._key === key){
@@ -270,7 +298,44 @@ function toggleDayDetail(tr, sessions, emp, day){
     return;
   }
   openDetailKey = key;
-  renderDayDetail(row, tr._detailInner, sessions, emp, day);
+  if(sessions) renderDayDetail(row, tr._detailInner, sessions, emp, day);
+  else renderHolidayDetail(row, tr._detailInner, emp, ym, day, docked);
+}
+
+// The day-detail panel for a paid-holiday Friday with no punches at all — there's no session to
+// show, just the one correction available for this day type: excluding it from this employee's
+// pay for a month they've taken more time off than the standing holiday allowance covers. Same
+// reversible, no-confirm toggle shape as the lunch-paid chip above (a mistaken tap costs one
+// more tap, not a dialog) — store.setDayOverride() is the write path, mirroring toggleLunchPaid.
+function renderHolidayDetail(row, inner, emp, ym, day, docked){
+  inner.innerHTML = '';
+  const dateOnly = `${ym}-${pad(day)}`;
+  const dateLabel = document.createElement('span'); dateLabel.className = 'detail-date';
+  dateLabel.textContent = new Date(dateOnly + 'T00:00:00').toLocaleDateString('en-IN', {month:'short', day:'numeric'});
+  inner.appendChild(dateLabel);
+
+  const line = document.createElement('div'); line.className = 'detail-row-line';
+  const chip = document.createElement('span'); chip.className = 'chip' + (docked ? ' review' : '');
+  chip.textContent = docked ? 'Paid holiday — marked unpaid this month' : 'Paid holiday (Friday) — no punches expected';
+  const toggle = document.createElement('button');
+  toggle.className = 'btn small ghost';
+  toggle.textContent = docked ? 'Restore as paid' : 'Mark unpaid';
+  toggle.title = docked ? `Pay ${emp.name} for this Friday as usual` : `Exclude this Friday from ${emp.name}'s pay this month`;
+  toggle.onclick = () => toggleHolidayPay(emp.id, dateOnly, docked);
+  line.append(chip, toggle);
+  inner.appendChild(line);
+
+  row._key = `${emp.id}:${day}`;
+  row.classList.add('open');
+}
+
+async function toggleHolidayPay(empId, dateOnly, currentlyDocked){
+  busy(true);
+  try{
+    await store.setDayOverride(empId, dateOnly, currentlyDocked); // flip: paid = currently-docked
+    await renderReport();
+  }catch(err){ toast('Failed: ' + err.message); }
+  busy(false);
 }
 
 // Builds the day-detail panel's contents — same in/out/lunch chip vocabulary as Daily records,

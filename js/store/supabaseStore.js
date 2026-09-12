@@ -252,6 +252,22 @@ async function setSalaryRate(empId, {monthlySalary, effectiveFrom, note}){
   return data;
 }
 
+async function listDayPayOverrides(fromDate, toDate){
+  const {data, error} = await sb.from('day_pay_overrides').select('*').gte('date', fromDate).lte('date', toDate);
+  if(error) throw error;
+  return data;
+}
+
+// Marks (or restores) a specific no-punch day's pay for an employee — e.g. docking a paid
+// Friday holiday the owner doesn't want to pay through this month. Same reversible-flag shape
+// as setLunchPaid, just keyed by (emp_id, date) via upsert since a no-punch day has no records
+// row to attach a flag to. Needs the `day_pay_overrides` table added (see supabase-setup.sql).
+async function setDayOverride(empId, date, paid){
+  const {error} = await sb.from('day_pay_overrides')
+    .upsert({emp_id:empId, date, paid}, {onConflict:'emp_id,date'});
+  if(error) throw error;
+}
+
 async function uploadPhoto(path, blob, {upsert = false} = {}){
   const {error} = await sb.storage.from('photos').upload(path, blob, {contentType:'image/jpeg', upsert});
   if(error) throw error;
@@ -347,5 +363,6 @@ export const supabaseStore = {
   listRecordsForDate, listRecordsForRange, updateRecordTimes, setLunchPaid, deleteRecord,
   splitSessionForLunch,
   uploadPhoto, getPhotoUrl, getSyncStatus,
-  listSalaryRates, setSalaryRate
+  listSalaryRates, setSalaryRate,
+  listDayPayOverrides, setDayOverride
 };

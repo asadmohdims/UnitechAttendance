@@ -3,14 +3,13 @@ export const SUPABASE_URL      = 'https://ybgdetybspkdjwgysgeo.supabase.co';
 export const SUPABASE_ANON_KEY = 'sb_publishable_m9i8FqlytW5uSnzRaRkCww_Wz9EoPUN'; // anon/publishable key — safe to be public, protected by RLS
 // TEMPORARY: local demo mode. Set to false when connecting the real Supabase backend.
 export const DEMO_MODE = false;
-// Hours in one standard working day — the base unit STANDARD_MONTHLY_HOURS below is built
-// from, and (from the salary holiday-deduction feature onward) what a docked day is worth
-// too, so both share one number instead of two constants that could drift apart.
+// Hours in one standard working day — what a paid Friday is credited as, what a docked Friday
+// loses, and the per-day unit js/ui/salary.js multiplies by the ACTUAL days in a given calendar
+// month to get that month's standard hours (the owner's explicit call, 2026-09-12: "days in the
+// month — January 31, February 28, March 31" — not a fixed 26-day approximation, which is why
+// there's no STANDARD_MONTHLY_HOURS constant here anymore; it varies by month, so it's computed
+// per-render from monthData()'s own day count instead of being a fixed export).
 export const STANDARD_DAY_HOURS = 8;
-// Assumed hours in a standard working month, used to prorate a fixed monthly salary into
-// pay for hours actually worked. Placeholder — confirm the real figure (days/week, hours/day)
-// with the shop owner before treating this as final.
-export const STANDARD_MONTHLY_HOURS = STANDARD_DAY_HOURS * 26; // 8 hrs/day × 26 days (6-day week)
 // The shop's standing paid day off (0=Sunday...6=Saturday) — employees aren't expected to
 // work this day but are still paid for it, so the monthly report shows it distinctly from an
 // actual gap in attendance. Placeholder — confirm with the shop owner before treating this as

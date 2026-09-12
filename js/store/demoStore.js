@@ -5,6 +5,7 @@ const DEMO_EMPLOYEES_KEY = 'attendance_demo_employees';
 const DEMO_RECORDS_KEY = 'attendance_demo_records';
 const DEMO_PHOTOS_KEY = 'attendance_demo_photo:';
 const DEMO_SALARY_KEY = 'attendance_demo_salary_rates';
+const DEMO_OVERRIDES_KEY = 'attendance_demo_day_overrides';
 
 function loadEmployeesRaw(){
   const sampleEmployees = [
@@ -171,6 +172,25 @@ function setSalaryRate(empId, {monthlySalary, effectiveFrom, note}){
   return row;
 }
 
+function loadDayOverrides(){ return JSON.parse(localStorage.getItem(DEMO_OVERRIDES_KEY) || '[]'); }
+function saveDayOverrides(rows){ localStorage.setItem(DEMO_OVERRIDES_KEY, JSON.stringify(rows)); }
+
+function listDayPayOverrides(fromDate, toDate){
+  return loadDayOverrides().filter(o => o.date >= fromDate && o.date <= toDate);
+}
+
+// Marks (or restores) a specific no-punch day's pay for an employee — e.g. docking a paid
+// Friday holiday the owner doesn't want to pay through this month. One row per (emp_id, date),
+// upserted in place — same reversible-flag shape as setLunchPaid, just keyed by date instead of
+// a record id since a no-punch day has no record to attach a flag to.
+function setDayOverride(empId, date, paid){
+  const rows = loadDayOverrides();
+  const idx = rows.findIndex(r => r.emp_id === empId && r.date === date);
+  if(idx >= 0) rows[idx].paid = paid;
+  else rows.push({id:'demo-override-' + Date.now(), emp_id:empId, date, paid, created_at:new Date().toISOString()});
+  saveDayOverrides(rows);
+}
+
 function uploadPhoto(path, blob){
   return new Promise(resolve => {
     const reader = new FileReader();
@@ -190,5 +210,6 @@ export const demoStore = {
   listRecordsForDate, listRecordsForRange, updateRecordTimes, setLunchPaid, deleteRecord,
   splitSessionForLunch,
   uploadPhoto, getPhotoUrl, getSyncStatus,
-  listSalaryRates, setSalaryRate
+  listSalaryRates, setSalaryRate,
+  listDayPayOverrides, setDayOverride
 };

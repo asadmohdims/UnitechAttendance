@@ -2,8 +2,8 @@ import { $, busy, toast, fmtHours, dateStr, shiftMonthInput } from '../utils.js'
 import { store } from '../store/index.js';
 import { applyAvatar } from '../avatars.js';
 import { monthData, summarizeHours } from './report.js';
-import { pickRateForPeriod, calcSalary, periodEndDate, fmtCurrency } from '../salary.js';
-import { STANDARD_MONTHLY_HOURS } from '../config.js';
+import { pickRateForPeriod, calcSalary, periodEndDate, fmtCurrency, fmtRate } from '../salary.js';
+import { STANDARD_DAY_HOURS } from '../config.js';
 import { promptModal } from './modal.js';
 
 const salMonth = $('salMonth');
@@ -39,12 +39,25 @@ export async function renderSalary(){
   list.innerHTML = '';
   md.emps.forEach(e => {
     // Pay is based on payHours (each punch rounded to the nearest 15 min — see js/rounding.js)
-    // — not the exact hours Report/Records show. A day counts as "worked" the same way
-    // either way (both are null only when there's no completed session that day), so daysWorked
-    // comes out identical regardless of which array it's read from.
+    // — not the exact hours Report/Records show.
     const {total, daysWorked} = summarizeHours(md.payHours[e.id], md.days);
+    const dockedCount = md.dockedDays[e.id].filter(Boolean).length;
+    // Every 'holiday' gap day this employee had this month, docked or not — shown alongside
+    // daysWorked so a paid Friday (zero punches) doesn't read as an unexplained gap between
+    // "days worked" and the days actually in the month.
+    const totalFridays = md.gapStatus[e.id].filter(s => s === 'holiday').length;
+    const paidFridays = totalFridays - dockedCount;
+    // Calendar-day method (the owner's explicit call, 2026-09-12): standard hours = THIS month's
+    // actual day count × the shop's standard day length — January's 31, February's 28, not a
+    // fixed 26. A weekly holiday must still cost nothing under that denominator, so a paid Friday
+    // is credited its own 8h here even though nothing was punched; a docked one just isn't
+    // credited (no separate subtraction needed — see calcSalary()'s own comment in js/salary.js).
+    const creditedHours = paidFridays * STANDARD_DAY_HOURS;
+    const hoursForPay = total + creditedHours;
+    const standardHours = md.days * STANDARD_DAY_HOURS;
     const rate = pickRateForPeriod(rates[e.id], periodEnd);
-    const calc = rate ? calcSalary({monthlySalary:rate.monthly_salary, hoursWorked:total, standardHours:STANDARD_MONTHLY_HOURS}) : null;
+    const hourlyRate = rate ? rate.monthly_salary / standardHours : null;
+    const calc = rate ? calcSalary({monthlySalary:rate.monthly_salary, hoursWorked:hoursForPay, standardHours}) : null;
 
     const row = document.createElement('div');
     row.className = 'salary-person';
@@ -64,14 +77,40 @@ export async function renderSalary(){
     actions.append(bCalc, bAmend);
     row.append(avatar, who, amount, actions);
 
+    // Note appended to "Days worked" so a paid Friday's absence from that count is explained
+    // right there instead of left as a silent gap between it and the days actually in the month.
+    let fridayNote = '';
+    if(totalFridays > 0){
+      if(dockedCount === 0) fridayNote = ` (+ ${paidFridays} paid Friday${paidFridays === 1 ? '' : 's'})`;
+      else if(paidFridays === 0) fridayNote = ` (${dockedCount} Friday${dockedCount === 1 ? '' : 's'} marked unpaid)`;
+      else fridayNote = ` (+ ${paidFridays} paid Friday${paidFridays === 1 ? '' : 's'}, ${dockedCount} marked unpaid)`;
+    }
+
+    // "Hours worked" needs to show the Friday credit explicitly once it's part of what Total pay
+    // actually multiplies — otherwise that row and the final formula would silently disagree.
+    const hoursWorkedNote = creditedHours
+      ? ` + ${fmtHours(creditedHours)} (${paidFridays} paid Friday${paidFridays === 1 ? '' : 's'}) = ${fmtHours(hoursForPay)}`
+      : '';
+
     const detail = document.createElement('div');
     detail.className = 'salary-calc-detail';
     detail.style.display = 'none';
+    // A real table, not paragraphs — aligned, bordered rows read like a payroll ledger line (and
+    // paste cleanly into a spreadsheet) rather than prose sentences. Every row builds toward the
+    // next: rate -> the hourly rate it implies -> how many hours that was actually paid for ->
+    // the final multiplication, in that order, so an owner can read straight down the table and
+    // reconstruct the headline number without holding anything in their head. fmtHours() on every
+    // hours figure (never a raw decimal) so nothing needs converting to check it against what
+    // Report/Records show for the same days.
     detail.innerHTML = rate
-      ? `<p><b>Rate used:</b> ${fmtCurrency(rate.monthly_salary)}/month, effective from ${rate.effective_from}</p>
-         <p><b>Hours paid:</b> ${fmtHours(total)} over ${daysWorked} ${daysWorked === 1 ? 'day' : 'days'} — each punch rounded to the nearest 15 min (see Daily records for exact punch times)</p>
-         <p><b>Standard hours:</b> ${STANDARD_MONTHLY_HOURS}/month</p>
-         <p><b>Formula:</b> ${fmtCurrency(rate.monthly_salary)} × (${total.toFixed(1)} ÷ ${STANDARD_MONTHLY_HOURS} hrs) = ${fmtCurrency(calc.amount)}</p>`
+      ? `<table class="calc-table">
+           <tr><th>Rate used</th><td>${fmtCurrency(rate.monthly_salary)}/month, effective from ${rate.effective_from}</td></tr>
+           <tr><th>Hourly rate</th><td>${fmtCurrency(rate.monthly_salary)} ÷ ${fmtHours(standardHours)} hrs (this month's ${md.days} days × ${STANDARD_DAY_HOURS}h) = ${fmtRate(hourlyRate)}/hr</td></tr>
+           <tr><th>Days worked (actual)</th><td>${daysWorked}${fridayNote}</td></tr>
+           <tr><th>Hours worked</th><td>${fmtHours(total)}${hoursWorkedNote}</td></tr>
+           ${dockedCount ? `<tr><th>Docked</th><td>${dockedCount} Friday${dockedCount === 1 ? '' : 's'} not credited this month (−${fmtHours(dockedCount * STANDARD_DAY_HOURS)} vs. a paid Friday)</td></tr>` : ''}
+           <tr class="calc-total"><th>Total pay</th><td>${fmtRate(hourlyRate)}/hr × ${fmtHours(hoursForPay)} hrs = ${fmtCurrency(calc.amount)}</td></tr>
+         </table>`
       : `<p>No salary rate has been set for ${e.name} yet — use Amend to add one.</p>`;
     bCalc.onclick = () => {
       const open = detail.style.display !== 'none';
@@ -80,7 +119,13 @@ export async function renderSalary(){
     };
     bAmend.onclick = () => amendRate(e, rate);
 
-    list.append(row, detail);
+    // Row + its (possibly open) calculation detail travel together as one bordered unit — before
+    // this, the border-bottom lived on .salary-person itself, so it separated a row from ITS OWN
+    // detail below it, but left nothing between that detail and the next employee's row, which is
+    // what made an opened panel visually run into whoever came next.
+    const item = document.createElement('div'); item.className = 'salary-item';
+    item.append(row, detail);
+    list.append(item);
   });
 }
 

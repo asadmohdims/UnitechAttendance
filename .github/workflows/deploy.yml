@@ -31,6 +31,17 @@ jobs:
           mkdir _site
           rsync -a --exclude='archive' --exclude='.git' --exclude='_site' ./ _site/
 
+      # Stamps this deploy with a real version string — there's no bundler/build step to inject
+      # one, so it's done here instead. Overwrites the repo's committed 'dev' placeholders;
+      # served by the service worker (js/sw.js's cache-versioning) and the kiosk's own on-screen
+      # version indicator (js/ui/appVersion.js), which also polls version.json to silently
+      # reload once a new deploy is live.
+      - name: Stamp version
+        run: |
+          VERSION="$(git rev-parse --short HEAD)-$(date -u +%Y%m%d%H%M)"
+          echo "{\"version\":\"$VERSION\"}" > _site/version.json
+          echo "export const APP_VERSION = '$VERSION';" > _site/js/version.js
+
       - name: Upload site
         uses: actions/upload-pages-artifact@v3
         with:

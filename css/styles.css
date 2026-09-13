@@ -39,6 +39,9 @@ body.kiosk-active{overflow:hidden;}
 .sync-status{display:none; font-size:12px; font-weight:700; margin-bottom:4px;}
 .sync-status.pending{display:block; color:var(--amber);}
 .sync-status.stuck{display:block; color:var(--red);}
+/* Purely informational — which deploy is actually running on this tablet (see js/version.js /
+   js/ui/appVersion.js). Deliberately quiet: smaller and dimmer than .muted, never interactive. */
+.app-version{font-size:10px; opacity:.55; margin-top:2px;}
 /* flex-direction:column so the new .payments-banner can stack above .kiosk-badges instead of
    squeezing beside it in a row — align-items/justify-content:center still centers a single
    child both ways when the banner is hidden (Attendance mode), so this doesn't change today's
@@ -91,6 +94,7 @@ body.kiosk-active{overflow:hidden;}
   .kiosk-time{font-size:28px;}
   .kiosk-date{font-size:13px; margin-top:3px;}
   .kiosk-admin-link{position:absolute; bottom:-6px; left:18px; padding:4px 0;}
+  .app-version{position:absolute; bottom:-6px; right:18px; margin-top:0;}
 }
 /* Same fade-in idiom as .modal-overlay (opacity/visibility/pointer-events, not a display:none/
    flex hard cut) — this is the single most-repeated screen in the app (every punch, every

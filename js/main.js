@@ -4,6 +4,7 @@ import './ui/records.js';
 import './ui/report.js';
 import './ui/salary.js';
 import './ui/payments.js';
+import './ui/appVersion.js';
 import { initAuth } from './ui/shell.js';
 
 initAuth();

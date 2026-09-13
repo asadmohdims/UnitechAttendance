@@ -1,5 +1,5 @@
 import { $, busy, toast } from '../utils.js';
-import { DEMO_MODE } from '../config.js';
+import { DEMO_MODE, SUPABASE_URL } from '../config.js';
 import { sb } from '../supabaseClient.js';
 import { state, ADMIN_TABS } from '../state.js';
 import { refreshAll } from './kiosk.js';
@@ -10,6 +10,46 @@ import { renderSalary } from './salary.js';
 import { renderPayments } from './payments.js';
 
 /* ---------- auth ---------- */
+
+// Same key format supabase-js itself uses for persisted sessions (sb-<project-ref>-auth-token)
+// — read directly rather than through sb.auth.getSession(), which is exactly the thing that's
+// too slow/strict for the case this exists to handle (see hasPersistedSession() below).
+function authStorageKey(){
+  return `sb-${new URL(SUPABASE_URL).hostname.split('.')[0]}-auth-token`;
+}
+
+// True if this device has ever actually signed in before, regardless of whether that session
+// has since expired by the clock. sb.auth.getSession() alone can't tell "genuinely logged out"
+// apart from "logged in, but can't reach Supabase to refresh right now" — and when the real
+// answer is the latter, getSession() still takes ~20s to give up before returning no session,
+// then reports no session at all. On a kiosk tablet that just means "the token happened to be
+// due for a refresh when the tablet came back online after a while," not an actual sign-out —
+// treating that as a hard lockout would block every tile and all punching (which don't
+// otherwise need a live connection at all) until someone re-enters the admin password, itself
+// only possible with a network. So: presence of a prior session is enough to let the kiosk
+// open immediately; validateSessionInBackground() below still confirms it for real afterward.
+function hasPersistedSession(){
+  try{
+    const raw = localStorage.getItem(authStorageKey());
+    if(!raw) return false;
+    const parsed = JSON.parse(raw);
+    return !!(parsed && parsed.access_token && parsed.refresh_token);
+  }catch{
+    return false;
+  }
+}
+
+// Runs after the kiosk is already showing from a persisted (possibly stale) session — the one
+// place that can still reach a real answer once Supabase is actually reachable. Only acts if it
+// gets a definitive "no" (a real revoked/invalid session): a network hiccup or genuine
+// no-connectivity here resolves to the same optimistic state we're already in, so there's
+// nothing to change. This is the deliberate trade-off called out above — a device could keep
+// working for a little while even after a real remote sign-out, until this next resolves.
+async function validateSessionInBackground(){
+  const {data:{session}} = await sb.auth.getSession();
+  if(!session && !hasPersistedSession()) setAuthUI(false);
+}
+
 export async function initAuth(){
   if(DEMO_MODE){
     state.adminUnlocked = true;
@@ -18,6 +58,12 @@ export async function initAuth(){
     $('btnLogout').style.display = 'none';
     $('btnLock').style.display = 'none';
     await refreshAll();
+    return;
+  }
+  if(hasPersistedSession()){
+    setAuthUI(true);
+    await refreshAll();
+    validateSessionInBackground();
     return;
   }
   const {data:{session}} = await sb.auth.getSession();

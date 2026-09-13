@@ -6,6 +6,22 @@ import * as outbox from './outbox.js';
 
 const EMP_CACHE_KEY = 'attendance_employee_cache';
 
+// A stale/expired auth token with no network can otherwise sit retrying internally for well
+// over 10s (confirmed while chasing the cold-start login-lockout bug — see CLAUDE.md's PWA
+// section) before a request ever actually rejects — every fallback below exists specifically
+// for the offline case, so waiting on the client's own retry timing defeats the point. Racing
+// against a short local timeout fails over to cache/local data fast regardless of *why* the
+// real request is slow. The real request is left running in the background either way (it's a
+// read, so a late success just quietly warms the cache for next time) — this only stops it
+// blocking the UI.
+const NETWORK_TIMEOUT_MS = 3000;
+function withTimeout(promise){
+  return Promise.race([
+    promise,
+    new Promise((_, reject) => setTimeout(() => reject(new Error('Request timed out')), NETWORK_TIMEOUT_MS))
+  ]);
+}
+
 // Public record shape (no blob fields) for an outbox row that hasn't synced yet.
 function toRecordShape(rec){
   return {id:rec.clientId, emp_id:rec.emp_id, date:rec.date, clock_in:rec.clock_in,
@@ -15,7 +31,7 @@ function toRecordShape(rec){
 
 async function listEmployees(){
   try{
-    const {data, error} = await sb.from('employees').select('*').order('created_at');
+    const {data, error} = await withTimeout(sb.from('employees').select('*').order('created_at'));
     if(error) throw error;
     localStorage.setItem(EMP_CACHE_KEY, JSON.stringify(data));
     return data;
@@ -32,7 +48,7 @@ async function listEmployees(){
 async function listOpenSessions(){
   const openSessions = {};
   try{
-    const {data, error} = await sb.from('records').select('*').is('clock_out', null);
+    const {data, error} = await withTimeout(sb.from('records').select('*').is('clock_out', null));
     if(error) throw error;
     data.forEach(r => openSessions[r.emp_id] = r);
   }catch(err){ /* offline — fall through with whatever the outbox has */ }
@@ -120,7 +136,7 @@ async function clockOut(recordId, blob, atIso){
   // shown as clockable must not silently fail to actually clock out — write straight to
   // Postgres instead, same as updateRecordTimes/setLunchPaid/deleteRecord already do for the
   // same "not local" case.
-  const {data: existing, error: fetchError} = await sb.from('records').select('emp_id').eq('id', recordId).maybeSingle();
+  const {data: existing, error: fetchError} = await withTimeout(sb.from('records').select('emp_id').eq('id', recordId).maybeSingle());
   if(fetchError) throw fetchError;
   if(!existing) throw new Error('This session could not be found — it may have already been edited or deleted from the admin panel.');
 
@@ -151,7 +167,7 @@ async function addManualRecord(empId, date, clockInIso, clockOutIso){
 async function listRecordsForDate(date){
   let serverRows = [];
   try{
-    const {data, error} = await sb.from('records').select('*').eq('date', date).order('clock_in');
+    const {data, error} = await withTimeout(sb.from('records').select('*').eq('date', date).order('clock_in'));
     if(error) throw error;
     serverRows = data;
   }catch(err){ /* offline — serve what's local */ }
@@ -164,7 +180,7 @@ async function listRecordsForDate(date){
 async function listRecordsForRange(startDate, endDate){
   let serverRows = [];
   try{
-    const {data, error} = await sb.from('records').select('*').gte('date', startDate).lte('date', endDate);
+    const {data, error} = await withTimeout(sb.from('records').select('*').gte('date', startDate).lte('date', endDate));
     if(error) throw error;
     serverRows = data;
   }catch(err){ /* offline — serve what's local */ }
@@ -238,7 +254,7 @@ async function splitSessionForLunch(recordId, lunchStartIso, lunchEndIso){
 
   // Not in this browser's local outbox — same "write straight to Postgres" fallback
   // clockOut/updateRecordTimes/setLunchPaid/deleteRecord already use for this case.
-  const {data: existing, error: fetchError} = await sb.from('records').select('*').eq('id', recordId).maybeSingle();
+  const {data: existing, error: fetchError} = await withTimeout(sb.from('records').select('*').eq('id', recordId).maybeSingle());
   if(fetchError) throw fetchError;
   if(!existing) throw new Error('This session could not be found — it may have already been edited or deleted from the admin panel.');
   const {error: insertError} = await sb.from('records').insert({

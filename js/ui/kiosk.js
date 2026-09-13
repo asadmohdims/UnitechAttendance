@@ -24,9 +24,18 @@ const MODE_BTN_HTML = {
 export async function refreshAll(){
   busy(true);
   try{
-    state.employees = await store.listEmployees();
-    state.openSessions = await store.listOpenSessions();
-    await refreshPunchedToday();
+    // These three reads don't depend on each other's results, so running them together means
+    // a cold boot only ever waits as long as the slowest one (capped by supabaseStore.js's own
+    // short network timeout when offline) instead of all three back to back — this used to be
+    // the difference between the kiosk becoming usable in ~3s vs ~9s on an offline cold start.
+    const [employees, openSessions, todaysRecords] = await Promise.all([
+      store.listEmployees(),
+      store.listOpenSessions(),
+      store.listRecordsForDate(dateStr())
+    ]);
+    state.employees = employees;
+    state.openSessions = openSessions;
+    applyPunchedToday(todaysRecords);
     await checkLunchAutoClose();
     await checkStaleSessionAutoClose();
     renderHome();
@@ -34,12 +43,12 @@ export async function refreshAll(){
   busy(false);
 }
 
-// Rebuilds today's per-employee record count. `punchedToday` (any record at all) is the
-// source for the missed-clock-in flag; `sessionsToday` (how many) is what tileStatus() below
-// uses to tell "on a break, expected back" (exactly 1 so far) apart from "already completed
-// the whole day" (2 or more) — see the comment on state.sessionsToday in js/state.js.
-async function refreshPunchedToday(){
-  const todays = await store.listRecordsForDate(dateStr());
+// Rebuilds today's per-employee record count from an already-fetched list. `punchedToday` (any
+// record at all) is the source for the missed-clock-in flag; `sessionsToday` (how many) is what
+// tileStatus() below uses to tell "on a break, expected back" (exactly 1 so far) apart from
+// "already completed the whole day" (2 or more) — see the comment on state.sessionsToday in
+// js/state.js.
+function applyPunchedToday(todays){
   state.punchedToday = {};
   state.sessionsToday = {};
   todays.forEach(r => {

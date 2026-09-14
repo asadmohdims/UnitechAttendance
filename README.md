@@ -7,7 +7,10 @@ A web app to track employee attendance for a small shop (< 10 employees).
 - Employees clock in/out by tapping their name; a photo is captured via the device camera as proof.
 - Punches are captured instantly and sync to the server in the background, so a brief
   internet drop at the shop doesn't lose a clock-in/out — it just syncs a little later.
-- Daily hours are calculated automatically (supports overnight shifts and fixing missed punches).
+- Daily hours are calculated automatically. If someone forgets to clock out and the tablet stays
+  on overnight, that session is auto-closed and flagged for the admin to double-check rather than
+  left "still clocked in" forever or silently paid through; a genuinely missed punch (kiosk was
+  down, forgot to tap) can be backfilled by an admin from the monthly report.
 - Lunch breaks are just a normal second clock-in/out — no separate button to learn. If someone
   forgets to tap back in, the kiosk closes their session automatically at a configurable cutoff
   and flags it for the admin to double-check, instead of silently paying them through it. The
@@ -18,15 +21,25 @@ A web app to track employee attendance for a small shop (< 10 employees).
   Times are editable, with an audit trail (the exact captured time never changes, even where pay
   rounding applies — see below).
 - Monthly report: a status-grid calendar (not just a number per day) shows at a glance who
-  worked, who's still clocked in, and whose lunch needs a second look — click any day for the
-  full session breakdown. Hours per day per employee, days worked, total hours — downloadable
-  as Excel (.xlsx).
+  worked, who's still clocked in, who was absent or took a half day, and whose lunch needs a
+  second look — click any day for the full session breakdown or the exact absent dates. Hours
+  per day per employee, days worked, total hours — downloadable as Excel (.xlsx). Employees get
+  one paid weekly holiday (day configurable); the owner can exclude a specific one from pay for
+  an employee who's taken more time off than the allowance covers.
 - Salary: prorates a monthly rate against hours actually worked, with a full calculation
   breakdown shown per employee. Pay is based on each punch rounded to the nearest 15 minutes
   (a configurable grace window, not a strict nearest-quarter split); wherever rounding changes a
   punch, the exact time and the paid time are both shown side by side, so a pay figure can
   always be explained if it's ever questioned. Rate changes are amendments (never edited in
-  place), so past months keep the rate that was actually in effect at the time.
+  place), so past months keep the rate that was actually in effect at the time. The owner can
+  also credit an employee extra hours for a specific day (paid at their normal rate), shown as
+  its own line in the breakdown.
+- Payments: a simple two-sided cash log — the employee (via their own PIN on the kiosk) and the
+  owner each record what they believe was paid, independently, and the app flags any day where
+  the two don't match so it can be talked through rather than silently trusted. No money actually
+  moves through the app; it's a record-keeping aid for pay conversations.
+- Installable on the shop tablet like a native app (Add to Home Screen), with new versions
+  picked up automatically in the background — nothing for anyone at the shop to update by hand.
 
 ## Usage
 

@@ -74,10 +74,10 @@ export function groupByEmployeeDay(recs){
 }
 
 // True when a day's data can't be trusted as final without a human checking it: either the
-// last session is still open (clock_out null — forgot to clock out), or it was auto-closed by
-// the lunch safety net and nothing followed it (out_photo null on a session that IS closed —
-// the employee never tapped back in from lunch). Both collapse to the same check: the day's
-// last session has no photographed clock-out.
+// last session is still open (clock_out null — forgot to clock out), or it's closed but with no
+// photo (out_photo null — the stale-session midnight close in js/staleSession.js, or a punch an
+// admin added by hand). Both collapse to the same check: the day's last session has no
+// photographed clock-out.
 export function needsReview(sessions){
   if(!sessions || !sessions.length) return false;
   return !sessions[sessions.length - 1].out_photo;
@@ -139,12 +139,12 @@ export function isPossibleMissedLunch(sessions, hoursWorked){
 // The bug this guards against only shows up with MORE than one gap — an extra punch from a
 // forgotten tap, a same-day errand, or (what actually surfaced this) repeated test taps — every
 // gap used to render as "Lunch" unconditionally, which reads as multiple lunch breaks in one
-// day. Only the gap nearest the shop's configured lunch time (LUNCH_CUTOFF_HOUR/MINUTE — the
-// same constant js/lunch.js's auto-close safety net already uses) is the real lunch break; every
-// other gap is just an ordinary break (still unpaid unless the owner explicitly marks it paid,
-// same lunch_paid mechanism either way — see dayHoursFromSessions above).
-// Uses local (kiosk-device) time, same convention as js/lunch.js's cutoffTimeFor() — this app
-// has never needed to reason about time zones beyond "wherever the kiosk physically is".
+// day. Only the gap nearest the shop's configured lunch time (LUNCH_CUTOFF_HOUR/MINUTE in
+// js/config.js) is the real lunch break; every other gap is just an ordinary break (still
+// unpaid unless the owner explicitly marks it paid, same lunch_paid mechanism either way — see
+// dayHoursFromSessions above).
+// Uses local (kiosk-device) time — this app has never needed to reason about time zones beyond
+// "wherever the kiosk physically is".
 export function lunchGapIndex(sessions){
   if(!sessions || sessions.length < 2) return null;
   if(sessions.length === 2) return 1;

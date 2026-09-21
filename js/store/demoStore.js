@@ -110,7 +110,7 @@ async function clockIn(empId, blob){
   return data;
 }
 
-// `atIso` lets a caller record an exact past instant (e.g. the lunch auto-close cutoff)
+// `atIso` lets a caller record an exact past instant (e.g. the stale-session midnight close)
 // instead of "now". `blob` is optional — an auto-close has no photo, so out_photo is only
 // set when one was actually captured (matches supabaseStore.js's clockOut).
 async function clockOut(recordId, blob, atIso){

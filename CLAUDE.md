@@ -49,8 +49,7 @@ js/
   salary.js          -- pure salary math (proration, rate selection) — no store/DOM access
   paymentsMath.js    -- pure payments reconciliation math (matched/mismatch/awaiting)
   pin.js             -- pure PIN hash/verify (employee kiosk access to Payments)
-  lunch.js           -- pure lunch auto-close predicate (cutoff time, shouldAutoCloseForLunch)
-  staleSession.js    -- pure end-of-day auto-close predicate — the lunch check's complement
+  staleSession.js    -- pure end-of-day auto-close predicate — the kiosk's only automatic clock-out
   missedClockIn.js   -- pure "hasn't shown up today" predicate
   reportMath.js      -- pure per-day hours/review-flag/session-grouping math for the report
   rounding.js        -- pure payroll rounding (grace-window rule) + recHoursRounded()
@@ -138,41 +137,49 @@ settles in under a second instead of ~9s worst case.
 
 Employees punch multiple in/out sessions per day — needed **no schema change** (`records` never
 had a per-day uniqueness constraint). Worked hours are Σ(session durations); the lunch gap is
-whatever falls *between* sessions, never a separately-deducted amount.
+whatever falls *between* sessions, never a separately-deducted amount. The shop's policy is four
+taps a day: morning in, lunch out, lunch in, evening out.
 
+- **Lunch is never inferred — don't re-add a lunch auto-close.** The kiosk is a toggle (what a
+  tap does depends on whether the employee is currently open), so any system-initiated
+  clock-out desyncs the employee's mental model from the recorded state, and every later tap then
+  means the opposite of what they intended. A fixed-cutoff auto-close did exactly this in beta:
+  closed at 1:00, the employee tapped at 1:05 to leave for lunch and was clocked *in*, their 3:00
+  "back from lunch" tap clocked them *out*, and two hours of lunch got paid as work. The system
+  can't tell "leaving for lunch at 1:05" from "back from a 5-minute break", so it must not guess.
+  Forgotten lunch taps surface through existing review signals instead: a long unbroken session
+  gets the pink `.unbroken` nudge (fix: **Split for lunch**), and a parity flip that leaves the
+  day's last session open ends up closed by the stale-session net below and flagged for review.
+  Known silent case: forgetting the lunch-out, then re-tapping a minute later, records a
+  1-minute "lunch" with no flag (a short-gap review flag would close this — not built yet).
 - **Only one gap per day is "lunch"**: with exactly one gap it's always "Lunch" (real usage is
   almost always one break); with 3+ sessions (2+ gaps), only the one nearest
   `LUNCH_CUTOFF_HOUR`/`MINUTE` is "Lunch", the rest render as "Break" (`lunchGapIndex()` in
   `js/reportMath.js`). Purely a label — `dayHoursFromSessions()`'s hours math never cares what a
   gap is called.
-- **Two complementary auto-close safety nets**, both client-side and opportunistic
-  (`checkLunchAutoClose()`/`checkStaleSessionAutoClose()` in `js/ui/kiosk.js`, on load + the 5s
-  poll tick, reusing the outbox write path rather than a server-side cron — this app has no
-  backend compute at all, so neither can be a scheduled job; each just self-heals whenever the
-  kiosk next happens to be on):
-  - **Lunch** (`js/lunch.js`): anyone still clocked in on a session that started *today*, before
-    `LUNCH_CUTOFF_HOUR`/`MINUTE` (`js/config.js`, placeholder pending the shop owner — see Known
-    gaps), gets closed at that exact cutoff time.
-  - **Forgotten end-of-day clock-out** (`js/staleSession.js`): the lunch check's own same-day
-    guard is deliberate (so an offline kiosk waking up days later doesn't slam shut unrelated old
-    sessions using today's lunch time) — but that means a session left open overnight would
-    otherwise sit "currently clocked in" forever, turning the employee's next tap into a bizarre
-    clock-out instead of a fresh start. `shouldAutoCloseStaleSession()` is exactly the
-    complement: any open session that did *not* start today gets closed, at **midnight**
-    (`endOfDayFor()`) rather than a guessed real punch time — shifts vary in length, so there's
-    no single "end of shift" hour the way `LUNCH_CUTOFF_HOUR` works for lunch, and an
-    obviously-artificial timestamp is a louder, harder-to-miss review signal than a
-    plausible-but-wrong one would be. Runs *before* `renderHome()`, so a stale session is already
-    gone from `state.openSessions` by the time the kiosk draws tiles.
+- **One automatic clock-out: the forgotten end-of-day one** (`js/staleSession.js`,
+  `checkStaleSessionAutoClose()` in `js/ui/kiosk.js`, on load + the 5s poll tick, reusing the
+  outbox write path rather than a server-side cron — this app has no backend compute at all, so
+  it can't be a scheduled job; it just self-heals whenever the kiosk next happens to be on). A
+  session left open overnight would otherwise sit "currently clocked in" forever, turning the
+  employee's next tap into a bizarre clock-out instead of a fresh start.
+  `shouldAutoCloseStaleSession()`: any open session that did *not* start today gets closed, at
+  **midnight** (`endOfDayFor()`) rather than a guessed real punch time — shifts vary in length,
+  so there's no single "end of shift" hour, and an obviously-artificial timestamp is a louder,
+  harder-to-miss review signal than a plausible-but-wrong one would be. Runs *before*
+  `renderHome()`, so a stale session is already gone from `state.openSessions` by the time the
+  kiosk draws tiles.
 - **No new column needed to mark an auto-close**: a manual punch always has a real
-  camera-captured photo; either auto-close above is the *only* way `clock_out` gets set while
-  `out_photo` stays `null` — that absence alone is the signal. `clockOut(recordId, blob, atIso)`
-  only sets `out_photo` when a real blob is passed, and takes an explicit `atIso` for the exact
-  close instant (the lunch cutoff, or midnight for a stale session).
+  camera-captured photo; the stale-session close is the only *automatic* way `clock_out` gets set
+  while `out_photo` stays `null` (admin-created punches — **Split for lunch**'s morning half,
+  `addManualRecord` — are also honestly unphotographed) — that absence alone is the signal.
+  `clockOut(recordId, blob, atIso)` only sets `out_photo` when a real blob is passed, and takes an
+  explicit `atIso` for the exact close instant (midnight, for a stale session).
 - **`needsReview(sessions)`** (`js/reportMath.js`): a day's *last* session having no `out_photo`
-  means either genuinely still open or auto-closed-and-never-resumed — both get the same "Review
-  required" treatment (Report summary/banner, calendar pills, Daily records' "● Lunch not
-  resumed" next to "● Still in").
+  means either genuinely still open or closed with no photo (stale-session midnight close, or an
+  admin-added punch) — both get the same "Review required" treatment (Report summary/banner,
+  calendar pills, Daily records' "● No clock-out photo" next to "● Still in"). Legacy rows
+  auto-closed for lunch before that behavior was removed still exist and read the same way.
 - **Daily records grouping**: `renderRecords()` re-groups a date's raw records by employee before
   rendering, since `listRecordsForDate` sorts by `clock_in` globally across everyone (would
   otherwise interleave different people's sessions on a lunch-break day).
@@ -180,8 +187,7 @@ whatever falls *between* sessions, never a separately-deducted amount.
 ## Kiosk "on lunch" tile state
 
 `tileStatus(e)` derives `onLunch` from data (`state.sessionsToday[empId] === 1 && !open`) rather
-than a separately-mutated flag — a manual lunch clock-out needs the same distinct tile state as
-an auto-closed one. Exactly `1`, not "any odd number" or `>= 1`: a day with 2+ completed sessions
+than a separately-mutated flag, so the tile can't drift from what's actually recorded. Exactly `1`, not "any odd number" or `>= 1`: a day with 2+ completed sessions
 already has its normal full-day shape done, and showing "on lunch" past that would invite a stray
 extra tap. `state.sessionsToday` is bumped directly at clock-in time (same latency pattern as
 `openSessions`/`punchedToday`). `tileStatus()` is exported and reused by Daily records'
@@ -413,7 +419,9 @@ unlocked on every admin tab.
 1. **Three placeholder constants in `js/config.js`** still need the shop owner's real numbers:
    `LUNCH_CUTOFF_HOUR`, `MISSED_CLOCKIN_HOUR`, `WEEKLY_HOLIDAY_DAY`. These are the shop's own
    operating facts, not engineering judgment calls — don't change them without being told the
-   real numbers.
+   real numbers. (`LUNCH_CUTOFF_HOUR` is now label-only — it picks which gap reads "Lunch" and
+   where "Split for lunch" lands, and no longer affects anyone's pay — so it's the lowest-stakes
+   of the three.)
 2. **Cross-device clock-out fix is code-reviewed but not re-verified on two real physical
    devices simultaneously** — `clockOut()`'s Postgres fallback (see Offline resilience) fixed a
    real bug where a session opened on one device showed as clockable on another's tile but
@@ -434,13 +442,12 @@ Some pure logic has automated coverage via Node's **built-in** test runner (`nod
 `node:assert`) — zero npm installs, zero config, zero build step, consistent with the "no
 build step" constraint above (it's testing, not bundling).
 
-- Run everything: `node --test js/` from the project root (111 tests as of this writing, all
+- Run everything: `node --test js/` from the project root (104 tests as of this writing, all
   passing).
 - Test files are co-located with the code they cover, named `*.test.mjs`.
 - Covered: `js/salary.js` (proration, retroactive rate-selection, boundary/leap-year dates,
   `fmtRate` vs `fmtCurrency` precision), `js/store/demoStore.js` (a regression suite for a real
-  rename-reverts-on-reread bug), `js/lunch.js` (auto-close cutoff predicate, incl. the
-  today-only guard against force-closing a stale prior-day session), `js/reportMath.js`
+  rename-reverts-on-reread bug), `js/reportMath.js`
   (per-day hours/open-flag accumulation incl. an order-dependent masking regression;
   session-grouping; `needsReview`; `dayHoursFromSessions`' lunch-paid merge across several
   chain shapes; `dayOffStatus`'s holiday/off/nothing-to-show classification incl. the

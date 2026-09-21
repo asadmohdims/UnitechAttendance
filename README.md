@@ -11,11 +11,11 @@ A web app to track employee attendance for a small shop (< 10 employees).
   on overnight, that session is auto-closed and flagged for the admin to double-check rather than
   left "still clocked in" forever or silently paid through; a genuinely missed punch (kiosk was
   down, forgot to tap) can be backfilled by an admin from the monthly report.
-- Lunch breaks are just a normal second clock-in/out — no separate button to learn. If someone
-  forgets to tap back in, the kiosk closes their session automatically at a configurable cutoff
-  and flags it for the admin to double-check, instead of silently paying them through it. The
-  owner can also opt, per lunch break, to pay through it as if it were worked time — a one-tap,
-  fully reversible toggle right next to that day's records.
+- Lunch breaks are just two extra taps — out for lunch, back in — no separate button to learn
+  (four taps a day: morning in, lunch out, lunch in, evening out). The kiosk never guesses at
+  lunch; a day that looks like a forgotten lunch tap is flagged for the admin, who can fix it
+  in one click ("Split for lunch"). The owner can also opt, per lunch break, to pay through it as
+  if it were worked time — a one-tap, fully reversible toggle right next to that day's records.
 - Records view per day, grouped: a lunch-break day shows one combined total for the day up top,
   with the individual sessions and their photos underneath — no adding two numbers by hand.
   Times are editable, with an audit trail (the exact captured time never changes, even where pay

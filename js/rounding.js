@@ -1,4 +1,4 @@
-// Pure payroll-rounding math — no store/DOM access, same pattern as salary.js/lunch.js.
+// Pure payroll-rounding math — no store/DOM access, same pattern as salary.js/staleSession.js.
 const QUARTER_MS = 15 * 60 * 1000;
 // The shop's own rule (not the DOL's symmetric 7-minute rule this started from): a punch up to
 // 10 minutes past a quarter still counts as that quarter; only past 10 minutes does it roll to

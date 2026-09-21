@@ -18,7 +18,7 @@ describe('shouldAutoCloseStaleSession', () => {
     assert.equal(shouldAutoCloseStaleSession(lastWeek, now), true);
   });
 
-  test('open session from earlier today -> false (this is js/lunch.js\'s job, not this one)', () => {
+  test('open session from earlier today -> false (only a session left over from a prior day is stale)', () => {
     const thisMorning = { clock_in: new Date(2026, 8, 11, 9, 0).toISOString(), clock_out: null };
     const now = new Date(2026, 8, 11, 23, 0);
     assert.equal(shouldAutoCloseStaleSession(thisMorning, now), false);

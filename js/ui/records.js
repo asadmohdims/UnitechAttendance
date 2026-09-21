@@ -61,13 +61,13 @@ function hoursStat(workedHours, paidHours, emphasize){
   return el;
 }
 
-// A day's status in one glance, based on its LAST session — the same "still open, or
-// auto-closed and never resumed" check used everywhere else (js/reportMath.js's needsReview).
+// A day's status in one glance, based on its LAST session — the same "still open, or closed
+// with no clock-out photo" check used everywhere else (js/reportMath.js's needsReview).
 // Returns null for a normal, fully-resolved day (nothing to flag).
 function statusBadge(sessions){
   const last = sessions[sessions.length - 1];
   if(!last.clock_out) return {className: 'open-session', text: '● Still in'};
-  if(!last.out_photo) return {className: 'lunch-flag', text: '● Lunch not resumed'};
+  if(!last.out_photo) return {className: 'lunch-flag', text: '● No clock-out photo'};
   return null;
 }
 
@@ -241,7 +241,7 @@ function singleSessionRow(r, emp, overtimeHours){
 // un-mark it afterward via the existing lunch-paid toggle if they do want that time excluded.
 // The original clock_out's real photo moves to the new, later session rather than being
 // duplicated or dropped — the day's last session keeps a genuine out_photo, so it never misreads
-// as an unresolved auto-close (see needsReview() in reportMath.js).
+// as a day closed without a clock-out photo (see needsReview() in reportMath.js).
 // One click, one hour, no time-picker — the owner reaches for this specifically when a long
 // unbroken session almost certainly hid a real lunch (see isPossibleMissedLunch() in
 // reportMath.js), and picking exact start/end times for a break nobody photographed added
@@ -312,7 +312,7 @@ function multiSessionGroup(sessions, emp, overtimeHours){
     if(i > 0){
       const gapSession = sessions[i - 1];
       const gapHours = (new Date(r.clock_in) - new Date(gapSession.clock_out)) / 3600000;
-      const auto = !gapSession.out_photo; // out_photo is null only for an auto-close — a manual punch always has one
+      const auto = !gapSession.out_photo; // null = not a camera punch (legacy auto-close, Split for lunch, or admin-added)
       sessionsWrap.appendChild(lunchDivider(gapSession, gapHours, auto, i === lunchIdx));
     }
     const {punches, hours, actions} = sessionContent(r, emp);

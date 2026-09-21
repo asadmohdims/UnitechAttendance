@@ -135,14 +135,15 @@ describe('needsReview', () => {
     assert.equal(needsReview([stillOpen]), true);
   });
 
-  // The actual gap this guards: an auto-closed lunch that got a real resume punch afterward is
-  // resolved and fine; one that never got a follow-up session looks identical to a normal short
-  // day unless the LAST session specifically is checked, not just "was anyone auto-closed today".
-  test('auto-closed for lunch and never resumed (last session has no photo): needs review', () => {
+  // The actual gap this guards: a session closed with no photo (stale-session midnight close,
+  // admin-added punch) that got a real photographed punch afterward is resolved and fine; one
+  // that never got a follow-up session looks identical to a normal short day unless the LAST
+  // session specifically is checked, not just "was anything closed without a photo today".
+  test('last session closed with no photo and never followed up: needs review', () => {
     assert.equal(needsReview([autoOut]), true);
   });
 
-  test('auto-closed for lunch but resumed afterward: no review needed', () => {
+  test('earlier session closed with no photo but a photographed session follows: no review needed', () => {
     assert.equal(needsReview([autoOut, realIn]), false);
   });
 
@@ -256,8 +257,8 @@ describe('isPossibleMissedLunch', () => {
 });
 
 describe('lunchGapIndex', () => {
-  // Local-time constructor (not ISO 'Z' strings) — same convention as js/lunch.test.mjs, since
-  // this reads LUNCH_CUTOFF_HOUR/MINUTE the exact same way js/lunch.js's cutoffTimeFor() does.
+  // Local-time constructor (not ISO 'Z' strings) — lunchGapIndex() compares against
+  // LUNCH_CUTOFF_HOUR/MINUTE in the kiosk device's local time, so the fixtures must be local too.
   const at = (h, m, durationMin) => {
     const clockIn = new Date(2026, 8, 11, h, m);
     return { clock_in: clockIn.toISOString(), clock_out: new Date(clockIn.getTime() + durationMin * 60000).toISOString() };

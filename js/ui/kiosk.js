@@ -3,7 +3,6 @@ import { state } from '../state.js';
 import { store } from '../store/index.js';
 import { applyAvatar } from '../avatars.js';
 import { captureFor } from '../camera.js';
-import { shouldAutoCloseForLunch, cutoffTimeFor } from '../lunch.js';
 import { shouldAutoCloseStaleSession, endOfDayFor } from '../staleSession.js';
 import { isMissedClockIn } from '../missedClockIn.js';
 import { renderPaymentsGrid, togglePaymentsMode } from './payments.js';
@@ -36,7 +35,6 @@ export async function refreshAll(){
     state.employees = employees;
     state.openSessions = openSessions;
     applyPunchedToday(todaysRecords);
-    await checkLunchAutoClose();
     await checkStaleSessionAutoClose();
     renderHome();
   }catch(err){ toast('Load failed: ' + err.message); }
@@ -57,45 +55,19 @@ function applyPunchedToday(todays){
   });
 }
 
-// Safety net for someone who forgets to tap out for lunch entirely: anyone still clocked in
-// past the configured cutoff gets closed out at that time client-side, so they don't silently
-// stay paid through lunch. Opportunistic, not a server-side job — runs once here on load, and
-// again on every periodicCheck() tick below, so it self-heals even if the kiosk was offline or
-// reloaded well after the cutoff. Manual out-taps never go through this path.
-async function checkLunchAutoClose(){
-  const now = new Date();
-  const toClose = Object.values(state.openSessions).filter(r => shouldAutoCloseForLunch(r, now));
-  if(!toClose.length) return false;
-  const atIso = cutoffTimeFor(now).toISOString();
-  for(const rec of toClose){
-    try{
-      await store.clockOut(rec.id, null, atIso);
-      delete state.openSessions[rec.emp_id];
-      // No separate "on lunch" flag to set here — tileStatus() derives that from
-      // sessionsToday, which already counted this record when it was created. Closing it
-      // (open -> not open) is the only state change this needs to make.
-    }catch(err){
-      // Don't let one record's failure (e.g. genuinely deleted from the admin panel in the
-      // meantime) stop the rest of this tick's tiles from updating, or block the next tick's
-      // periodicCheck() from running at all — this is a silent background safety net, not a
-      // foreground action anyone's watching, so leave it in openSessions and retry in 5s
-      // rather than surfacing a toast on every failed attempt.
-      console.error('Lunch auto-close failed for record', rec.id, err);
-    }
-  }
-  return true;
-}
-
-// Safety net for someone who forgets to clock out at all — the complement of the lunch check
-// above (that one only ever closes a session that started TODAY, so a punch left open overnight
-// would otherwise sit "currently clocked in" forever, forcing the employee's next tap to read as
-// a bizarre clock-OUT instead of a fresh start). Closed at midnight, not a guessed real time
-// (see js/staleSession.js) — same no-photo signal as lunch auto-close, so it lands in the
-// owner's "needs review" list, not silently in someone's pay. Runs in the same places (on load,
-// every periodicCheck() tick) and BEFORE renderHome(), so by the time the kiosk actually draws
-// tiles a stale session is already gone from state.openSessions — the next morning's tap is a
-// normal "tap to start", never blocked or confused by the review flag (that only ever shows up
-// on the admin's Report/Records screens, never on the kiosk).
+// Safety net for someone who forgets to clock out at all: a punch left open overnight would
+// otherwise sit "currently clocked in" forever, forcing the employee's next tap to read as a
+// bizarre clock-OUT instead of a fresh start. Closed at midnight, not a guessed real time (see
+// js/staleSession.js) — no photo, so it lands in the owner's "needs review" list, not silently
+// in someone's pay. Opportunistic, not a server-side job: runs on load and every periodicCheck()
+// tick, and BEFORE renderHome(), so by the time the kiosk actually draws tiles a stale session is
+// already gone from state.openSessions — the next morning's tap is a normal "tap to start",
+// never blocked or confused by the review flag (that only ever shows up on the admin's
+// Report/Records screens, never on the kiosk).
+//
+// This is deliberately the ONLY automatic clock-out. Lunch is never inferred: a fixed cutoff
+// can't tell "leaving for lunch at 1:05" from "back from a 5-minute break", and guessing wrong
+// silently inverted the meaning of every tap after it (see Lunch-break support in CLAUDE.md).
 async function checkStaleSessionAutoClose(){
   const now = new Date();
   const toClose = Object.values(state.openSessions).filter(r => shouldAutoCloseStaleSession(r, now));
@@ -105,9 +77,10 @@ async function checkStaleSessionAutoClose(){
       await store.clockOut(rec.id, null, endOfDayFor(rec).toISOString());
       delete state.openSessions[rec.emp_id];
     }catch(err){
-      // Same reasoning as checkLunchAutoClose's own catch: don't let one bad record block the
-      // rest of this tick, and don't surface a toast for a background safety net nobody's
-      // watching — just retry on the next tick.
+      // Don't let one bad record (e.g. genuinely deleted from the admin panel in the meantime)
+      // block the rest of this tick or the next periodicCheck() — this is a silent background
+      // safety net nobody's watching, so leave it in openSessions and retry on the next tick
+      // rather than surfacing a toast on every failed attempt.
       console.error('Stale-session auto-close failed for record', rec.id, err);
     }
   }
@@ -117,10 +90,9 @@ async function checkStaleSessionAutoClose(){
 // A tile's in/lunch/missed status, purely from current state — shared by the full rebuild
 // below, the lightweight periodic refresh, and Daily records' missed-clock-in banner, so all
 // three can never disagree on the rule. "On lunch" means exactly one session recorded today
-// and none currently open — deliberately the same whether that first session ended because
-// the employee tapped out themselves or because the auto-close safety net closed it for
-// them; a day with 2+ sessions already done doesn't count, so the tile doesn't keep inviting
-// a "resume" tap once the day's normal shape is already complete.
+// and none currently open — the employee tapped out once and is expected back; a day with 2+
+// sessions already done doesn't count, so the tile doesn't keep inviting a "resume" tap once
+// the day's normal shape is already complete.
 export function tileStatus(e){
   const open = state.openSessions[e.id];
   const onLunch = !open && state.sessionsToday[e.id] === 1;
@@ -255,12 +227,11 @@ async function updateSyncIndicator(){
   el.className = 'sync-status' + (pending ? (stuck ? ' stuck' : ' pending') : '');
   el.textContent = pending ? (stuck ? `${pending} punch${pending > 1 ? 'es' : ''} pending — check Wi-Fi` : `Syncing ${pending}…`) : '';
 }
-// Same 5s cadence covers all of these checks — no separate timer for either auto-close.
+// Same 5s cadence covers all of these checks — no separate timer for the stale-session close.
 // refreshTileStates() (not renderHome()) runs unconditionally, since the missed-clock-in flag
 // can flip purely from time passing the cutoff hour — a full renderHome() rebuild here would
 // re-fetch every employee's avatar from the network on every tick (see refreshTileStates()).
 async function periodicCheck(){
-  await checkLunchAutoClose();
   await checkStaleSessionAutoClose();
   refreshTileStates();
   await updateSyncIndicator();

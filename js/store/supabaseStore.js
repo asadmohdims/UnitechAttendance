@@ -112,7 +112,7 @@ async function clockIn(empId, blob){
   return toRecordShape(rec);
 }
 
-// `atIso` lets a caller record an exact past instant (e.g. the lunch auto-close cutoff)
+// `atIso` lets a caller record an exact past instant (e.g. the stale-session midnight close)
 // instead of "now" — defaults to now for a normal manual punch. `blob` is optional: an
 // auto-close has nobody at the camera, so out_photo/out_photo_blob are only set when a real
 // photo was actually captured — otherwise we'd leave a photo path pointing at nothing ever

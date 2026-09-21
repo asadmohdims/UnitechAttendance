@@ -84,9 +84,10 @@ export async function monthData(ym){ // ym: 'YYYY-MM'
     }
   });
 
-  // reviewFlags is broader than openFlags: it also catches a day whose last session was
-  // auto-closed for lunch and never got a follow-up punch — data that looks complete (real
-  // hours, no open session) but hasn't actually been confirmed by the employee coming back.
+  // reviewFlags is broader than openFlags: it also catches a day whose last session was closed
+  // with no clock-out photo (a forgotten end-of-day clock-out closed at midnight, or a punch an
+  // admin added by hand) — data that looks complete (real hours, no open session) but was never
+  // actually confirmed by the employee at the kiosk.
   const reviewFlags = {}, reviewRecords = [];
   emps.forEach(e => { reviewFlags[e.id] = Array(days+1).fill(false); });
   Object.entries(sessionsByDay).forEach(([empId, byDay]) => {
@@ -179,7 +180,7 @@ export async function renderReport(){
     const abandonedNames = [...new Set(reviewRecords.filter(r => r.clock_out).map(nameOf))];
     const parts = [];
     if(openNames.length) parts.push(`${openNames.join(', ')} ${openNames.length === 1 ? 'has' : 'have'} not clocked out yet`);
-    if(abandonedNames.length) parts.push(`${abandonedNames.join(', ')} ${abandonedNames.length === 1 ? 'was' : 'were'} auto-closed for lunch and never clocked back in`);
+    if(abandonedNames.length) parts.push(`${abandonedNames.join(', ')} ${abandonedNames.length === 1 ? 'has' : 'have'} a day closed without a clock-out photo`);
     $('reviewTitle').textContent = `${reviewRecords.length} attendance ${reviewRecords.length === 1 ? 'entry needs' : 'entries need'} review`;
     $('reviewText').textContent = parts.join('; ') + '.';
   }
@@ -234,12 +235,14 @@ function renderDetailCalendar({ym, days, emps, hours, payHours, openFlags, revie
       const open = openFlags[e.id][d];
       const hasHours = hours[e.id][d] !== null;
       // "flagged" = needs review but isn't genuinely still open — i.e. the day's last session
-      // was auto-closed for lunch and never got a follow-up punch. Hours ARE known (hasHours),
-      // so this shows the day number with an amber marker, not the '!' used for a truly open
-      // session (where there's no final number to show yet).
+      // was closed with no clock-out photo (midnight stale-close, or admin-added). Hours ARE
+      // known (hasHours), so this shows the day number with an amber marker, not the '!' used
+      // for a truly open session (where there's no final number to show yet).
       const flagged = reviewFlags[e.id][d] && !open;
-      // An auto-close that DID get resumed afterward is worth a quiet, informational note (blue)
-      // — distinct from one that never resolved (amber, via `flagged` above).
+      // An earlier session closed with no photo that DID get a follow-up punch (a legacy lunch
+      // auto-close, Split for lunch, or an admin-added punch) is worth a quiet, informational
+      // note (blue) — distinct from a day whose last session never got confirmed (amber, via
+      // `flagged` above).
       const autoInfo = !flagged && sessions && sessions.some(s => s.clock_out && !s.out_photo);
       // Only reached with no punches at all (not open, no hours) — 'holiday' or 'off', see
       // dayOffStatus() in reportMath.js for what decides which, or null for nothing to show.

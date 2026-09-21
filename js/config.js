@@ -15,10 +15,13 @@ export const STANDARD_DAY_HOURS = 8;
 // actual gap in attendance. Placeholder — confirm with the shop owner before treating this as
 // final, same status as the cutoffs below.
 export const WEEKLY_HOLIDAY_DAY = 5; // Friday
-// Employees still clocked in past this time are assumed to have forgotten to tap out for
-// lunch — the kiosk auto-closes that session at this time (see js/lunch.js / js/ui/kiosk.js).
-// Only applies to a session that started today. Placeholder — confirm the real cutoff with
-// the shop owner before treating this as final.
+// The shop's typical lunch time. A labeling/layout hint only — nothing acts on it automatically
+// and it never affects pay: lunch is simply the gap between two real taps (employees tap out and
+// back in themselves; the kiosk no longer closes anyone's session for lunch). It picks WHICH gap
+// on a 3+ session day is labeled "Lunch" rather than "Break" (lunchGapIndex in js/reportMath.js)
+// and where "Split for lunch" centers its 1-hour gap (defaultLunchWindow in js/ui/records.js).
+// Placeholder — confirm the real time with the shop owner. (Still named "CUTOFF" from when it
+// drove an auto-close; renaming would touch config, reportMath, records and tests for no gain.)
 export const LUNCH_CUTOFF_HOUR = 13;   // 1:00 PM
 export const LUNCH_CUTOFF_MINUTE = 0;
 // Active employees with no attendance record at all for today (no open session, not on

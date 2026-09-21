@@ -1,8 +1,8 @@
-// Pure "missed clock-in" predicate — no store or DOM access, same style as js/lunch.js.
+// Pure "missed clock-in" predicate — no store or DOM access, same style as js/staleSession.js.
 import { MISSED_CLOCKIN_HOUR, MISSED_CLOCKIN_MINUTE } from './config.js';
 
 // Today's missed-clock-in cutoff instant as a Date, for a given `now` (injectable for tests —
-// same pattern as lunch.js's cutoffTimeFor).
+// same pattern as staleSession.js's endOfDayFor).
 export function missedCutoffFor(now = new Date()){
   const d = new Date(now);
   d.setHours(MISSED_CLOCKIN_HOUR, MISSED_CLOCKIN_MINUTE, 0, 0);

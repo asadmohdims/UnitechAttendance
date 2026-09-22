@@ -184,7 +184,12 @@ async function handlePunchCapture(emp, blob){
   const open = state.openSessions[emp.id];
   let action;
   if(open){
-    await store.clockOut(open.id, blob);
+    try{
+      await store.clockOut(open.id, blob);
+    }catch(err){
+      await refreshAll(); // tile was showing stale data — resync before surfacing the error
+      throw err;
+    }
     delete state.openSessions[emp.id];
     action = 'out';
   }else{
@@ -238,3 +243,16 @@ async function periodicCheck(){
 }
 periodicCheck();
 setInterval(periodicCheck, 5000);
+
+// Mobile browsers/PWAs suspend a backgrounded tab's JS and just resume the same in-memory
+// state on wake — they don't re-run initAuth(), so state.openSessions can silently go stale
+// relative to the server for as long as the tablet sits idle (screen lock, app-switch away and
+// back). A plain reload fixes it because that DOES re-run initAuth(); this listener catches the
+// far more common "never actually reloaded, just woke up" case. Guarded against overlap so a
+// flicker of visibility changes can't pile up concurrent refreshes.
+let resyncing = false;
+document.addEventListener('visibilitychange', () => {
+  if(document.visibilityState !== 'visible' || resyncing) return;
+  resyncing = true;
+  refreshAll().finally(() => { resyncing = false; });
+});

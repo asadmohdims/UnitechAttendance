@@ -120,6 +120,7 @@ async function clockIn(empId, blob){
 async function clockOut(recordId, blob, atIso){
   const rec = await outbox.getItem(recordId);
   if(rec){
+    if(rec.clock_out) throw new Error('This session was already clocked out.');
     rec.clock_out = atIso || new Date().toISOString();
     if(blob){
       rec.out_photo = `${rec.emp_id}/${rec.clientId}-out.jpg`;
@@ -136,9 +137,13 @@ async function clockOut(recordId, blob, atIso){
   // shown as clockable must not silently fail to actually clock out — write straight to
   // Postgres instead, same as updateRecordTimes/setLunchPaid/deleteRecord already do for the
   // same "not local" case.
-  const {data: existing, error: fetchError} = await withTimeout(sb.from('records').select('emp_id').eq('id', recordId).maybeSingle());
+  const {data: existing, error: fetchError} = await withTimeout(sb.from('records').select('emp_id,clock_out').eq('id', recordId).maybeSingle());
   if(fetchError) throw fetchError;
   if(!existing) throw new Error('This session could not be found — it may have already been edited or deleted from the admin panel.');
+  // A stale tile (e.g. the kiosk hasn't resynced since this record was closed elsewhere) must
+  // not silently overwrite the real clock-out time/photo with a bogus new one — see kiosk.js's
+  // visibilitychange resync, which is what should make this rare, not what makes it safe.
+  if(existing.clock_out) throw new Error('This session was already clocked out elsewhere — the display was out of date.');
 
   let outPhoto = null;
   if(blob){

@@ -5,6 +5,11 @@ let stream = null;
 
 export function stopCam(){
   if(stream){ stream.getTracks().forEach(t => t.stop()); stream = null; }
+  // Stopping the tracks alone isn't enough — Chrome on Android can keep treating the <video>
+  // element as an active capture (and hold the screen awake) as long as it still references the
+  // now-dead stream, so the kiosk's screen never re-times-out after the first clock in/out of
+  // the day. Clearing srcObject is what actually releases that.
+  $('video').srcObject = null;
   $('camModal').classList.remove('open');
 }
 

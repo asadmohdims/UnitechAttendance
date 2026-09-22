@@ -363,9 +363,9 @@ export async function renderRecords(){
 
 // Only meaningful for today's date — "missed clock-in" isn't a retroactive judgment about a
 // past day, so browsing history never shows it. Reads shared `state` directly rather than
-// fetching: js/ui/kiosk.js's periodicCheck() keeps openSessions/sessionsToday/punchedToday
-// live regardless of which admin tab is active. Reuses tileStatus() (same function the kiosk
-// tiles use) rather than re-deriving the same open/on-lunch/missed rule here a second time.
+// fetching: js/ui/kiosk.js's periodicCheck() keeps openSessions/punchedToday live regardless of
+// which admin tab is active. Reuses tileStatus() (same function the kiosk tiles use) rather
+// than re-deriving the same open/missed rule here a second time.
 function renderMissedAlert(){
   const el = $('missedAlert');
   if(recDate.value !== dateStr()){ el.style.display = 'none'; return; }

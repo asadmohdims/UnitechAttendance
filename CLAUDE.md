@@ -42,7 +42,7 @@ js/
   config.js          -- SUPABASE_URL, SUPABASE_ANON_KEY, DEMO_MODE, shop config constants
   version.js         -- deploy-time version stamp, JS form (CI-written; 'dev' in repo)
   supabaseClient.js  -- creates `sb`, the Supabase client
-  state.js           -- shared mutable `state = {employees, openSessions, onLunch, adminUnlocked}`
+  state.js           -- shared mutable `state = {employees, openSessions, punchedToday, adminUnlocked}`
   utils.js           -- $, toast, busy, pad, dateStr, fmtTime, fmtHours, recHours
   avatars.js         -- initials-fallback avatar rendering (never shows the wrong photo)
   camera.js          -- captureFor(emp, mode, onCapture) — owns the camera modal
@@ -184,16 +184,18 @@ taps a day: morning in, lunch out, lunch in, evening out.
   rendering, since `listRecordsForDate` sorts by `clock_in` globally across everyone (would
   otherwise interleave different people's sessions on a lunch-break day).
 
-## Kiosk "on lunch" tile state
+## Kiosk tile states
 
-`tileStatus(e)` derives `onLunch` from data (`state.sessionsToday[empId] === 1 && !open`) rather
-than a separately-mutated flag, so the tile can't drift from what's actually recorded. Exactly `1`, not "any odd number" or `>= 1`: a day with 2+ completed sessions
-already has its normal full-day shape done, and showing "on lunch" past that would invite a stray
-extra tap. `state.sessionsToday` is bumped directly at clock-in time (same latency pattern as
-`openSessions`/`punchedToday`). `tileStatus()` is exported and reused by Daily records'
-missed-clock-in banner — one source of truth instead of two copies that could drift. The resume
-badge (`↻`) is distinct from the tap-to-start badge (`▶`) so the difference doesn't depend on
-reading the status text.
+`tileStatus(e)` returns just `{open, missed}` — no "on lunch" distinction. An earlier version
+highlighted a tile amber with a resume badge (`↻`) after exactly one session, but that state
+never affected pay (lunch is just the gap between two sessions either way — see Lunch-break
+support above) and, in live use, added a visual distinction with no real payoff: the shop's
+actual four-taps-a-day rhythm (in, out, in, out) makes a second tap of the day just another
+ordinary clock-in. Removed 2026-09-22. A second tap now renders identically to a first-ever
+tap (`▶`, "Tap to start work") — `handlePunchCapture()`'s branching (open session → clock out,
+else → clock in) never depended on the on-lunch label to begin with, so behavior is unchanged,
+only the tile's own highlighting. `tileStatus()` is exported and reused by Daily records'
+missed-clock-in banner — one source of truth instead of two copies that could drift.
 
 ## Payroll rounding (`js/rounding.js`)
 

@@ -8,12 +8,11 @@
 <meta name="theme-color" content="#0b1220">
 <link rel="icon" type="image/png" sizes="32x32" href="./assets/icons/icon-32.png">
 <link rel="icon" type="image/png" sizes="192x192" href="./assets/icons/icon-192.png">
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bebas+Neue&display=swap">
 <link rel="stylesheet" href="css/styles.css">
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<!-- Everything the page needs to boot is same-origin, so sw.js can pre-cache it and the kiosk
+     starts with no network. Don't add a CDN <script>/<link> here: one in <head> holds up the
+     whole page until it loads. See vendor/README.md. -->
+<script src="vendor/supabase-js-2.117.0.js"></script>
 </head>
 <body class="kiosk-active">
 

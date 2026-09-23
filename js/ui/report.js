@@ -590,9 +590,30 @@ document.addEventListener('click', e => {
   openDetailKey = null;
 });
 
+// SheetJS is ~900KB and only this admin-only button uses it, so it loads on the first Export tap
+// instead of on every kiosk boot. The service worker caches it after that first load.
+let xlsxLoading = null;
+function loadXlsx(){
+  if(window.XLSX) return Promise.resolve();
+  xlsxLoading ??= new Promise((resolve, reject) => {
+    const script = document.createElement('script');
+    script.src = 'vendor/xlsx-0.18.5.full.min.js';
+    script.onload = resolve;
+    script.onerror = () => { xlsxLoading = null; reject(new Error('Could not load the Excel exporter — check Wi-Fi.')); };
+    document.head.appendChild(script);
+  });
+  return xlsxLoading;
+}
+
 $('btnExport').onclick = async () => {
   busy(true);
-  const md = await monthData(repMonth.value);
+  let md;
+  try{
+    [md] = await Promise.all([monthData(repMonth.value), loadXlsx()]);
+  }catch(err){
+    busy(false);
+    return toast(err.message);
+  }
   busy(false);
   if(!md) return;
   const {ym, days, emps, hours, openFlags} = md;

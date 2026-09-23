@@ -60,7 +60,9 @@ Clock-in/out itself is offline-resilient: each punch is written to the browser's
 
 ## Tech
 
-Plain HTML/CSS/JS, no build step. Supabase JS v2 and [SheetJS](https://sheetjs.com/) via CDN.
+Plain HTML/CSS/JS, no build step. Supabase JS v2 and [SheetJS](https://sheetjs.com/) are pinned
+copies checked into `vendor/` (see `vendor/README.md`), not loaded from a CDN, so the installed
+app can start with no internet connection.
 
 ## Development
 

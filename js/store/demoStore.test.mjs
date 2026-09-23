@@ -83,3 +83,23 @@ describe('demoStore salary rates', () => {
     assert.equal((await demoStore.listSalaryRates(jamshed.id)).length, 0);
   });
 });
+
+// Both stores share one interface (see CLAUDE.md), so the demo store mirrors supabaseStore.js's
+// retry-safe payment save and its record-taking clockOut.
+describe('demoStore interface parity', () => {
+  test('saving a payment twice with the same id records it once (a retried Save)', async () => {
+    const [shakib] = await demoStore.listEmployees();
+    await demoStore.addPayment(shakib.id, 500, '2026-09-10', 'employee', 'pay-1');
+    await demoStore.addPayment(shakib.id, 500, '2026-09-10', 'employee', 'pay-1');
+    assert.equal((await demoStore.listPaymentsForRange('2026-09-01', '2026-09-30')).length, 1);
+  });
+
+  test('clockOut takes the open-session record itself and closes it at the given instant', async () => {
+    const [shakib] = await demoStore.listEmployees();
+    const open = await demoStore.addManualRecord(shakib.id, '2026-09-10', '2026-09-10T03:30:00.000Z', null);
+    const closed = await demoStore.clockOut(open, null, '2026-09-10T12:00:00.000Z');
+    assert.equal(closed.clock_out, '2026-09-10T12:00:00.000Z');
+    assert.equal(closed.out_photo, null); // no photo captured, so no dangling photo path
+    assert.equal(Object.keys(await demoStore.listOpenSessions()).length, 0);
+  });
+});

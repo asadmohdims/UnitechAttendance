@@ -56,8 +56,8 @@ export async function captureFor(emp, mode, onCapture){
     }catch(err){
       // Clock in/out itself never blocks on the network (it queues locally and syncs later —
       // see supabaseStore.js), so a thrown error here is essentially never "you're offline";
-      // blaming the network was actively misleading for the actual causes (e.g. a session
-      // opened on a different device that no longer exists). Show what actually happened.
+      // blaming the network was actively misleading for the actual causes (e.g. a session this
+      // tablet already clocked out). Show what actually happened.
       $('camError').textContent = 'Failed: ' + err.message + ' — try again.';
       $('btnCapture').disabled = false;
     }

@@ -67,7 +67,7 @@ async function checkStaleSessionAutoClose(){
   if(!toClose.length) return false;
   for(const rec of toClose){
     try{
-      await store.clockOut(rec.id, null, endOfDayFor(rec).toISOString());
+      await store.clockOut(rec, null, endOfDayFor(rec).toISOString());
       delete state.openSessions[rec.emp_id];
     }catch(err){
       // Don't let one bad record (e.g. genuinely deleted from the admin panel in the meantime)
@@ -172,7 +172,7 @@ async function handlePunchCapture(emp, blob){
   let action;
   if(open){
     try{
-      await store.clockOut(open.id, blob);
+      await store.clockOut(open, blob);
     }catch(err){
       await refreshAll(); // tile was showing stale data — resync before surfacing the error
       throw err;

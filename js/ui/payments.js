@@ -154,10 +154,11 @@ async function verifyEnteredPin(){
     if(!rec) noPin = true;
     else ok = await verifyPin(pinDigits, rec.salt, rec.hash);
   }catch(err){
+    // Not a wrong PIN: the check itself needs the server. Doesn't count as an attempt.
     busy(false);
-    toast('Failed: ' + err.message);
     pinDigits = '';
     updatePinDots(false);
+    $('pinError').textContent = 'Can’t check your PIN right now — Payments needs internet. Try again in a bit.';
     return;
   }
   busy(false);
@@ -196,12 +197,17 @@ async function renderMonthLanding(){
   $('pmMonth').textContent = new Date(y, m - 1, 1).toLocaleDateString('en-IN', {month:'long', year:'numeric'});
 
   busy(true);
-  let payments = [];
+  let payments = [], loadFailed = false;
   try{ payments = await store.listPaymentsForEmployeeRange(activeEmployee.id, fromDate, toDate); }
-  catch(err){ toast('Load failed: ' + err.message); }
+  catch(err){ loadFailed = true; }
   busy(false);
 
-  $('pmTotal').textContent = fmtRupee(employeeLoggedTotal(payments));
+  // A failed load must not look like "₹0, nothing logged yet", or an employee could reasonably
+  // log again a payment that's already recorded.
+  $('pmTotal').textContent = loadFailed ? '—' : fmtRupee(employeeLoggedTotal(payments));
+  $('pmEmpty').textContent = loadFailed
+    ? 'Couldn’t load your payments — Payments needs internet. Check the Wi-Fi.'
+    : 'No payments logged yet this month.';
 
   const groups = groupByEmployeeDate(payments).sort((a, b) => b.date.localeCompare(a.date));
   const list = $('pmEntries');
@@ -233,8 +239,14 @@ async function renderMonthLanding(){
 $('pmBack').onclick = closePaymentFlow;
 $('pmAdd').onclick = openAddPayment;
 
+// The last Save attempted on this form. Retrying the same amount and date reuses its id, so a
+// save whose response was lost can't be recorded twice (see addPayment in
+// js/store/supabaseStore.js). A changed amount or date is a different payment and gets a new id.
+let lastSaveAttempt = null;
+
 function openAddPayment(){
   amountDigits = '';
+  lastSaveAttempt = null;
   applyAvatar($('apAvatar'), activeEmployee);
   $('apAvatar').alt = activeEmployee.name;
   $('apName').textContent = activeEmployee.name;
@@ -261,9 +273,12 @@ $('apSave').onclick = async () => {
   const occurredOn = $('apDate').value;
   if(!amount){ $('apErr').textContent = 'Enter an amount.'; return; }
   if(!occurredOn){ $('apErr').textContent = 'Pick a date.'; return; }
+  if(lastSaveAttempt?.amount !== amount || lastSaveAttempt?.occurredOn !== occurredOn){
+    lastSaveAttempt = {id: crypto.randomUUID(), amount, occurredOn};
+  }
   busy(true);
   try{
-    await store.addPayment(activeEmployee.id, amount, occurredOn, 'employee');
+    await store.addPayment(activeEmployee.id, amount, occurredOn, 'employee', lastSaveAttempt.id);
     busy(false);
     const name = activeEmployee.name; // read before finishPaymentFlow() clears activeEmployee
     $('paymentFlowModal').classList.remove('open');

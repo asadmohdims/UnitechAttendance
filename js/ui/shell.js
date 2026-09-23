@@ -1,6 +1,6 @@
 import { $, busy, toast } from '../utils.js';
-import { DEMO_MODE, SUPABASE_URL } from '../config.js';
-import { sb } from '../supabaseClient.js';
+import { DEMO_MODE } from '../config.js';
+import { sb, withTimeout, TIMEOUT_MESSAGE, persistedSession, hasPersistedSession } from '../supabaseClient.js';
 import { state, ADMIN_TABS } from '../state.js';
 import { refreshAll } from './kiosk.js';
 import { renderRecords } from './records.js';
@@ -11,31 +11,34 @@ import { renderPayments } from './payments.js';
 
 /* ---------- auth ---------- */
 
-// Same key format supabase-js itself uses for persisted sessions (sb-<project-ref>-auth-token)
-// — read directly rather than through sb.auth.getSession(), which is exactly the thing that's
-// too slow/strict for the case this exists to handle (see hasPersistedSession() below).
-function authStorageKey(){
-  return `sb-${new URL(SUPABASE_URL).hostname.split('.')[0]}-auth-token`;
+// Boot uses hasPersistedSession() (js/supabaseClient.js): has this device signed in before,
+// regardless of whether that session has since expired by the clock. sb.auth.getSession() alone
+// can't tell "genuinely logged out" apart from "logged in, but can't reach Supabase to refresh
+// right now" — and when the real answer is the latter, getSession() still takes ~20s to give up
+// before returning no session, then reports no session at all. On a kiosk tablet that just means
+// "the token happened to be due for a refresh when the tablet came back online after a while,"
+// not an actual sign-out — treating that as a hard lockout would block every tile and all
+// punching (which don't otherwise need a live connection at all) until someone re-enters the
+// admin password, itself only possible with a network. So: presence of a prior session is enough
+// to let the kiosk open immediately; validateSessionInBackground() below still confirms it for
+// real afterward.
+
+// Sign-in always needs the server. What matters offline is saying so, instead of the old
+// behavior of reporting every failure as "Wrong password" (or hanging).
+function signInErrorMessage(error){
+  if(error.code === 'invalid_credentials' || error.status === 400) return null; // caller's own wording
+  if(error.message === TIMEOUT_MESSAGE || error.status === 0 || error.name === 'AuthRetryableFetchError'){
+    return 'Can’t reach the server — signing in needs internet. Check the Wi-Fi and try again.';
+  }
+  return error.message;
 }
 
-// True if this device has ever actually signed in before, regardless of whether that session
-// has since expired by the clock. sb.auth.getSession() alone can't tell "genuinely logged out"
-// apart from "logged in, but can't reach Supabase to refresh right now" — and when the real
-// answer is the latter, getSession() still takes ~20s to give up before returning no session,
-// then reports no session at all. On a kiosk tablet that just means "the token happened to be
-// due for a refresh when the tablet came back online after a while," not an actual sign-out —
-// treating that as a hard lockout would block every tile and all punching (which don't
-// otherwise need a live connection at all) until someone re-enters the admin password, itself
-// only possible with a network. So: presence of a prior session is enough to let the kiosk
-// open immediately; validateSessionInBackground() below still confirms it for real afterward.
-function hasPersistedSession(){
+async function signIn(email, password){
   try{
-    const raw = localStorage.getItem(authStorageKey());
-    if(!raw) return false;
-    const parsed = JSON.parse(raw);
-    return !!(parsed && parsed.access_token && parsed.refresh_token);
-  }catch{
-    return false;
+    const {error} = await withTimeout(sb.auth.signInWithPassword({email, password}));
+    return error || null;
+  }catch(err){
+    return err; // timed out
   }
 }
 
@@ -79,9 +82,9 @@ $('btnLogin').onclick = async () => {
   const email = $('loginEmail').value.trim(), pass = $('loginPass').value;
   if(!email || !pass) return;
   busy(true); $('loginErr').textContent = '';
-  const {error} = await sb.auth.signInWithPassword({email, password:pass});
+  const error = await signIn(email, pass);
   busy(false);
-  if(error){ $('loginErr').textContent = error.message; return; }
+  if(error){ $('loginErr').textContent = signInErrorMessage(error) ?? error.message; return; }
   $('loginPass').value = '';
   setAuthUI(true);
   await refreshAll();
@@ -94,7 +97,11 @@ $('btnLogout').onclick = async () => {
     return;
   }
   if(!confirm('Sign out? The tablet will need the password to use the app again.')) return;
-  await sb.auth.signOut();
+  let error;
+  try{ ({error} = await withTimeout(sb.auth.signOut())); }catch(err){ error = err; }
+  // Offline, the server-side sign-out fails and supabase-js keeps the session on this device, so
+  // the reload below would come straight back signed in. A local sign-out needs no network.
+  if(error) await sb.auth.signOut({scope:'local'});
   state.adminUnlocked = false;
   location.reload();
 };
@@ -111,11 +118,15 @@ $('btnUnlockCancel').onclick = () => { $('adminModal').classList.remove('open');
 $('btnUnlock').onclick = async () => {
   const pass = $('adminPass').value;
   if(!pass) return;
+  // The signed-in account's email is already saved on this device. Fetching it from the server
+  // (sb.auth.getUser(), as this used to) was a needless round trip that, offline, returned no
+  // user and crashed before any message could show, leaving the dialog silently stuck.
+  const email = persistedSession()?.user?.email;
+  if(!email){ $('adminErr').textContent = 'This tablet’s sign-in is missing — sign out and sign in again.'; return; }
   busy(true); $('adminErr').textContent = '';
-  const {data:{user}} = await sb.auth.getUser();
-  const {error} = await sb.auth.signInWithPassword({email:user.email, password:pass});
+  const error = await signIn(email, pass);
   busy(false);
-  if(error){ $('adminErr').textContent = 'Wrong password'; return; }
+  if(error){ $('adminErr').textContent = signInErrorMessage(error) ?? 'Wrong password'; return; }
   state.adminUnlocked = true;
   $('adminModal').classList.remove('open');
   $('btnLock').style.display = '';

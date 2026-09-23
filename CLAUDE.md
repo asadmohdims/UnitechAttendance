@@ -14,6 +14,11 @@ narrative iteration history here, just the resulting design and any non-obvious 
 - Plain HTML/CSS/JS, ES modules, **no build step, no npm, no bundler** — this is deliberate,
   keep it that way. Don't introduce webpack/Vite/TypeScript/a framework without the user
   explicitly asking to change this constraint.
+- **No CDN dependencies at runtime.** supabase-js, SheetJS and the Bebas Neue font are checked
+  in (`vendor/`, `assets/fonts/`), pinned, with provenance and upgrade steps in
+  `vendor/README.md`. A CDN `<script>`/stylesheet in `<head>` holds up the whole page until it
+  loads and can't be pre-cached by the service worker. That's what made the kiosk "wait for
+  Wi-Fi to show the page". `js/swPrecache.test.mjs` fails if one is re-added.
 - Backend: Supabase (Postgres + private Storage bucket for photos), schema in
   `supabase-setup.sql`. A real Supabase project is live (`DEMO_MODE = false` in `js/config.js`)
   — the deployed site requires real sign-in and reads/writes that project. `DEMO_MODE = true` is
@@ -25,7 +30,7 @@ narrative iteration history here, just the resulting design and any non-obvious 
   checked into `js/config.js` is the anon/publishable key, safe by design, RLS-protected).
   `.github/workflows/deploy.yml` auto-deploys on every push to `main`, staging into `_site/`
   (excludes `archive/`, the old pre-restructure draft, from the public site), and stamps a real
-  git-short-SHA + timestamp into `version.json`/`js/version.js` (see PWA section below).
+  git-short-SHA + timestamp into `version.json`/`js/version.js`/`sw.js` (see PWA section below).
 - `js/main.js` is loaded via `<script type="module">`, so **`file://` won't work** for local
   testing — serve it (`python3 -m http.server 8743` from the project root) and open
   `http://localhost:8743`.
@@ -35,13 +40,17 @@ narrative iteration history here, just the resulting design and any non-obvious 
 ```
 index.html      -- markup only
 manifest.json   -- PWA manifest (standalone, landscape)
-sw.js           -- hand-rolled service worker, app-shell caching
+sw.js           -- hand-rolled service worker: pre-caches the app shell, serves it cache-first
 version.json    -- deploy-time version stamp (CI-written; 'dev' placeholder in repo)
-css/styles.css  -- all styles
+css/styles.css  -- all styles (incl. the self-hosted @font-face)
+vendor/         -- pinned third-party libraries (supabase-js, SheetJS) + README with provenance
+assets/fonts/   -- self-hosted Bebas Neue (latin + latin-ext)
 js/
   config.js          -- SUPABASE_URL, SUPABASE_ANON_KEY, DEMO_MODE, shop config constants
   version.js         -- deploy-time version stamp, JS form (CI-written; 'dev' in repo)
-  supabaseClient.js  -- creates `sb`, the Supabase client
+  supabaseClient.js  -- creates `sb`; network time limits (withTimeout, per-request cap);
+                        reads this device's saved session locally (persistedSession)
+  swPrecache.test.mjs -- guards sw.js's APP_SHELL list against drift
   state.js           -- shared mutable `state = {employees, openSessions, punchedToday, adminUnlocked}`
   utils.js           -- $, toast, busy, pad, dateStr, fmtTime, fmtHours, recHours
   avatars.js         -- initials-fallback avatar rendering (never shows the wrong photo)
@@ -101,32 +110,89 @@ treated as the one unacceptable failure mode — this is why the design exists.
 - Verified against a real Supabase project with a simulated outage: clock-out resolved in ~4ms
   offline, synced automatically within ~1.5s of reconnect.
 - `demoStore.js` doesn't use the outbox (nothing to be offline from against localStorage).
+- **Clock-out never needs the network either, even for a session this tablet doesn't have
+  locally** (opened on another device, or the admin's "Add missed punch" with the clock-out left
+  empty). `clockOut(record, blob, atIso)` takes the whole record from `state.openSessions` and
+  queues a `remoteClose` outbox row. That row syncs as a **conditional update**
+  (`set clock_out … where clock_out is null`), not an upsert: if the session was closed, edited
+  or deleted elsewhere first, the server's version wins and the queued tap is dropped
+  (`console.warn`). A lost response is told apart from a real conflict by re-reading and
+  comparing the clock-out instant. The remote-close photo gets a unique path so it can never
+  overwrite another device's photo for the same session. Admin edits skip `remoteClose` rows
+  (`getOwnedLocalRow()`) and write to Postgres; the queued close then only applies if the
+  session is still open.
+- `listOpenSessions` is **local-wins**, like `listRecordsForDate`: a session closed on this
+  tablet but not yet synced is removed from the server's "open" list, so it can't come back as a
+  clockable tile.
 - Manual admin edits (`updateRecordTimes`, `setLunchPaid`, `addManualRecord`, payments,
   overtime) are **plain awaited store calls, not routed through the outbox** — deliberate: the
   outbox exists for the kiosk's high-frequency instant-tap punch flow, not low-frequency
   deliberate desktop edits. A failed write there just shows a retry-able error toast. If a
   session opened on one device needs editing from another, these calls fall back to writing
   straight to Postgres instead of requiring the record in that browser's local outbox.
+- The outbox calls `navigator.storage.persist()` so the browser won't clear it (it can hold the
+  only copy of a punch) under storage pressure.
+
+**Time limits on every network call** (`js/supabaseClient.js`): nothing may leave the UI waiting
+on a "connected but barely working" connection, where a request can sit for minutes.
+- Every `supabaseStore.js` call goes through `withTimeout()`: 8s by default
+  (`REQUEST_TIMEOUT_MS`), 3s (`FAST_READ_TIMEOUT_MS`) for the kiosk reads that have a local
+  fallback (roster, open sessions, today's records). It's measured from the call, so it also
+  covers time queued behind supabase-js's token refresh, which retries for up to ~30s and blocks
+  every other call meanwhile. For database queries it also **cancels** the request
+  (`.abortSignal()`), so a write never goes out after the UI already said it failed.
+- The `fetch` given to `createClient` caps each individual HTTP request at 15s
+  (`HTTP_TIMEOUT_MS`), as a backstop for auth calls and photo uploads, which can't be cancelled.
+- **Signed-out guard** (`readWithFallback()`): every table is "authenticated only", and with no
+  session RLS returns zero rows, not an error. If supabase-js has dropped the session, the
+  fallback reads refuse the server's answer, so an empty list can't overwrite the offline
+  roster cache or show everyone as clocked out.
+- The kiosk's payment Save is retry-safe: `addPayment` takes a client-generated id, reused when
+  Save is retried with the same amount and date. A retry whose first attempt actually landed
+  hits the primary key (23505) and counts as saved, not as a duplicate.
 
 **Cold boot and session persistence**: a device that has logged in before opens the kiosk
-immediately from its persisted Supabase session and validates that session for real in the
-background, rather than blocking on a network round-trip first — a stale/expired session with no
-network used to take ~20s to resolve and then force a login screen (which itself needs network),
-locking out all punching in the meantime. `refreshAll()`'s independent reads run in parallel, and
-the store's read-with-fallback calls carry a short client-side timeout, so a cold offline boot
-settles in under a second instead of ~9s worst case.
+immediately from its persisted Supabase session (`hasPersistedSession()`, read straight from
+localStorage) and validates that session for real in the background, rather than blocking on a
+network round-trip first — a stale/expired session with no network used to take ~20s to resolve
+and then force a login screen (which itself needs network), locking out all punching in the
+meantime. `refreshAll()`'s independent reads run in parallel under the 3s fast-read limit. Admin
+unlock reads the account email from the saved session too (it used to fetch it from the server,
+and crashed silently offline). Sign-in failures say "needs internet" instead of "Wrong password"
+when the server can't be reached.
 
 ## PWA (installable app)
 
 - `manifest.json` — standalone display, landscape orientation, icons from a calendar-check SVG.
-- `sw.js` — hand-rolled, no Workbox/npm: caches same-origin GET requests only, stale-while-
-  revalidate, Supabase/CDN traffic untouched.
+- `sw.js` — hand-rolled, no Workbox/npm. It works like Workbox's precaching:
+  - **install** downloads every file in `APP_SHELL` into a cache named after the deploy's
+    version. It uses `cache:'reload'`, because GitHub Pages' 10-minute max-age would otherwise
+    risk storing the previous deploy's files. `addAll` is all-or-nothing, so an install
+    interrupted by Wi-Fi fails and the old worker keeps serving the old version.
+  - **fetch** serves same-origin GETs **cache-first**, and every navigation gets the cached
+    `index.html`. There's no revalidation: one cache is exactly one deploy's files, so old and
+    new modules can never mix. Supabase traffic and `version.json` go straight to the network.
+  - `VERSION === 'dev'` (local) is network-first instead, so edits show up on reload.
+  - **Don't put network calls at the top level of `sw.js`.** Chrome stops an idle worker after
+    ~30s and re-runs the whole script on the next request, so top-level code runs on nearly
+    every page load. An earlier version fetched `version.json` there to name its cache; every
+    response waited on it, and offline it fell back to a cache name that didn't exist and served
+    "Offline".
+  - `APP_SHELL` is an explicit list. `js/swPrecache.test.mjs` fails if a `js/` module, or a file
+    referenced by `index.html`/`styles.css`, is missing from it. The ~900KB SheetJS file is
+    deliberately left out: it's loaded on the first Export tap (`loadXlsx()` in
+    `js/ui/report.js`) and cached at runtime.
 - Version stamping: CI (`.github/workflows/deploy.yml`) writes a real git-short-SHA + timestamp
-  into `version.json`/`js/version.js` at deploy time (the repo keeps `'dev'` placeholders). The
-  kiosk shows the version in a small muted corner of the side panel. `js/ui/appVersion.js` polls
-  `version.json` every 5 minutes and silently `location.reload()`s once idle (no open
-  modal/punch/payment overlay) — a deliberate choice over a "tap to update" prompt, since nobody
-  should have to handle that on a shared kiosk.
+  into `version.json`, `js/version.js` **and `sw.js`'s `VERSION`** at deploy time (the repo keeps
+  `'dev'` placeholders; a `grep` fails the deploy if the `sw.js` line stops matching). Changing
+  `sw.js`'s bytes is what makes browsers install the new worker at all. The kiosk shows the
+  version in a small muted corner of the side panel. `js/ui/appVersion.js` polls `version.json`
+  every 5 minutes. Under a service worker, a new version triggers `registration.update()`, and
+  the reload happens on `controllerchange`, once the new worker has pre-cached and taken over
+  (reloading any earlier would just serve the old version from the old cache). Without a
+  worker it reloads directly. Either way it waits until idle (no open modal/punch/payment
+  overlay) — a deliberate choice over a "tap to update" prompt, since nobody should have to
+  handle that on a shared kiosk.
 - **Testing limitation**: service worker registration and camera access (`getUserMedia`) can't be
   verified in the sandboxed Browser pane — both fail there in ways that look like bugs but
   aren't. Manifest validity, icon files, and the version/appVersion wiring are all verifiable in
@@ -424,11 +490,14 @@ unlocked on every admin tab.
    real numbers. (`LUNCH_CUTOFF_HOUR` is now label-only — it picks which gap reads "Lunch" and
    where "Split for lunch" lands, and no longer affects anyone's pay — so it's the lowest-stakes
    of the three.)
-2. **Cross-device clock-out fix is code-reviewed but not re-verified on two real physical
-   devices simultaneously** — `clockOut()`'s Postgres fallback (see Offline resilience) fixed a
-   real bug where a session opened on one device showed as clockable on another's tile but
-   failed with a misleading error. Worth a real two-device pass before relying on it under
-   multi-week usage.
+2. **The offline-first changes (pre-cached app shell, vendored libraries, time limits, queued
+   remote clock-out) are unit-tested and checked in the Browser pane, but not yet on the real
+   tablet.** The Browser pane can't run a service worker, and the remote-close sync needs a
+   signed-in session. Still to verify on a real device: (a) boot with Wi-Fi off after the worker
+   is stopped (DevTools → Application → Service workers → Stop) shows the kiosk, not "Offline";
+   (b) a deploy's auto-update reloads onto the new version; (c) closing a session opened
+   elsewhere (e.g. "Add missed punch" with no clock-out) while offline syncs once back online;
+   (d) the same with that session already closed elsewhere is dropped, not overwritten.
 3. **Whether the `overtime_hours` migration was actually run against the live Supabase project
    is unconfirmed** (unlike the Payments migration, which was). The feature fails soft if it's
    missing, so this could be silently inert — check with `select count(*) from overtime_hours;`
@@ -444,7 +513,7 @@ Some pure logic has automated coverage via Node's **built-in** test runner (`nod
 `node:assert`) — zero npm installs, zero config, zero build step, consistent with the "no
 build step" constraint above (it's testing, not bundling).
 
-- Run everything: `node --test js/` from the project root (104 tests as of this writing, all
+- Run everything: `node --test js/` from the project root (111 tests as of this writing, all
   passing).
 - Test files are co-located with the code they cover, named `*.test.mjs`.
 - Covered: `js/salary.js` (proration, retroactive rate-selection, boundary/leap-year dates,
@@ -459,7 +528,9 @@ build step" constraint above (it's testing, not bundling).
   `recHoursRounded`'s open-session/zero-length cases), `js/staleSession.js` (a session from a
   prior day vs. earlier today vs. already closed; `endOfDayFor()`'s midnight rollover incl.
   across a month boundary), `js/missedClockIn.js`, `js/paymentsMath.js` (matched/mismatch/
-  awaiting reconciliation), and `js/pin.js` (hash/verify).
+  awaiting reconciliation), `js/pin.js` (hash/verify), and `sw.js`'s pre-cache list
+  (`js/swPrecache.test.mjs`: every listed file exists; every module/referenced file is listed;
+  no cross-origin script or stylesheet in `index.html`).
 - Deliberately **not** covered: `supabaseStore.js` (touches the real network/DB — verify via the
   console against the live project instead) and the UI layer (no headless-browser tool set up —
   new tooling, ask first). Both stores share the same pure `salary.js`/`reportMath.js`/

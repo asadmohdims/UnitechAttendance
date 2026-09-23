@@ -34,6 +34,10 @@ let syncFn = null;
 // browser 'online' event, and on a flat interval — no backoff needed at this scale;
 // safety comes from idempotent upserts in supabaseStore.js, not retry timing.
 export function startBackgroundSync(fn, intervalMs = 30000){
+  // This queue can hold the only copy of a punch. By default browsers treat site storage as
+  // "best effort" and may clear it under storage pressure; persistent storage opts out of that.
+  // Chrome decides silently (typically granted for an installed app), so the kiosk never sees a prompt.
+  navigator.storage?.persist?.().catch(() => {});
   syncFn = fn;
   fn();
   window.addEventListener('online', fn);

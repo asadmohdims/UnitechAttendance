@@ -110,10 +110,13 @@ async function clockIn(empId, blob){
   return data;
 }
 
-// `atIso` lets a caller record an exact past instant (e.g. the stale-session midnight close)
-// instead of "now". `blob` is optional — an auto-close has no photo, so out_photo is only
-// set when one was actually captured (matches supabaseStore.js's clockOut).
-async function clockOut(recordId, blob, atIso){
+// Takes the open-session record itself (same interface as supabaseStore.js's clockOut, which
+// needs the whole record to close a session it doesn't have locally). `atIso` lets a caller
+// record an exact past instant (e.g. the stale-session midnight close) instead of "now". `blob`
+// is optional — an auto-close has no photo, so out_photo is only set when one was actually
+// captured.
+async function clockOut(record, blob, atIso){
+  const recordId = record.id;
   const records = loadRecords();
   const idx = records.findIndex(r => r.id === recordId);
   if(idx < 0) throw new Error('Demo attendance record not found');
@@ -250,8 +253,12 @@ function savePayments(rows){ localStorage.setItem(DEMO_PAYMENTS_KEY, JSON.string
 // write is enough — no outbox needed the way punches need one for instant latency + offline
 // resilience under many daily taps. `enteredBy` is 'employee' (kiosk, PIN-gated) or 'owner'
 // (admin) — see js/paymentsMath.js's reconcileDay() for how the two sides get compared.
-function addPayment(empId, amount, occurredOn, enteredBy){
-  const row = {id:'demo-payment-' + Date.now(), emp_id:empId, amount, occurred_on:occurredOn, entered_by:enteredBy, created_at:new Date().toISOString()};
+// `id` mirrors supabaseStore.js's retry-safe addPayment: a retried save with the same id is a
+// no-op rather than a second payment.
+function addPayment(empId, amount, occurredOn, enteredBy, id = 'demo-payment-' + Date.now()){
+  const existing = loadPayments().find(p => p.id === id);
+  if(existing) return existing;
+  const row = {id, emp_id:empId, amount, occurred_on:occurredOn, entered_by:enteredBy, created_at:new Date().toISOString()};
   const rows = loadPayments();
   rows.push(row);
   savePayments(rows);

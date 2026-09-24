@@ -5,6 +5,8 @@ A web app to track employee attendance for a small shop (< 10 employees).
 ## Features
 
 - Employees clock in/out by tapping their name; a photo is captured via the device camera as proof.
+  A repeat tap within 2 minutes of a punch just shows "Already clocked in/out" rather than
+  recording the opposite punch, so a nervous "did that work?" retap can't undo what they just did.
 - Punches are captured instantly and sync to the server in the background, so a brief
   internet drop at the shop doesn't lose a clock-in/out — it just syncs a little later.
 - Daily hours are calculated automatically. If someone forgets to clock out and the tablet stays

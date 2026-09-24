@@ -32,4 +32,9 @@ export const LUNCH_CUTOFF_MINUTE = 0;
 // before treating this as final.
 export const MISSED_CLOCKIN_HOUR = 10;   // 10:00 AM
 export const MISSED_CLOCKIN_MINUTE = 0;
+// Duplicate-punch window: a second tap on the same tile within this many minutes of that
+// employee's last punch — in either direction — re-shows "Already clocked IN/OUT" instead of
+// recording the opposite punch (js/punchCooldown.js). Catches "did that register?" retaps, which
+// happen within seconds; kept short so a deliberate tap is never held up for long.
+export const PUNCH_COOLDOWN_MINUTES = 2;
 /* =============================================================================== */

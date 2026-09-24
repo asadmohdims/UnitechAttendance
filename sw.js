@@ -33,6 +33,7 @@ const APP_SHELL = [
   './js/missedClockIn.js',
   './js/paymentsMath.js',
   './js/pin.js',
+  './js/punchCooldown.js',
   './js/reportMath.js',
   './js/rounding.js',
   './js/salary.js',

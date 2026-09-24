@@ -60,6 +60,7 @@ js/
   pin.js             -- pure PIN hash/verify (employee kiosk access to Payments)
   staleSession.js    -- pure end-of-day auto-close predicate — the kiosk's only automatic clock-out
   missedClockIn.js   -- pure "hasn't shown up today" predicate
+  punchCooldown.js   -- pure duplicate-punch window (latest punch per employee, lock-until time)
   reportMath.js      -- pure per-day hours/review-flag/session-grouping math for the report
   rounding.js        -- pure payroll rounding (grace-window rule) + recHoursRounded()
   store/
@@ -216,8 +217,9 @@ taps a day: morning in, lunch out, lunch in, evening out.
   Forgotten lunch taps surface through existing review signals instead: a long unbroken session
   gets the pink `.unbroken` nudge (fix: **Split for lunch**), and a parity flip that leaves the
   day's last session open ends up closed by the stale-session net below and flagged for review.
-  Known silent case: forgetting the lunch-out, then re-tapping a minute later, records a
-  1-minute "lunch" with no flag (a short-gap review flag would close this — not built yet).
+  Known silent case: forgetting the lunch-out, then re-tapping just after the duplicate-punch
+  window (see Kiosk tile states) records a few-minute "lunch" with no flag (a short-gap review
+  flag would close this — not built yet). A re-tap *inside* the window is refused instead.
 - **Only one gap per day is "lunch"**: with exactly one gap it's always "Lunch" (real usage is
   almost always one break); with 3+ sessions (2+ gaps), only the one nearest
   `LUNCH_CUTOFF_HOUR`/`MINUTE` is "Lunch", the rest render as "Break" (`lunchGapIndex()` in
@@ -262,6 +264,21 @@ tap (`▶`, "Tap to start work") — `handlePunchCapture()`'s branching (open se
 else → clock in) never depended on the on-lunch label to begin with, so behavior is unchanged,
 only the tile's own highlighting. `tileStatus()` is exported and reused by Daily records'
 missed-clock-in banner — one source of truth instead of two copies that could drift.
+
+**Duplicate-punch window** (`js/punchCooldown.js`, `PUNCH_COOLDOWN_MINUTES = 2` in
+`js/config.js`): a tile tap within 2 minutes of that employee's last punch, **in either
+direction**, doesn't open the camera — it re-shows the punch confirmation as "Already clocked
+IN/OUT" (profile picture in place of a photo). Prompted by a real day: an employee thought a bad
+photo meant the punch failed and retook it, twice — out-then-in at 1:15 and again at 2:24 — so a
+~70-minute lunch was paid as work behind a "Lunch: 0:00" gap. Both directions because the
+kiosk is a toggle: any retap records the opposite punch, and out→in (lunch paid, every later tap
+flipped) is the costlier one. Deliberately a refusal that *answers* rather than a silent no-op (a
+dead tile reads as "broken" and invites more taps), and deliberately no "clock out anyway"
+override (people retapping in a hurry don't read dialogs) — a genuine wrong-tile mistake is fixed
+by the owner in Daily records. `state.lastPunchAt` is rebuilt from today's records in
+`refreshAll()` (so it covers other devices' punches) and updated locally on each punch. The
+camera shutter also disables itself *before* its first `await`, so a fast double-tap can't
+record two punches from one capture.
 
 ## Payroll rounding (`js/rounding.js`)
 
@@ -513,7 +530,7 @@ Some pure logic has automated coverage via Node's **built-in** test runner (`nod
 `node:assert`) — zero npm installs, zero config, zero build step, consistent with the "no
 build step" constraint above (it's testing, not bundling).
 
-- Run everything: `node --test js/` from the project root (111 tests as of this writing, all
+- Run everything: `node --test js/` from the project root (119 tests as of this writing, all
   passing).
 - Test files are co-located with the code they cover, named `*.test.mjs`.
 - Covered: `js/salary.js` (proration, retroactive rate-selection, boundary/leap-year dates,
@@ -527,7 +544,8 @@ build step" constraint above (it's testing, not bundling).
   (both sides of the grace-window cutover, the exact 10:30 tie, hour/day rollovers,
   `recHoursRounded`'s open-session/zero-length cases), `js/staleSession.js` (a session from a
   prior day vs. earlier today vs. already closed; `endOfDayFor()`'s midnight rollover incl.
-  across a month boundary), `js/missedClockIn.js`, `js/paymentsMath.js` (matched/mismatch/
+  across a month boundary), `js/missedClockIn.js`, `js/punchCooldown.js` (latest punch across
+  ins/outs regardless of record order, the window boundary, future-dated punches never locking), `js/paymentsMath.js` (matched/mismatch/
   awaiting reconciliation), `js/pin.js` (hash/verify), and `sw.js`'s pre-cache list
   (`js/swPrecache.test.mjs`: every listed file exists; every module/referenced file is listed;
   no cross-origin script or stylesheet in `index.html`).

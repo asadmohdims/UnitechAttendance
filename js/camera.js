@@ -35,6 +35,9 @@ export async function captureFor(emp, mode, onCapture){
   $('btnCamCancel').onclick = stopCam;
   $('btnCapture').onclick = async () => {
     if(!stream) return;
+    // Disabled before any await: the encode below yields, and a second tap landing in that gap
+    // would run this handler twice — two punches (in, then straight back out) from one photo.
+    $('btnCapture').disabled = true;
     // Fires on the tap itself, before the canvas draw/blob encode below — the shutter cue
     // should land the instant the button is pressed, not after the async work that follows it.
     // Removing the class before re-adding forces a reflow so back-to-back captures (e.g. a
@@ -48,7 +51,6 @@ export async function captureFor(emp, mode, onCapture){
     c.width = 320; c.height = Math.round(video.videoHeight * scale);
     c.getContext('2d').drawImage(video, 0, 0, c.width, c.height);
     const blob = await new Promise(res => c.toBlob(res, 'image/jpeg', 0.7));
-    $('btnCapture').disabled = true;
     busy(true);
     try{
       await onCapture(blob);

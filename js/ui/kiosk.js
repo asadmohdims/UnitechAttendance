@@ -5,6 +5,8 @@ import { applyAvatar } from '../avatars.js';
 import { captureFor } from '../camera.js';
 import { shouldAutoCloseStaleSession, endOfDayFor } from '../staleSession.js';
 import { isMissedClockIn } from '../missedClockIn.js';
+import { latestPunchByEmployee, punchLockedUntil } from '../punchCooldown.js';
+import { PUNCH_COOLDOWN_MINUTES } from '../config.js';
 import { renderPaymentsGrid, togglePaymentsMode } from './payments.js';
 
 $('btnPayments').onclick = togglePaymentsMode;
@@ -34,18 +36,20 @@ export async function refreshAll(){
     ]);
     state.employees = employees;
     state.openSessions = openSessions;
-    applyPunchedToday(todaysRecords);
+    applyTodaysRecords(todaysRecords);
     await checkStaleSessionAutoClose();
     renderHome();
   }catch(err){ toast('Load failed: ' + err.message); }
   busy(false);
 }
 
-// Rebuilds today's per-employee "has any record at all" flag from an already-fetched list —
-// the source for the missed-clock-in flag (see tileStatus() below).
-function applyPunchedToday(todays){
+// Rebuilds today's per-employee flags from an already-fetched list: "has any record at all"
+// (the source for the missed-clock-in flag, see tileStatus() below) and the latest punch time
+// (the source for the duplicate-punch window, see punchTap()).
+function applyTodaysRecords(todays){
   state.punchedToday = {};
   todays.forEach(r => { state.punchedToday[r.emp_id] = true; });
+  state.lastPunchAt = latestPunchByEmployee(todays);
 }
 
 // Safety net for someone who forgets to clock out at all: a punch left open overnight would
@@ -163,7 +167,13 @@ function refreshTileStates(){
   });
 }
 
+// Checked on the tile tap, before the camera opens: a repeat tap inside the duplicate-punch
+// window never gets as far as a photo, so there's nothing to capture and nothing to undo.
 function punchTap(emp){
+  if(punchLockedUntil(state.lastPunchAt[emp.id], PUNCH_COOLDOWN_MINUTES)){
+    showAlreadyPunched(emp);
+    return;
+  }
   captureFor(emp, 'punch', blob => handlePunchCapture(emp, blob));
 }
 
@@ -178,11 +188,13 @@ async function handlePunchCapture(emp, blob){
       throw err;
     }
     delete state.openSessions[emp.id];
+    state.lastPunchAt[emp.id] = new Date().toISOString();
     action = 'out';
   }else{
     const rec = await store.clockIn(emp.id, blob);
     state.openSessions[emp.id] = rec;
     state.punchedToday[emp.id] = true; // avoid a stale "missed" flash until the next refreshAll
+    state.lastPunchAt[emp.id] = rec.clock_in;
     action = 'in';
   }
   renderHome();
@@ -190,19 +202,37 @@ async function handlePunchCapture(emp, blob){
 }
 
 function showPunchConfirm(emp, action, blob, priorOpen){
-  const el = $('punchConfirm');
   $('pcPhoto').src = URL.createObjectURL(blob);
+  openPunchConfirm(emp, action,
+    action === 'in' ? 'Clocked IN' : 'Clocked OUT',
+    action === 'in'
+      ? `Started at ${fmtTime(new Date().toISOString())}`
+      : `Worked ${fmtHours((Date.now() - new Date(priorOpen.clock_in))/3600000)} hrs today`);
+}
+
+// A repeat tap inside the duplicate-punch window. The employee is really asking "did that
+// register?", so answer with the same overlay a real punch gets, restating what's already
+// recorded — a silently ignored tap would read as "the kiosk is broken" and invite more taps.
+// No photo was taken, so show their profile picture in its place.
+function showAlreadyPunched(emp){
+  const action = state.openSessions[emp.id] ? 'in' : 'out';
+  applyAvatar($('pcPhoto'), emp);
+  openPunchConfirm(emp, action,
+    action === 'in' ? 'Already clocked IN' : 'Already clocked OUT',
+    `At ${fmtTime(state.lastPunchAt[emp.id])} — no need to tap again`);
+}
+
+function openPunchConfirm(emp, action, title, detail){
+  const el = $('punchConfirm');
   $('pcName').textContent = emp.name;
-  $('pcAction').textContent = action === 'in' ? 'Clocked IN' : 'Clocked OUT';
+  $('pcAction').textContent = title;
   el.classList.remove('in', 'out');
   el.classList.add(action);
-  $('pcDetail').textContent = action === 'in'
-    ? `Started at ${fmtTime(new Date().toISOString())}`
-    : `Worked ${fmtHours((Date.now() - new Date(priorOpen.clock_in))/3600000)} hrs today`;
+  $('pcDetail').textContent = detail;
   el.classList.add('open');
   hapticSuccess();
-  clearTimeout(showPunchConfirm._t);
-  showPunchConfirm._t = setTimeout(() => el.classList.remove('open'), 1800);
+  clearTimeout(openPunchConfirm._t);
+  openPunchConfirm._t = setTimeout(() => el.classList.remove('open'), 1800);
 }
 $('punchConfirm').onclick = () => $('punchConfirm').classList.remove('open');
 

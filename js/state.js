@@ -7,6 +7,8 @@ export const state = {
                         // disambiguates "already showed up today" from "never showed up" (both
                         // look like "no open session" otherwise), source for the
                         // missed-clock-in flag — see tileStatus() in js/ui/kiosk.js.
+  lastPunchAt: {},     // emp_id -> ISO of their latest punch today (in or out) — drives the
+                        // duplicate-punch window, see js/punchCooldown.js.
   adminUnlocked: false,
   kioskMode: 'attendance' // 'attendance' | 'payments' — which screen the kiosk's tile grid shows
 };

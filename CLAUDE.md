@@ -53,7 +53,8 @@ js/
   swPrecache.test.mjs -- guards sw.js's APP_SHELL list against drift
   state.js           -- shared mutable `state = {employees, openSessions, punchedToday, adminUnlocked}`
   utils.js           -- $, toast, busy, pad, dateStr, fmtTime, fmtHours, recHours
-  avatars.js         -- initials-fallback avatar rendering (never shows the wrong photo)
+  avatars.js         -- initials-fallback avatar rendering (never shows the wrong photo); marks
+                        what an <img> is showing so kiosk tiles can keep it (avatarIsCurrent)
   camera.js          -- captureFor(emp, mode, onCapture) — owns the camera modal
   salary.js          -- pure salary math (proration, rate selection) — no store/DOM access
   paymentsMath.js    -- pure payments reconciliation math (matched/mismatch/awaiting)
@@ -264,6 +265,19 @@ tap (`▶`, "Tap to start work") — `handlePunchCapture()`'s branching (open se
 else → clock in) never depended on the on-lunch label to begin with, so behavior is unchanged,
 only the tile's own highlighting. `tileStatus()` is exported and reused by Daily records'
 missed-clock-in banner — one source of truth instead of two copies that could drift.
+
+**Tiles are reconciled, not rebuilt**: `renderHome()` keeps each employee's existing tile
+(matched by `data-emp-id`) and only updates its name/handlers, then `refreshTileStates()` does the
+clock-state half. It used to wipe the grid, so every wake (`visibilitychange` → `refreshAll()`)
+and every punch dropped all photos to initials until a fresh Supabase signed URL came back — and
+for good if the tablet woke offline. A tile's photo is only re-requested when
+`avatarIsCurrent()` says the avatar path changed or the photo never loaded (e.g. an offline boot).
+That's why `handleAvatarCapture()` saves each retake under a **new** path
+(`{empId}/avatar-{timestamp}.jpg`) rather than overwriting one fixed name — a changed path is how
+every device learns there's a new picture (old files are left in Storage; older rows still point
+at the legacy `{empId}/avatar.jpg`, which is fine). Switching to/from Payments mode (different
+tiles in the same `#empGrid`) still starts clean. The "Already clocked IN/OUT" overlay copies the
+tile's `src` rather than fetching the avatar again.
 
 **Duplicate-punch window** (`js/punchCooldown.js`, `PUNCH_COOLDOWN_MINUTES = 2` in
 `js/config.js`): a tile tap within 2 minutes of that employee's last punch, **in either

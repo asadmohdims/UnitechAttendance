@@ -1,7 +1,7 @@
 import { $, busy, toast, fmtTime, fmtHours, dateStr, hapticSuccess } from '../utils.js';
 import { state } from '../state.js';
 import { store } from '../store/index.js';
-import { applyAvatar } from '../avatars.js';
+import { applyAvatar, avatarIsCurrent } from '../avatars.js';
 import { captureFor } from '../camera.js';
 import { shouldAutoCloseStaleSession, endOfDayFor } from '../staleSession.js';
 import { isMissedClockIn } from '../missedClockIn.js';
@@ -106,49 +106,54 @@ function renderRoster(active){
     : '';
 }
 
-// Full rebuild — employee list, avatars and all. Only call this when the underlying data
-// actually changed (refreshAll, a punch): rebuilding re-fetches every avatar via applyAvatar(),
-// which for a real captured photo hits Supabase Storage for a fresh signed URL — fine on a
-// genuine data load, wasteful (and visibly flickery) if done on a timer. See refreshTileStates()
-// for the time-only path used by periodicCheck().
+// Reconciles the tile grid with state instead of rebuilding it: each employee's existing tile
+// (matched by id) is kept, so a photo already on screen stays there and nothing is re-fetched.
+// A rebuild used to drop every tile to initials on each wake and each punch until Supabase handed
+// back a fresh signed URL — and for good if the tablet woke offline. A tile's photo is now only
+// requested again when that employee's avatar changed, or it never loaded (avatarIsCurrent()).
 export function renderHome(){
   $('btnPayments').innerHTML = MODE_BTN_HTML[state.kioskMode];
   $('paymentsBanner').style.display = state.kioskMode === 'payments' ? '' : 'none';
+  const grid = $('empGrid');
+  // Payments mode draws its own, differently-shaped tiles into this same grid, so a mode switch
+  // starts clean; only Attendance-to-Attendance renders reuse tiles.
+  if(grid.dataset.mode !== state.kioskMode){ grid.innerHTML = ''; grid.dataset.mode = state.kioskMode; }
   if(state.kioskMode === 'payments'){ renderPaymentsGrid(); return; }
 
-  const grid = $('empGrid');
-  grid.innerHTML = '';
   const active = state.employees.filter(e => e.active);
   $('homeEmpty').style.display = active.length ? 'none' : '';
-  renderRoster(active);
-
-  active.forEach(e => {
-    const {open, missed} = tileStatus(e);
-    const div = document.createElement('div');
-    div.dataset.empId = e.id;
-    div.className = 'badge-tile' + (open ? ' in' : missed ? ' missed' : '');
-    div.setAttribute('role', 'button');
-    div.setAttribute('tabindex', '0');
-    div.innerHTML = '<span class="state-badge"></span><img class="avatar" alt=""><div class="name"></div><div class="status"></div>';
-    const avatar = div.querySelector('.avatar');
-    applyAvatar(avatar, e);
+  const existing = new Map([...grid.children].map(tile => [tile.dataset.empId, tile]));
+  active.forEach((e, i) => {
+    const tile = existing.get(e.id) || createTile(e.id);
+    existing.delete(e.id);
+    const avatar = tile.querySelector('.avatar');
+    if(!avatarIsCurrent(avatar, e)) applyAvatar(avatar, e);
     avatar.alt = e.name;
-    div.querySelector('.state-badge').textContent = open ? '■' : missed ? '!' : '▶';
-    div.querySelector('.name').textContent = e.name;
-    div.querySelector('.status').innerHTML = open
-      ? `Working since ${fmtTime(open.clock_in)}<br>Tap to finish`
-      : missed ? "Hasn't clocked in yet" : 'Tap to start work';
-    div.onclick = () => punchTap(e);
-    div.onkeydown = ev => { if(ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); punchTap(e); } };
-    grid.appendChild(div);
+    tile.querySelector('.name').textContent = e.name;
+    // Re-bound every render: the handler closes over this render's employee object, which a
+    // rename replaces.
+    tile.onclick = () => punchTap(e);
+    tile.onkeydown = ev => { if(ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); punchTap(e); } };
+    if(grid.children[i] !== tile) grid.insertBefore(tile, grid.children[i] || null);
   });
+  existing.forEach(tile => tile.remove()); // deactivated since the last render
+  refreshTileStates();
 }
 
-// Time-only refresh for periodicCheck(): updates each existing tile's class/badge/status text
-// (the missed-clock-in flag can flip purely from time passing the cutoff, with no data change
-// to react to) without touching .avatar — so it never re-fetches a photo URL. Silently no-ops
-// on a tile that isn't in the DOM yet (e.g. the very first tick, before refreshAll's initial
-// renderHome() has run).
+function createTile(empId){
+  const div = document.createElement('div');
+  div.dataset.empId = empId;
+  div.setAttribute('role', 'button');
+  div.setAttribute('tabindex', '0');
+  div.innerHTML = '<span class="state-badge"></span><img class="avatar" alt=""><div class="name"></div><div class="status"></div>';
+  return div;
+}
+
+// Clock-state half of renderHome(), also run alone by periodicCheck(): updates each existing
+// tile's class/badge/status text (the missed-clock-in flag can flip purely from time passing the
+// cutoff, with no data change to react to) without touching .avatar. Silently no-ops on a tile
+// that isn't in the DOM yet (e.g. the very first tick, before refreshAll's initial renderHome()
+// has run).
 function refreshTileStates(){
   // Payments-mode tiles have no clock-state badge to refresh — this whole function's job (the
   // 5s live in/lunch/missed tick) doesn't apply outside Attendance mode.
@@ -213,10 +218,11 @@ function showPunchConfirm(emp, action, blob, priorOpen){
 // A repeat tap inside the duplicate-punch window. The employee is really asking "did that
 // register?", so answer with the same overlay a real punch gets, restating what's already
 // recorded — a silently ignored tap would read as "the kiosk is broken" and invite more taps.
-// No photo was taken, so show their profile picture in its place.
+// No photo was taken, so show the picture their tile is already showing — no fetch, works
+// offline, and no slow request left in flight to land on top of the next punch's photo.
 function showAlreadyPunched(emp){
   const action = state.openSessions[emp.id] ? 'in' : 'out';
-  applyAvatar($('pcPhoto'), emp);
+  $('pcPhoto').src = $('empGrid').querySelector(`[data-emp-id="${emp.id}"] .avatar`).src;
   openPunchConfirm(emp, action,
     action === 'in' ? 'Already clocked IN' : 'Already clocked OUT',
     `At ${fmtTime(state.lastPunchAt[emp.id])} — no need to tap again`);
@@ -245,9 +251,8 @@ async function updateSyncIndicator(){
   el.textContent = pending ? (stuck ? `${pending} punch${pending > 1 ? 'es' : ''} pending — check Wi-Fi` : `Syncing ${pending}…`) : '';
 }
 // Same 5s cadence covers all of these checks — no separate timer for the stale-session close.
-// refreshTileStates() (not renderHome()) runs unconditionally, since the missed-clock-in flag
-// can flip purely from time passing the cutoff hour — a full renderHome() rebuild here would
-// re-fetch every employee's avatar from the network on every tick (see refreshTileStates()).
+// refreshTileStates() runs unconditionally, since the missed-clock-in flag can flip purely from
+// time passing the cutoff hour — no employee-list change to reconcile, so not renderHome().
 async function periodicCheck(){
   await checkStaleSessionAutoClose();
   refreshTileStates();

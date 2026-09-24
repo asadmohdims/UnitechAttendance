@@ -22,8 +22,12 @@ $('btnAddEmp').onclick = async () => {
 };
 
 async function handleAvatarCapture(emp, blob){
-  const path = `${emp.id}/avatar.jpg`;
-  await store.uploadPhoto(path, blob, {upsert: true});
+  // A new file name per retake rather than overwriting one fixed name: the kiosk keeps a tile's
+  // photo on screen for as long as the employee's avatar path is unchanged (renderHome() in
+  // js/ui/kiosk.js), so a changed path is how every device learns there's a new picture. The
+  // previous file is left in Storage (~20KB, only on a retake).
+  const path = `${emp.id}/avatar-${Date.now()}.jpg`;
+  await store.uploadPhoto(path, blob);
   await store.setEmployeeAvatar(emp.id, path);
   await refreshAll();
   renderEmployees();

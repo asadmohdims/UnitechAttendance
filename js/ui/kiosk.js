@@ -183,6 +183,15 @@ function punchTap(emp){
 }
 
 async function handlePunchCapture(emp, blob){
+  // Backstop for the same duplicate-punch window punchTap() enforces on the tile. That check only
+  // runs when a tile is tapped, but a retry from inside an already-open camera modal (shutter
+  // tapped again after an error) never goes through it — that's how a 1:01:48 clock-out was
+  // followed by a 1:01:50 clock-in. Returning normally closes the modal, and the overlay
+  // answers "Already clocked …" instead of silently doing nothing.
+  if(punchLockedUntil(state.lastPunchAt[emp.id], PUNCH_COOLDOWN_MINUTES)){
+    showAlreadyPunched(emp);
+    return;
+  }
   const open = state.openSessions[emp.id];
   let action;
   if(open){
@@ -202,8 +211,16 @@ async function handlePunchCapture(emp, blob){
     state.lastPunchAt[emp.id] = rec.clock_in;
     action = 'in';
   }
-  renderHome();
-  showPunchConfirm(emp, action, blob, open);
+  // The punch is already saved above, so nothing below may throw out of this function: the
+  // camera modal reads any throw as "the punch failed", shows "try again" and re-arms the
+  // shutter, and that retry is then recorded as a second, opposite punch. A UI hiccup here just
+  // means the confirmation overlay didn't show; log it and move on.
+  try{
+    renderHome();
+    showPunchConfirm(emp, action, blob, open);
+  }catch(err){
+    console.error('Punch saved, but showing the confirmation failed', err);
+  }
 }
 
 function showPunchConfirm(emp, action, blob, priorOpen){

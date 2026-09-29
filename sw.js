@@ -28,6 +28,7 @@ const APP_SHELL = [
   './assets/icons/icon-192.png',
   './js/avatars.js',
   './js/camera.js',
+  './js/captureGuard.js',
   './js/config.js',
   './js/main.js',
   './js/missedClockIn.js',

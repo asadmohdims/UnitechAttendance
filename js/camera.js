@@ -1,5 +1,6 @@
 import { $, busy } from './utils.js';
 import { state } from './state.js';
+import { captureSize, isUsablePhoto } from './captureGuard.js';
 
 let stream = null;
 
@@ -33,6 +34,14 @@ export async function captureFor(emp, mode, onCapture){
   $('camModal').classList.add('open');
   $('btnCapture').disabled = true;
   $('btnCamCancel').onclick = stopCam;
+  const retryPhoto = () => {
+    $('camError').textContent = "Photo didn't come out — tap Take photo again.";
+    $('btnCapture').disabled = false;
+  };
+  // The shutter only unlocks once the first frame has decoded. Granting the camera isn't enough:
+  // videoWidth stays 0 for a moment after srcObject is set, and a tap in that window is what
+  // produced a null photo. `loadeddata` fires when the first frame is available.
+  $('video').onloadeddata = () => { if(stream) $('btnCapture').disabled = false; };
   $('btnCapture').onclick = async () => {
     if(!stream) return;
     // Disabled before any await: the encode below yields, and a second tap landing in that gap
@@ -46,11 +55,16 @@ export async function captureFor(emp, mode, onCapture){
     const flash = $('camFlash');
     flash.classList.remove('flash'); void flash.offsetWidth; flash.classList.add('flash');
     const video = $('video');
+    // No photo, no punch: both refusals happen BEFORE onCapture, so nothing has been written and
+    // the retry is a clean first attempt. (A null photo used to be written as a punch with no
+    // picture — see captureGuard.js.)
+    const size = captureSize(video.videoWidth, video.videoHeight);
+    if(!size) return retryPhoto();
     const c = document.createElement('canvas');
-    const scale = 320 / video.videoWidth;
-    c.width = 320; c.height = Math.round(video.videoHeight * scale);
+    c.width = size.width; c.height = size.height;
     c.getContext('2d').drawImage(video, 0, 0, c.width, c.height);
     const blob = await new Promise(res => c.toBlob(res, 'image/jpeg', 0.7));
+    if(!isUsablePhoto(blob)) return retryPhoto();
     busy(true);
     try{
       await onCapture(blob);
@@ -69,7 +83,7 @@ export async function captureFor(emp, mode, onCapture){
   try{
     stream = await navigator.mediaDevices.getUserMedia({video:{facingMode:'user', width:{ideal:640}}, audio:false});
     $('video').srcObject = stream;
-    $('btnCapture').disabled = false;
+    // Not enabling the shutter here — onloadeddata (above) does, once there is a real frame.
   }catch(err){
     $('camError').textContent = 'Camera unavailable: ' + err.message;
   }

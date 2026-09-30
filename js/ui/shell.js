@@ -1,8 +1,9 @@
 import { $, busy, toast } from '../utils.js';
 import { DEMO_MODE } from '../config.js';
-import { sb, withTimeout, TIMEOUT_MESSAGE, persistedSession, hasPersistedSession } from '../supabaseClient.js';
+import { sb, withTimeout, TIMEOUT_MESSAGE, persistedSession, hasPersistedSession, onSignInRestored } from '../supabaseClient.js';
 import { state, ADMIN_TABS } from '../state.js';
 import { refreshAll } from './kiosk.js';
+import { isIdle } from './appVersion.js';
 import { renderRecords } from './records.js';
 import { renderReport } from './report.js';
 import { renderEmployees } from './employees.js';
@@ -63,6 +64,7 @@ export async function initAuth(){
     await refreshAll();
     return;
   }
+  onSignInRestored(resyncWhenIdle);
   if(hasPersistedSession()){
     setAuthUI(true);
     await refreshAll();
@@ -72,6 +74,13 @@ export async function initAuth(){
   const {data:{session}} = await sb.auth.getSession();
   setAuthUI(!!session);
   if(session) await refreshAll();
+}
+// After a sign-in renewal that followed refused requests, the kiosk may be showing its offline
+// roster and this tablet's own punches only. Quietly reload real data — but never mid-punch or
+// mid-payment, where swapping state underneath an employee could confuse the flow.
+function resyncWhenIdle(){
+  if(isIdle()) refreshAll({quiet:true});
+  else setTimeout(resyncWhenIdle, 5000);
 }
 function setAuthUI(loggedIn){
   $('loginModal').classList.toggle('open', !loggedIn);

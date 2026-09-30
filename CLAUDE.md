@@ -49,7 +49,9 @@ js/
   config.js          -- SUPABASE_URL, SUPABASE_ANON_KEY, DEMO_MODE, shop config constants
   version.js         -- deploy-time version stamp, JS form (CI-written; 'dev' in repo)
   supabaseClient.js  -- creates `sb`; network time limits (withTimeout, per-request cap);
-                        reads this device's saved session locally (persistedSession)
+                        reads this device's saved session locally (persistedSession);
+                        onSignInRestored() for resync after a sign-in renewal
+  signedOutGuard.js  -- pure: refuses data requests that lack a signed-in pass; roster-cache rule
   swPrecache.test.mjs -- guards sw.js's APP_SHELL list against drift
   state.js           -- shared mutable `state = {employees, openSessions, punchedToday, adminUnlocked}`
   utils.js           -- $, toast, busy, pad, dateStr, fmtTime, fmtHours, recHours
@@ -149,6 +151,26 @@ on a "connected but barely working" connection, where a request can sit for minu
   session RLS returns zero rows, not an error. If supabase-js has dropped the session, the
   fallback reads refuse the server's answer, so an empty list can't overwrite the offline
   roster cache or show everyone as clocked out.
+- **Signed-out request guard** (`js/signedOutGuard.js`, wrapped around the `fetch` given to
+  `createClient`). Production incident, 30 Sep 2026: on wake, supabase-js renews the expired
+  one-hour pass immediately; if Wi-Fi is still reconnecting the renewal fails, and for the next
+  **60s (its retry cooldown) it sends every request with only the public key** — anonymous. RLS
+  doesn't reject an anonymous read, it returns `200 []`, so the kiosk showed "No employees yet",
+  saved `[]` over the offline roster, and punch uploads got 401 ("pending — check Wi-Fi"). The
+  session stays saved through a network-type renewal failure, so `hasPersistedSession()` alone
+  can't catch this. Supabase logs showed it three times that day (~1:00, 3:38, 4:20 PM), each
+  ending ~60s later. Now any `/rest/v1/` or `/storage/v1/` request without a user pass gets an
+  immediate **local 401** (never sent) — a 401 rather than a thrown error because supabase-js
+  retries a GET that throws (1+2+4s), which would delay the offline fallback. Consequences: kiosk
+  reads fall back to local data as if offline; the outbox doesn't count a refusal toward "stuck"
+  while a session is still saved (a genuinely signed-out device does, and says "admin must sign
+  in again"); on the next `TOKEN_REFRESHED` after a refusal, `onSignInRestored()` kicks the outbox
+  and quietly re-runs `refreshAll({quiet:true})` once the kiosk is idle. Separately,
+  `listEmployees()` never replaces a non-empty saved roster with an empty one
+  (`keepCachedRoster()` — employees are only ever deactivated, never deleted).
+  `js/signedOutGuard.test.mjs` replays the incident against the real vendored supabase-js: it
+  asserts the bug without the guard and the fix with it — keep that pair when upgrading
+  supabase-js.
 - The kiosk's payment Save is retry-safe: `addPayment` takes a client-generated id, reused when
   Save is retried with the same amount and date. A retry whose first attempt actually landed
   hits the primary key (23505) and counts as saved, not as a duplicate.
@@ -195,9 +217,12 @@ when the server can't be reached.
   worker it reloads directly. Either way it waits until idle (no open modal/punch/payment
   overlay) — a deliberate choice over a "tap to update" prompt, since nobody should have to
   handle that on a shared kiosk.
-- **Testing limitation**: service worker registration and camera access (`getUserMedia`) can't be
-  verified in the sandboxed Browser pane — both fail there in ways that look like bugs but
-  aren't. Manifest validity, icon files, and the version/appVersion wiring are all verifiable in
+- **Testing limitation**: camera access (`getUserMedia`) can't be verified in the sandboxed
+  Browser pane. The pane *can* register the dev service worker, and a worker left over from an
+  earlier session will serve a stale cached copy (network-first falls back to cache) if the
+  preview server isn't actually reachable — check `navigator.serviceWorker.controller` and clear
+  it before trusting what the pane shows. The preview server also needs the Claude app to have
+  macOS Files & Folders access to Documents, or it silently never starts listening. Manifest validity, icon files, and the version/appVersion wiring are all verifiable in
   the sandbox; actual installability (the "Add to Home Screen" prompt, standalone launch,
   orientation lock, real SW registration) needs a real Chrome/device.
 
@@ -544,7 +569,7 @@ Some pure logic has automated coverage via Node's **built-in** test runner (`nod
 `node:assert`) — zero npm installs, zero config, zero build step, consistent with the "no
 build step" constraint above (it's testing, not bundling).
 
-- Run everything: `node --test js/` from the project root (119 tests as of this writing, all
+- Run everything: `node --test js/` from the project root (139 tests as of this writing, all
   passing).
 - Test files are co-located with the code they cover, named `*.test.mjs`.
 - Covered: `js/salary.js` (proration, retroactive rate-selection, boundary/leap-year dates,
@@ -562,7 +587,9 @@ build step" constraint above (it's testing, not bundling).
   ins/outs regardless of record order, the window boundary, future-dated punches never locking), `js/paymentsMath.js` (matched/mismatch/
   awaiting reconciliation), `js/pin.js` (hash/verify), and `sw.js`'s pre-cache list
   (`js/swPrecache.test.mjs`: every listed file exists; every module/referenced file is listed;
-  no cross-origin script or stylesheet in `index.html`).
+  no cross-origin script or stylesheet in `index.html`), `js/signedOutGuard.js` (which requests
+  count as signed out, the local 401, the roster-cache rule, and a replay of the 30 Sep incident
+  against the real vendored supabase-js).
 - Deliberately **not** covered: `supabaseStore.js` (touches the real network/DB — verify via the
   console against the live project instead) and the UI layer (no headless-browser tool set up —
   new tooling, ask first). Both stores share the same pure `salary.js`/`reportMath.js`/

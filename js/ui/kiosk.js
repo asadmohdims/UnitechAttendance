@@ -22,8 +22,10 @@ const MODE_BTN_HTML = {
 // Reloads employees + open sessions from the store into shared state and re-renders the kiosk.
 // Called after every mutation (add/rename/deactivate employee, punch in/out) so both store
 // backends behave identically, instead of demo mode mutating in-memory state directly.
-export async function refreshAll(){
-  busy(true);
+// `quiet` is for background resyncs nobody asked for (see onSignInRestored in shell.js): no
+// spinner over the kiosk and no error toast — a failure there just leaves the current screen up.
+export async function refreshAll({quiet = false} = {}){
+  if(!quiet) busy(true);
   try{
     // These three reads don't depend on each other's results, so running them together means
     // a cold boot only ever waits as long as the slowest one (capped by supabaseStore.js's own
@@ -39,8 +41,8 @@ export async function refreshAll(){
     applyTodaysRecords(todaysRecords);
     await checkStaleSessionAutoClose();
     renderHome();
-  }catch(err){ toast('Load failed: ' + err.message); }
-  busy(false);
+  }catch(err){ if(!quiet) toast('Load failed: ' + err.message); }
+  if(!quiet) busy(false);
 }
 
 // Rebuilds today's per-employee flags from an already-fetched list: "has any record at all"
@@ -262,10 +264,13 @@ $('punchConfirm').onclick = () => $('punchConfirm').classList.remove('open');
 // Small, mostly-invisible signal for the shop owner — hidden whenever the outbox is
 // empty (the common case), so it never distracts an employee tapping tiles.
 async function updateSyncIndicator(){
-  const {pending, stuck} = await store.getSyncStatus();
+  const {pending, stuck, signedOut} = await store.getSyncStatus();
   const el = $('syncStatus');
+  const punches = `${pending} punch${pending > 1 ? 'es' : ''}`;
+  // Stuck because this device lost its sign-in for good is an admin fix, not a Wi-Fi one.
+  const stuckText = signedOut ? `${punches} waiting — admin must sign in again` : `${punches} pending — check Wi-Fi`;
   el.className = 'sync-status' + (pending ? (stuck ? ' stuck' : ' pending') : '');
-  el.textContent = pending ? (stuck ? `${pending} punch${pending > 1 ? 'es' : ''} pending — check Wi-Fi` : `Syncing ${pending}…`) : '';
+  el.textContent = pending ? (stuck ? stuckText : `Syncing ${pending}…`) : '';
 }
 // Same 5s cadence covers all of these checks — no separate timer for the stale-session close.
 // refreshTileStates() runs unconditionally, since the missed-clock-in flag can flip purely from

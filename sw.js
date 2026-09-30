@@ -38,6 +38,7 @@ const APP_SHELL = [
   './js/reportMath.js',
   './js/rounding.js',
   './js/salary.js',
+  './js/signedOutGuard.js',
   './js/staleSession.js',
   './js/state.js',
   './js/supabaseClient.js',

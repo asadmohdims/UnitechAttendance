@@ -1,7 +1,8 @@
 // Supabase-backed implementation of the store interface, used when DEMO_MODE is false.
 // Every network call here goes through withTimeout() (js/supabaseClient.js) — nothing may leave
 // the UI waiting indefinitely on a bad connection.
-import { sb, withTimeout, FAST_READ_TIMEOUT_MS, REQUEST_TIMEOUT_MS, hasPersistedSession } from '../supabaseClient.js';
+import { sb, withTimeout, FAST_READ_TIMEOUT_MS, REQUEST_TIMEOUT_MS, hasPersistedSession, onSignInRestored } from '../supabaseClient.js';
+import { isSignedOutBlock, keepCachedRoster } from '../signedOutGuard.js';
 import { dateStr } from '../utils.js';
 import { DEMO_MODE } from '../config.js';
 import * as outbox from './outbox.js';
@@ -17,6 +18,8 @@ const EMP_CACHE_KEY = 'attendance_employee_cache';
 //    security doesn't return an error, it returns zero rows. Trusting that would overwrite the
 //    offline roster cache with [] and show everyone as not clocked in. supabase-js drops the
 //    session if the server definitively rejects a token refresh, and nothing else notices.
+//    (A session that's saved but mid-renewal is caught one layer down: js/signedOutGuard.js
+//    refuses the request itself, which lands in the same fallback.)
 async function readWithFallback(query, ms = FAST_READ_TIMEOUT_MS){
   if(!hasPersistedSession()) throw new Error('Signed out on this device');
   const {data, error} = await withTimeout(query, ms);
@@ -42,6 +45,11 @@ async function getOwnedLocalRow(recordId){
 async function listEmployees(){
   try{
     const data = await readWithFallback(sb.from('employees').select('*').order('created_at'));
+    const cached = JSON.parse(localStorage.getItem(EMP_CACHE_KEY) || 'null');
+    if(keepCachedRoster(data, cached)){
+      console.warn('Server returned an empty roster after a real one was seen — keeping the saved roster.');
+      return cached;
+    }
     localStorage.setItem(EMP_CACHE_KEY, JSON.stringify(data));
     return data;
   }catch(err){
@@ -495,7 +503,12 @@ async function syncOne(clientId){
     if(rec.remoteClose) await syncRemoteClose(rec);
     else await syncOwnedRow(rec);
   }catch(err){
-    rec.attempts = (rec.attempts || 0) + 1;
+    // Refused because the sign-in is mid-renewal (js/signedOutGuard.js): not this row failing,
+    // just the whole device looking offline for a minute. Counting it toward "stuck" would flash
+    // a red warning at employees on a routine wake. A device that's genuinely signed out (no
+    // saved session left) still counts, so the owner does hear about that.
+    const renewing = isSignedOutBlock(err) && hasPersistedSession();
+    if(!renewing) rec.attempts = (rec.attempts || 0) + 1;
     rec.last_error = String(err.message || err);
     await outbox.putItem(rec);
   }
@@ -524,10 +537,14 @@ function isRowPending(r){
 
 async function getSyncStatus(){
   const pendingRows = (await outbox.getAllItems()).filter(isRowPending);
-  return {pending:pendingRows.length, stuck:pendingRows.some(r => r.attempts >= 3)};
+  return {pending:pendingRows.length, stuck:pendingRows.some(r => r.attempts >= 3), signedOut:!hasPersistedSession()};
 }
 
-if(!DEMO_MODE) outbox.startBackgroundSync(runSync);
+if(!DEMO_MODE){
+  outbox.startBackgroundSync(runSync);
+  // Upload anything queued during a sign-in renewal the moment it's back, not on the next 30s tick.
+  onSignInRestored(outbox.kick);
+}
 
 export const supabaseStore = {
   listEmployees, addEmployee, renameEmployee, setEmployeeActive, setEmployeeAvatar,

@@ -1,4 +1,5 @@
 import { SUPABASE_URL, SUPABASE_ANON_KEY, DEMO_MODE } from './config.js';
+import { refuseSignedOutRequests } from './signedOutGuard.js';
 
 if(!DEMO_MODE && SUPABASE_URL.startsWith('PASTE')){
   document.body.innerHTML = '<div style="padding:40px; font-family:sans-serif"><h2>Not configured</h2><p>Supabase URL and anon key have not been set in js/config.js yet.</p></div>';
@@ -30,8 +31,30 @@ function fetchWithTimeout(input, init = {}){
   return fetch(input, {...init, signal});
 }
 
+// Set when a request was refused for lacking a signed-in pass (js/signedOutGuard.js), cleared once
+// the pass is renewed — so the app resyncs after exactly the renewals that followed a refusal.
+let refusedSinceRenewal = false;
+const guardedFetch = refuseSignedOutRequests(fetchWithTimeout, {
+  supabaseUrl: SUPABASE_URL,
+  anonKey: SUPABASE_ANON_KEY,
+  onBlocked: () => { refusedSinceRenewal = true; }
+});
+
 export const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
-  global: {fetch: fetchWithTimeout}
+  global: {fetch: guardedFetch}
+});
+
+// Runs `fn` whenever the sign-in is renewed after requests were refused for lacking it, so
+// queued punches upload and the kiosk reloads fresh data by itself — no restart needed.
+const restoredListeners = [];
+export function onSignInRestored(fn){ restoredListeners.push(fn); }
+sb.auth.onAuthStateChange(event => {
+  if(event !== 'TOKEN_REFRESHED' && event !== 'SIGNED_IN') return;
+  if(!refusedSinceRenewal) return;
+  refusedSinceRenewal = false;
+  // Deferred: supabase-js runs this callback while holding its auth lock, and a query started
+  // from inside it would wait on that same lock.
+  setTimeout(() => restoredListeners.forEach(fn => fn()), 0);
 });
 
 // Rejects with TIMEOUT_MESSAGE if `request` (a supabase-js query builder, or any promise) hasn't

@@ -130,7 +130,7 @@ async function clockOut(record, blob, atIso){
   return records[idx];
 }
 
-async function getSyncStatus(){ return {pending:0, stuck:false}; }
+async function getSyncStatus(){ return {pending:0, stuck:false, signedOut:false}; }
 
 function listRecordsForDate(date){
   return loadRecords().filter(r => r.date === date).sort((a, b) => new Date(a.clock_in) - new Date(b.clock_in));

@@ -14,7 +14,7 @@ if (el) el.textContent = APP_VERSION;
 // "Idle" = nothing the reload could interrupt: no open modal-overlay, and neither punch nor
 // payment confirmation overlay is mid-animation. Reuses the existing .open convention already
 // in css/styles.css/index.html rather than adding new state.
-function isIdle() {
+export function isIdle() {
   if (document.querySelector('.modal-overlay.open')) return false;
   if ($('punchConfirm')?.classList.contains('open')) return false;
   if ($('paymentConfirm')?.classList.contains('open')) return false;

@@ -26,6 +26,7 @@ const APP_SHELL = [
   './assets/fonts/bebas-neue-latin-ext.woff2',
   './assets/icons/icon-32.png',
   './assets/icons/icon-192.png',
+  './js/autoClosed.js',
   './js/avatars.js',
   './js/camera.js',
   './js/captureGuard.js',

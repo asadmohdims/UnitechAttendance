@@ -32,6 +32,12 @@ export const LUNCH_CUTOFF_MINUTE = 0;
 // before treating this as final.
 export const MISSED_CLOCKIN_HOUR = 10;   // 10:00 AM
 export const MISSED_CLOCKIN_MINUTE = 0;
+// When the shop closes. A session the kiosk had to auto-close at midnight (nobody clocked out)
+// is counted — for hours and pay — only up to this time on its clock-in day, never up to the
+// artificial midnight (js/autoClosed.js). Still flagged for review until the owner enters the
+// real end time. Confirmed by the owner: 6:00 PM.
+export const SHOP_CLOSING_HOUR = 18;
+export const SHOP_CLOSING_MINUTE = 0;
 // Duplicate-punch window: a second tap on the same tile within this many minutes of that
 // employee's last punch — in either direction — re-shows "Already clocked IN/OUT" instead of
 // recording the opposite punch (js/punchCooldown.js). Catches "did that register?" retaps, which

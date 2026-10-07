@@ -62,6 +62,7 @@ js/
   paymentsMath.js    -- pure payments reconciliation math (matched/mismatch/awaiting)
   pin.js             -- pure PIN hash/verify (employee kiosk access to Payments)
   staleSession.js    -- pure end-of-day auto-close predicate — the kiosk's only automatic clock-out
+  autoClosed.js      -- pure: recognises an auto-closed session, caps its counted clock-out at closing time
   missedClockIn.js   -- pure "hasn't shown up today" predicate
   punchCooldown.js   -- pure duplicate-punch window (latest punch per employee, lock-until time)
   reportMath.js      -- pure per-day hours/review-flag/session-grouping math for the report
@@ -269,6 +270,18 @@ taps a day: morning in, lunch out, lunch in, evening out.
   `addManualRecord` — are also honestly unphotographed) — that absence alone is the signal.
   `clockOut(recordId, blob, atIso)` only sets `out_photo` when a real blob is passed, and takes an
   explicit `atIso` for the exact close instant (midnight, for a stale session).
+- **An auto-closed session is paid to closing time, not to the midnight stamp**
+  (`js/autoClosed.js`). Counting the midnight close as a real punch paid someone who clocked in
+  at 2 PM and forgot to tap out ~10 hours. `isAutoClosedSession()` *infers* it (no `out_photo`,
+  `clock_out` exactly the midnight `endOfDayFor()` stamps — no schema column, and it corrects
+  rows closed before this existed); `countedClockOut()` caps it at `SHOP_CLOSING_HOUR`/`MINUTE`
+  (`js/config.js`, 6 PM) on the clock-in day, never before the clock-in. Applied inside
+  `recHours()` and `recHoursRounded()` so Records, Report and Salary can't disagree. The stored
+  `clock_out` and the review flag are untouched — the owner still has to enter the real time,
+  and once they do the record stops matching and is counted as entered. Records/Report show
+  "→ 6:00 PM paid" beside the 12:00 AM. Known limit: a hand-entered exactly-12:00-AM, photoless
+  clock-out reads as auto-closed. `dayHoursFromSessions` carries `out_photo` onto its merged
+  lunch-paid span so this detection still works on a chained day.
 - **`needsReview(sessions)`** (`js/reportMath.js`): a day's *last* session having no `out_photo`
   means either genuinely still open or closed with no photo (stale-session midnight close, or an
   admin-added punch) — both get the same "Review required" treatment (Report summary/banner,

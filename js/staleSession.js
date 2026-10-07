@@ -2,6 +2,7 @@
 // (lunch is never inferred; see Lunch-break support in CLAUDE.md). No store/DOM access, same
 // pattern as salary.js/rounding.js.
 import { dateStr } from './utils.js';
+import { endOfDayFor } from './autoClosed.js';
 
 // True when an open record should be force-closed because it was left open from a day before
 // `now` — nobody's shift genuinely spans midnight in this shop, so once the calendar day has
@@ -12,15 +13,6 @@ export function shouldAutoCloseStaleSession(record, now = new Date()){
   return dateStr(new Date(record.clock_in)) !== dateStr(now);
 }
 
-// The instant a stale session gets force-closed at: midnight at the end of the day it started
-// — deliberately not a guessed real punch time. There's no shop-wide "end of shift" hour
-// (shifts vary in length), so rather than invent one, this picks a timestamp that can never
-// look like a real punch — the resulting "shift" reads as obviously wrong (often 12+ hours),
-// which is a louder, harder-to-miss signal than a plausible-but-wrong number would be.
-// Combined with no photo, needsReview() in reportMath.js flags it for the owner to fix via
-// Edit/"Add a missed punch" (js/ui/records.js) with the real end time.
-export function endOfDayFor(record){
-  const d = new Date(record.clock_in);
-  d.setHours(24, 0, 0, 0);
-  return d;
-}
+// endOfDayFor() lives in autoClosed.js (the hours math needs it too, and can't import this file
+// without a cycle through utils.js); re-exported so the kiosk keeps importing both from here.
+export { endOfDayFor };

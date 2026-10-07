@@ -23,7 +23,8 @@ export function dayHoursFromSessions(sessions, hoursFn){
   while(i < sessions.length){
     let j = i;
     while(j + 1 < sessions.length && sessions[j].lunch_paid) j++;
-    const span = i === j ? sessions[i] : {clock_in: sessions[i].clock_in, clock_out: sessions[j].clock_out};
+    // out_photo rides along because countedClockOut() needs it to recognise an auto-closed tail.
+    const span = i === j ? sessions[i] : {clock_in: sessions[i].clock_in, clock_out: sessions[j].clock_out, out_photo: sessions[j].out_photo};
     const h = hoursFn(span);
     if(h === null) hasOpen = true;
     else total = (total || 0) + h;

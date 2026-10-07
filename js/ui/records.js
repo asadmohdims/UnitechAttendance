@@ -4,7 +4,8 @@ import { store } from '../store/index.js';
 import { applyAvatar } from '../avatars.js';
 import { refreshAll, tileStatus } from './kiosk.js';
 import { promptModal } from './modal.js';
-import { recHoursRounded, roundToQuarterHour, wasRounded } from '../rounding.js';
+import { recHoursRounded, paidPunchTime } from '../rounding.js';
+import { countedClockOut } from '../autoClosed.js';
 import { dayHoursFromSessions, lunchGapIndex } from '../reportMath.js';
 import { LUNCH_CUTOFF_HOUR, LUNCH_CUTOFF_MINUTE } from '../config.js';
 
@@ -21,7 +22,7 @@ async function showPhoto(path){
   $('photoView').classList.add('open');
 }
 
-function punchCell(label, iso, photoPath){
+function punchCell(label, iso, photoPath, countedIso = iso){
   const cell = document.createElement('div');
   cell.className = 'rec-punch';
   const lbl = document.createElement('span'); lbl.className = 'lbl'; lbl.textContent = label;
@@ -40,9 +41,10 @@ function punchCell(label, iso, photoPath){
     });
   }
   cell.append(lbl, val);
-  if(iso && wasRounded(iso)){
+  const paid = iso && paidPunchTime(iso, countedIso);
+  if(paid){
     const note = document.createElement('span'); note.className = 'paid-note';
-    note.textContent = `→ ${fmtTime(roundToQuarterHour(iso))} paid`;
+    note.textContent = `→ ${fmtTime(paid)} paid`;
     cell.appendChild(note);
   }
   return cell;
@@ -191,7 +193,7 @@ export async function deleteRecordFlow(r, emp, afterSave = renderRecords){
 // shown once in that group's header, not repeated on every sub-session row.
 function sessionContent(r, emp, overtimeHours){
   const punches = document.createElement('div'); punches.className = 'rec-punches';
-  punches.append(punchCell('In', r.clock_in, r.in_photo), punchCell('Out', r.clock_out, r.out_photo));
+  punches.append(punchCell('In', r.clock_in, r.in_photo), punchCell('Out', r.clock_out, r.out_photo, r.clock_out && countedClockOut(r)));
 
   const paidHours = recHoursRounded(r);
   const hours = hoursStat(recHours(r), paidHours === null ? (overtimeHours || null) : paidHours + (overtimeHours || 0));

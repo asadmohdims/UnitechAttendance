@@ -1,4 +1,5 @@
 // Pure payroll-rounding math — no store/DOM access, same pattern as salary.js/staleSession.js.
+import { countedClockOut } from './autoClosed.js';
 const QUARTER_MS = 15 * 60 * 1000;
 // The shop's own rule (not the DOL's symmetric 7-minute rule this started from): a punch up to
 // 10 minutes past a quarter still counts as that quarter; only past 10 minutes does it roll to
@@ -22,12 +23,21 @@ export function wasRounded(iso){
   return roundToQuarterHour(iso).getTime() !== new Date(iso).getTime();
 }
 
+// What a displayed punch is actually paid as, or null when that's the same instant as shown (the
+// UI then skips the "→ x paid" annotation). `countedIso` is where pay is computed from when that
+// differs from the stored punch — an auto-closed clock-out counted to closing time instead of
+// midnight (countedClockOut); omit it for an ordinary punch, which only rounding can move.
+export function paidPunchTime(iso, countedIso = iso){
+  const paid = roundToQuarterHour(countedIso);
+  return paid.getTime() === new Date(iso).getTime() ? null : paid;
+}
+
 // Mirrors utils.js's recHours(), but rounds each punch to the nearest quarter hour first —
 // this is the hours figure Salary pays on; Records/Report keep using the exact recHours()
 // so the audit trail (tied to the proof photo) always shows what actually happened.
 export function recHoursRounded(r){
   if(!r.clock_out) return null;
   const inD = roundToQuarterHour(r.clock_in);
-  const outD = roundToQuarterHour(r.clock_out);
+  const outD = roundToQuarterHour(countedClockOut(r));
   return Math.max(0, (outD - inD) / 3600000);
 }

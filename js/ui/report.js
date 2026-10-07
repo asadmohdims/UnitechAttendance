@@ -6,7 +6,8 @@ import { switchTab } from './shell.js';
 import { setRecordsDate, editRecord, deleteRecordFlow, toggleLunchPaid, splitForLunch, addMissedPunch, addOrEditOvertime, removeOvertime } from './records.js';
 import { infoModal } from './modal.js';
 import { buildDayHours, groupByEmployeeDay, needsReview, dayHoursFromSessions, dayOffStatus, isHalfDay, lunchGapIndex, isPossibleMissedLunch } from '../reportMath.js';
-import { recHoursRounded, roundToQuarterHour, wasRounded } from '../rounding.js';
+import { recHoursRounded, paidPunchTime } from '../rounding.js';
+import { countedClockOut } from '../autoClosed.js';
 
 const repMonth = $('repMonth');
 repMonth.value = dateStr().slice(0,7);
@@ -390,8 +391,9 @@ function showAbsenceDetail(emp, ym, days, gapArr, hoursArr, sessionsForEmp){
 // A small "paid 9:15" annotation appended after a punch time, shown only when rounding
 // actually moved that punch — this is the "if they challenge it" evidence: the exact punch
 // stays visible, with what it was rounded to for pay right next to it.
-function paidNote(iso){
-  return wasRounded(iso) ? ` <span class="paid-note">&rarr; ${fmtTime(roundToQuarterHour(iso))} paid</span>` : '';
+function paidNote(iso, countedIso = iso){
+  const paid = paidPunchTime(iso, countedIso);
+  return paid ? ` <span class="paid-note">&rarr; ${fmtTime(paid)} paid</span>` : '';
 }
 
 // Toggles the row's detail panel: closes if the same day's pill is clicked again, otherwise
@@ -520,7 +522,7 @@ function renderDayDetail(row, inner, sessions, emp, day, overtimeHoursForDay){
     const inChip = document.createElement('span'); inChip.className = 'chip';
     inChip.innerHTML = `<span class="lbl">In</span>${fmtTime(s.clock_in)}${paidNote(s.clock_in)}`;
     const outChip = document.createElement('span'); outChip.className = 'chip' + (s.clock_out ? '' : ' review');
-    outChip.innerHTML = `<span class="lbl">Out</span>${s.clock_out ? fmtTime(s.clock_out) + paidNote(s.clock_out) : 'Still in'}`;
+    outChip.innerHTML = `<span class="lbl">Out</span>${s.clock_out ? fmtTime(s.clock_out) + paidNote(s.clock_out, countedClockOut(s)) : 'Still in'}`;
     const bEdit = document.createElement('button');
     bEdit.className = 'btn small ghost'; bEdit.textContent = 'Edit';
     bEdit.onclick = () => editRecord(s, emp, afterSave);

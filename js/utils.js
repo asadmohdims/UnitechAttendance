@@ -1,3 +1,5 @@
+import { countedClockOut } from './autoClosed.js';
+
 export const $ = id => document.getElementById(id);
 
 export function toast(msg){
@@ -22,7 +24,9 @@ export function fmtHours(h){
   return `${Math.floor(m/60)}:${pad(m%60)}`;
 }
 
-export function recHours(r){ return r.clock_out ? Math.max(0,(new Date(r.clock_out) - new Date(r.clock_in))/3600000) : null; }
+// Uses countedClockOut(), not the raw clock_out: a session the kiosk auto-closed at midnight is
+// only counted up to the shop's closing time, since the midnight stamp isn't a real punch.
+export function recHours(r){ return r.clock_out ? Math.max(0,(new Date(countedClockOut(r)) - new Date(r.clock_in))/3600000) : null; }
 
 // navigator.vibrate is Android/Chrome only — a silent no-op everywhere else (iOS Safari,
 // desktop), so these are safe to call unconditionally from anywhere. Reserved for the two

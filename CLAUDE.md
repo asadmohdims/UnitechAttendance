@@ -563,6 +563,10 @@ and employee.
 - **Schema**: `payments(emp_id, amount, occurred_on, entered_by)`, `payment_resolutions(emp_id,
   date, resolved, note)`. `entered_by` is who logged the row ('employee' | 'owner'), not who was
   paid (`emp_id` always is).
+- **On a phone** (<= 620px) the admin ledger's four totals sit two by two and the employee/date rows let
+  the name column shrink and wrap (it used to keep a 160px minimum, pushing the amount and its status chip
+  past the card's edge and clipping them). The kiosk payment sheets left-align Back and make their one action
+  full-width.
 - Payment writes go straight to the store, not through the outbox — see the outbox note under
   Offline resilience above for why.
 

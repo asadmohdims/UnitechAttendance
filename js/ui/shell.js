@@ -4,7 +4,7 @@ import { sb, withTimeout, TIMEOUT_MESSAGE, persistedSession, hasPersistedSession
 import { state, ADMIN_TABS } from '../state.js';
 import { refreshAll } from './kiosk.js';
 import { isIdle } from './appVersion.js';
-import { renderRecords } from './records.js';
+import { renderRecords, clearRecordsReturn } from './records.js';
 import { renderReport } from './report.js';
 import { renderEmployees } from './employees.js';
 import { renderSalary } from './salary.js';
@@ -166,6 +166,7 @@ export function switchTab(tab){
   document.querySelectorAll('nav button').forEach(x => x.classList.toggle('active', x.dataset.tab === tab));
   ['home','records','report','employees','salary','payments'].forEach(t =>
     $('tab-'+t).style.display = (t === tab) ? '' : 'none');
+  if(tab !== 'records') clearRecordsReturn();
   document.body.classList.toggle('kiosk-active', tab === 'home');
   setKioskZoomLock(tab === 'home');
   $('topHeader').style.display = tab === 'home' ? 'none' : '';
@@ -188,6 +189,7 @@ $('btnAdminEntry').onclick = () => {
   switchTab('employees');
 };
 $('btnReturnKiosk').onclick = () => switchTab('home');
+$('btnKioskTop').onclick = () => switchTab('home'); // phones: the bottom tab bar has no room for it
 document.querySelectorAll('#adminTools [data-tab]').forEach(b => b.onclick = () => {
   const tab = b.dataset.tab;
   if(!DEMO_MODE && !state.adminUnlocked) return requestAdmin(tab);

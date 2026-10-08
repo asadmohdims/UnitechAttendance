@@ -69,6 +69,7 @@ js/
                         (no silent "crossed midnight" +24h), keeps unchanged fields' exact seconds
   editMarker.js      -- pure: edited_at / orig_clock_in / orig_clock_out marker for owner edits
   reportMath.js      -- pure per-day hours/review-flag/session-grouping math for the report
+  dayStatus.js       -- pure: one person-day -> one chip, one callout, photo-slot types, "Check punches" checks
   rounding.js        -- pure payroll rounding (grace-window rule) + recHoursRounded()
   store/
     index.js          -- `store = DEMO_MODE ? demoStore : supabaseStore`
@@ -77,14 +78,15 @@ js/
     outbox.js          -- IndexedDB queue used only by supabaseStore.js
     outboxRules.js     -- pure: what sync does to an outbox row after a send (rev/syncedRev optimistic lock)
   ui/
-    shell.js       -- tabs, nav, login/logout, admin lock/unlock, live clock
+    shell.js       -- tabs, nav (left rail >=900px, bottom tab bar below), login/logout, admin lock/unlock, live clock
     kiosk.js       -- home screen, punch flow, refreshAll(), punch confirmation
     modal.js       -- promptModal() (input dialog) + infoModal() (read-only, e.g. the
-                      absence-dates popup) — both a styled stand-in for prompt()
+                      absence-dates popup) — both a styled stand-in for prompt() — plus actionSheet()
+                      (a list of actions for one thing: bottom sheet on phones, centred card from 900px)
     payments.js    -- kiosk PIN pad + payment entry, admin reconciliation tab
     appVersion.js  -- polls version.json, silently reloads once idle on a new deploy
-    employees.js   -- admin Employees tab
-    records.js     -- admin Daily records tab (session grouping, overtime controls)
+    employees.js   -- admin Employees tab: one tappable row per person, their actions in an actionSheet()
+    records.js     -- admin Daily records tab: people list + selected person's sessions (see Daily records below)
     report.js      -- admin Monthly report: status-grid calendar + Excel export
     salary.js      -- admin Salary tab (uses js/salary.js's math + report.js's monthData)
   main.js          -- entry point
@@ -263,8 +265,9 @@ dialog used to add 24h whenever clock-out < clock-in). Now:
   saves without it, and kiosk punch sync only sends these columns for an edited row.
 - The kiosk and the admin share one Supabase login (admin unlock is a client-side gate), so the
   database cannot say *who* edited, only when and what. Supabase's API logs are the only other trace.
-- Showing the marker in Daily records / the Report day-detail panel is part of the Daily records
-  redesign (design first, see git log); until then the data is captured but not displayed.
+- Daily records shows the marker: an "Edited" chip, the kiosk's original time under an edited punch
+  ("was 5:41 PM", "photo taken at ..."), and "Entered by you" in a photo slot the owner typed. The
+  Report day-detail panel does not show it yet.
 
 ## Lunch-break support
 
@@ -324,11 +327,48 @@ taps a day: morning in, lunch out, lunch in, evening out.
 - **`needsReview(sessions)`** (`js/reportMath.js`): a day's *last* session having no `out_photo`
   means either genuinely still open or closed with no photo (stale-session midnight close, or an
   admin-added punch) — both get the same "Review required" treatment (Report summary/banner,
-  calendar pills, Daily records' "● No clock-out photo" next to "● Still in"). Legacy rows
-  auto-closed for lunch before that behavior was removed still exist and read the same way.
-- **Daily records grouping**: `renderRecords()` re-groups a date's raw records by employee before
-  rendering, since `listRecordsForDate` sorts by `clock_in` globally across everyone (would
-  otherwise interleave different people's sessions on a lunch-break day).
+  calendar pills). Legacy rows auto-closed for lunch before that behavior was removed still exist and
+  read the same way. **The flag clears once the owner gives the session a real clock-out**
+  (`isOwnerResolved()` in `js/editMarker.js`: `clock_out` set, `edited_at` set, and no longer the
+  midnight auto-close stamp). Before this, entering the real time left `out_photo` empty and the day
+  "Review required" forever. An owner edit that leaves the midnight stamp in place does not clear it.
+
+## Daily records (list + detail)
+
+Wide (>= 900px, desktop and tablet landscape look the same): the day's people on the left, the selected
+person's sessions on the right. Phone: one pane at a time, with a back button. All the decisions about
+*what to show* live in pure `js/dayStatus.js` (tested in `js/dayStatus.test.mjs`); `js/ui/records.js`
+only draws them. Three rules keep every day readable:
+- **One chip per person** in the list, the most important thing winning (`needs-clock-out` > `check-punches`
+  > `still-in` > `no-lunch` > `edited`/`added` > `half-day`). A normal day has no chip, so a chip always
+  means "look here". "Needs a look" = needs-clock-out, check-punches, or absent.
+- **Anything unusual gets one callout** at the top of the detail: what happened, what it does to pay, and at
+  most one primary action. Copy is composed in `calloutText()` (records.js), decisions in `dayModel()`.
+- **Every empty photo slot says why**: `not-yet` (still in), `auto` (the kiosk closed it), `owner` (you typed
+  it), `missing` (no photo, cause unknown), or a real photo. Times are written under the photos, never on them;
+  "counts as 9:15" appears only where rounding moved the punch.
+- **"Check punches"** (`sessionProblems()`): last session started after closing (`SHOP_CLOSING_*`, a tap earlier
+  in the day was probably missed), a session under `SHORT_SESSION_MINUTES` (10), over `LONG_SESSION_HOURS` (11),
+  or two sessions overlapping (pays the overlap twice). It only points at a day; it never changes pay or edits
+  anything, and lunch is still never inferred. A session the owner has edited is not second-guessed for being
+  short/long/late (overlap is always reported). A midnight auto-close whose clock-in was after closing reads as
+  "Check punches", not "Needs clock-out", because entering a clock-out time is not the real fix there.
+- Everyone on the roster gets a row, including days with no punches (Absent / Not in yet / Holiday), except
+  days before the person was added or in the future. Today's morning is not called a half day.
+- **Syncing**: a punch this tablet has not finished uploading (`supabaseStore.js` marks such rows `_sync`,
+  never a column) gets a "Syncing" chip, an amber "Saved on the tablet" callout and an "Uploading…" photo
+  slot. It only appears on the tablet that holds the unsynced punch, and never in demo mode (no outbox).
+- Today with no punches is "Not in yet" only until `SHOP_CLOSING_*`; after that it reads Absent, like the
+  Report's cell for today. A weekly holiday that is today is a holiday.
+- The Edit dialog says what is being changed: the day, what the kiosk recorded, whether it was closed
+  automatically, and any earlier edit (`editNote()` in records.js; `promptModal`'s `note`).
+- Arriving from the Report's phone view, Back returns there (`showPersonDay(date, empId, onBack)`); the
+  return is cleared on any other navigation.
+- Not built, deliberately: delete-with-undo. Delete keeps its confirm dialog. An undo would have to put the
+  row back through the outbox and the server, and the record's photos are removed from Storage when it is
+  deleted, so a restore would come back without them; the confirm already guards the mistake.
+- A holiday row offers "Mark unpaid" / "Restore as paid" (the same `day_pay_overrides` toggle as the Report's
+  day panel, via `store.setDayOverride`).
 
 ## Kiosk tile states
 
@@ -340,8 +380,13 @@ actual four-taps-a-day rhythm (in, out, in, out) makes a second tap of the day j
 ordinary clock-in. Removed 2026-09-22. A second tap now renders identically to a first-ever
 tap (`▶`, "Tap to start work") — `handlePunchCapture()`'s branching (open session → clock out,
 else → clock in) never depended on the on-lunch label to begin with, so behavior is unchanged,
-only the tile's own highlighting. `tileStatus()` is exported and reused by Daily records'
-missed-clock-in banner — one source of truth instead of two copies that could drift.
+only the tile's own highlighting. `tileStatus()` stays exported for the kiosk's roster line.
+
+**The tile area is centred only while the tiles fit** (`.kiosk-main` in `css/styles.css`, two flexible
+spacers instead of `justify-content:center`). Centring a scrolling flex box pushes content that is too tall
+off its top edge, where scrolling can't reach it: on a phone the first two employees could not be tapped, and
+on the tablet the first row was clipped from the 10th employee. Checked by measuring tile positions at 390px,
+844x390 and 1180x820 with 3, 8, 9 and 10 employees (layout can't be covered by `node --test`).
 
 **Tiles are reconciled, not rebuilt**: `renderHome()` keeps each employee's existing tile
 (matched by `data-emp-id`) and only updates its name/handlers, then `refreshTileStates()` does the
@@ -529,6 +574,10 @@ and employee.
 - **Schema**: `payments(emp_id, amount, occurred_on, entered_by)`, `payment_resolutions(emp_id,
   date, resolved, note)`. `entered_by` is who logged the row ('employee' | 'owner'), not who was
   paid (`emp_id` always is).
+- **On a phone** (<= 620px) the admin ledger's four totals sit two by two and the employee/date rows let
+  the name column shrink and wrap (it used to keep a 160px minimum, pushing the amount and its status chip
+  past the card's edge and clipping them). The kiosk payment sheets left-align Back and make their one action
+  full-width.
 - Payment writes go straight to the store, not through the outbox — see the outbox note under
   Offline resilience above for why.
 
@@ -545,6 +594,13 @@ distribute. **The roster line lives inside `.kiosk-identity`, not as a sibling o
 `.kiosk-top`/`.kiosk-footer`** — this broke the row's mobile `space-between` layout once already
 when tried as a sibling; keep it nested if this area gets touched again.
 
+**Kiosk on a phone** (<= 760px, `css/styles.css`): a short header (name and roster left, time and date
+right, the mode button under them, 136px instead of the old 178px), "Admin access" and the version in a
+small bar pinned to the bottom (a 44px tap target, no longer sitting on the header's border), and tiles two
+across so eight people fit in about one screen. Tablet portrait (761px and up, upright) keeps the bar above
+and larger tiles, but shares the pinned bottom bar for the admin link and version. Measured at 390px and 360px with 8 employees: first and last tile reachable, nothing under
+the bottom bar, no horizontal scroll, and the tablet-landscape layout unchanged.
+
 **Motion**: every tappable control gives real press feedback and springs back to rest via a
 `--lift` custom property that composes with state classes (`.badge-tile.in`/`.lunch`/`.missed`)
 instead of competing with them on specificity — a prior version tied specificity between
@@ -553,12 +609,13 @@ already-clocked-in tile. Confirmation moments (punch, payment, PIN) fade+pop in 
 SVG checkmark instead of a hard display cut, closing the "did that register?" gap on a shared,
 all-day kiosk. Camera shutter flashes on capture (see `js/camera.js`).
 
-**Admin screens** (Employees/Daily records/Report/Salary) share one grid-list visual language
-(`.emp-row`, `.rec-row`, `.report-person`/`.salary-person` in `css/styles.css`), each its own
+**Admin screens** (Employees/Report/Salary) share one grid-list visual language
+(`.emp-row`, `.report-person`/`.salary-person` in `css/styles.css`), each its own
 independent CSS grid with fixed pixel column widths (not `auto`/1fr) so a row with a longer
 annotation can't drift its columns out of alignment with the rest of the list. Daily records
-groups a lunch-break day into `.rec-group` (one header with the combined total, sessions nested
-underneath) — a single-session day stays a plain `.rec-row`.
+is a people list plus a detail pane instead (see Daily records above). Admin navigation is one
+element (`#adminTools`): a left rail from 900px up, a bottom tab bar below (phone), with the
+phone's "Kiosk" exit in the header.
 
 **Report calendar**: a status-grid, not a plain number table — `Employee` pinned left,
 `Days`/`Absent`/`Total hrs` pinned right (`position:sticky`), only the day columns scroll. Each
@@ -585,6 +642,17 @@ area gets touched again:
 - The old standalone "Employee summary" card is gone, not relocated — its only two genuinely
   unique bits (days-off count, review-state badge) now live under the employee's name in the
   calendar's own sticky `.col-emp` cell, so the two views can't drift apart.
+
+**Report on a phone** (below 900px): the 31-column grid cannot fit 390px — its four pinned columns alone
+were wider than the screen, so no days showed at all — so the wide table, the five metric cards and the
+legend are hidden there and replaced by `#reportPhone`: everyone first (hours, and a one-line colour strip
+of their month), then one person's month as a Monday-first 7-column calendar, with the tapped day's summary
+below it. Both views are drawn from the same data and the same `pillInfo()` (`js/ui/report.js`), which
+also builds the desktop pills, so a day can't read differently on the two. The day card says what Daily
+records would (`calloutText()`) and hands off to it ("Open in Daily records") instead of duplicating the
+editing screens; an absence offers "Add missed punch" and a paid Friday keeps "Mark unpaid". The review
+alert's button opens the first flagged person's day. The desktop pills were checked identical (296 pills,
+class, text and title) before and after pulling `pillInfo()` out.
 
 Pinch-zoom (`user-scalable`) toggles on the single `<meta name=viewport>` tag in `switchTab()` —
 locked only on the kiosk home tab (stops accidental zoom mid-queue on the shared tablet),
@@ -625,7 +693,7 @@ Some pure logic has automated coverage via Node's **built-in** test runner (`nod
 `node:assert`) — zero npm installs, zero config, zero build step, consistent with the "no
 build step" constraint above (it's testing, not bundling).
 
-- Run everything: `node --test js/` from the project root (183 tests as of this writing, all
+- Run everything: `node --test js/` from the project root (213 tests as of this writing, all
   passing).
 - Test files are co-located with the code they cover, named `*.test.mjs`.
 - Covered: `js/salary.js` (proration, retroactive rate-selection, boundary/leap-year dates,

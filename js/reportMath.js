@@ -1,6 +1,7 @@
 // Pure day-hours accumulation for report.js's monthData() — no store/DOM access, so it's
 // testable in isolation the same way js/salary.js is.
 import { recHours, dateStr } from './utils.js';
+import { isOwnerResolved } from './editMarker.js';
 import { WEEKLY_HOLIDAY_DAY, STANDARD_DAY_HOURS, LUNCH_CUTOFF_HOUR, LUNCH_CUTOFF_MINUTE } from './config.js';
 
 // A single session's hours below which it reads as attendance for only part of the day, rather
@@ -78,10 +79,12 @@ export function groupByEmployeeDay(recs){
 // last session is still open (clock_out null — forgot to clock out), or it's closed but with no
 // photo (out_photo null — the stale-session midnight close in js/staleSession.js, or a punch an
 // admin added by hand). Both collapse to the same check: the day's last session has no
-// photographed clock-out.
+// photographed clock-out — unless the owner has since given it a real clock-out themselves
+// (isOwnerResolved in editMarker.js), which is the fix the flag was asking for.
 export function needsReview(sessions){
   if(!sessions || !sessions.length) return false;
-  return !sessions[sessions.length - 1].out_photo;
+  const last = sessions[sessions.length - 1];
+  return !last.out_photo && !isOwnerResolved(last);
 }
 
 // Classifies a day that has NO punches at all (buildDayHours already returned null hours and

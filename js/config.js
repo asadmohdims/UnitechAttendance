@@ -43,4 +43,10 @@ export const SHOP_CLOSING_MINUTE = 0;
 // recording the opposite punch (js/punchCooldown.js). Catches "did that register?" retaps, which
 // happen within seconds; kept short so a deliberate tap is never held up for long.
 export const PUNCH_COOLDOWN_MINUTES = 2;
+// "Check punches" on Daily records (js/dayStatus.js): a closed session shorter than this reads as
+// an accidental double tap that slipped past the duplicate-punch window above, and one longer than
+// LONG_SESSION_HOURS as a missed tap or a typo. They only decide whether a day gets a warning chip;
+// nothing here changes pay or edits a record. Placeholders — confirm with the owner.
+export const SHORT_SESSION_MINUTES = 10;
+export const LONG_SESSION_HOURS = 11;
 /* =============================================================================== */

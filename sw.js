@@ -31,6 +31,7 @@ const APP_SHELL = [
   './js/camera.js',
   './js/captureGuard.js',
   './js/config.js',
+  './js/dayStatus.js',
   './js/editMarker.js',
   './js/main.js',
   './js/missedClockIn.js',

@@ -400,13 +400,16 @@ h3{font-size:16px; margin-bottom:10px;}
    ink-bright text (not just another muted line) so it reads as the answer, not one more fact. */
 .calc-table tr.calc-total th, .calc-table tr.calc-total td{background:rgba(96,165,250,.1); color:var(--ink); font-weight:700;}
 /* Employees tab — grid-list row, matching the Report/Salary pattern above */
-.emp-row{display:grid; grid-template-columns:46px 1fr auto; align-items:center; gap:12px; padding:14px 17px; border-bottom:1px solid var(--border);}
+.emp-row{display:grid; grid-template-columns:46px 1fr auto; align-items:center; gap:12px; width:100%; min-height:68px; padding:12px 17px; background:none; border:0; border-bottom:1px solid var(--border); color:var(--ink); font:inherit; text-align:left; cursor:pointer;}
+.emp-row:hover{background:rgba(255,255,255,.03);}
+.emp-chevron{color:var(--muted); font-size:24px; line-height:1;}
+.add-emp{flex-wrap:nowrap;}
+.add-emp input{flex:1; min-width:0; width:auto;}
 .emp-row:last-child{border-bottom:0;}
 .emp-status{display:flex; align-items:center; gap:6px; margin-top:3px; font-size:13px; font-weight:650; color:var(--muted);}
 .emp-status .dot{width:6px; height:6px; border-radius:50%; background:var(--muted); flex:0 0 auto;}
 .emp-status.active{color:#a7f3c0;}
 .emp-status.active .dot{background:var(--green);}
-.emp-actions{display:flex; gap:8px; flex-wrap:wrap; justify-content:flex-end;}
 
 /* ============ Admin navigation ============
    One element (#adminTools), two looks: a left rail on wide screens — desktop and tablet landscape
@@ -638,6 +641,27 @@ input.rec-date-input[type=date]{position:absolute; left:50%; top:100%; width:1px
 .rp-day-actions{display:flex; gap:8px; margin-top:10px;}
 .rp-day-actions .btn{min-height:44px; flex:1;}
 
+/* ============ Action sheet ============
+   A bottom sheet on phones, a centred card from 900px up. See actionSheet() in js/ui/modal.js. */
+.sheet-overlay{position:fixed; inset:0; z-index:110; background:rgba(4,9,17,.72); display:flex; align-items:flex-end; justify-content:center; opacity:0; transition:opacity .18s;}
+.sheet-overlay.open{opacity:1;}
+.sheet{width:100%; max-width:480px; background:var(--card); border:1px solid var(--border); border-radius:22px 22px 0 0; padding:10px 0 calc(22px + env(safe-area-inset-bottom)); box-shadow:0 -20px 50px rgba(0,0,0,.5); transform:translateY(28px); transition:transform .24s var(--spring);}
+.sheet-overlay.open .sheet{transform:none;}
+.sheet-handle{width:40px; height:5px; border-radius:3px; background:#3a4c66; margin:0 auto 14px;}
+.sheet-head{display:flex; align-items:center; gap:14px; padding:0 20px 16px;}
+.sheet-avatar{width:52px; height:52px; border-radius:14px; object-fit:cover; background:#293b53; flex:0 0 auto;}
+.sheet-title{font-weight:800; font-size:18px; line-height:1.25; overflow-wrap:anywhere;}
+.sheet-sub{font-size:13px; color:var(--muted); margin-top:2px;}
+.sheet-action{display:flex; align-items:center; gap:14px; width:100%; min-height:56px; padding:0 20px; background:none; border:0; border-top:1px solid var(--border); color:var(--ink); font:inherit; font-size:16px; font-weight:600; text-align:left; cursor:pointer;}
+.sheet-action:hover{background:rgba(255,255,255,.03);}
+.sheet-action svg{flex:0 0 auto; color:var(--muted);}
+.sheet-action.danger, .sheet-action.danger svg{color:#fda4af;}
+.sheet-close{display:flex; width:calc(100% - 40px); margin:12px 20px 0;}
+@media (min-width:900px){
+  .sheet-overlay{align-items:center;}
+  .sheet{max-width:420px; border-radius:22px; padding-bottom:20px; box-shadow:0 24px 60px rgba(0,0,0,.55);}
+}
+
 /* ============ Payments ============ */
 .payments-banner{display:flex; align-items:center; justify-content:center; gap:10px; padding:13px 20px; background:rgba(96,165,250,.12); border:1px solid #2c4870; border-radius:14px; color:#93c5fd; font-weight:650; font-size:14px; flex:0 0 auto;}
 
@@ -725,6 +749,4 @@ input.rec-date-input[type=date]{position:absolute; left:50%; top:100%; width:1px
 @media (max-width:520px){header{padding:15px 16px} main{padding:8px 16px 70px} #clock{font-size:12px}.card{padding:14px}}
 @media (max-width:620px){.report-summary{grid-template-columns:1fr}.pay-summary{grid-template-columns:1fr}.report-top{align-items:stretch; flex-direction:column}.report-top .btn{width:100%}.review-alert{align-items:flex-start; flex-direction:column}.review-alert .btn{width:100%}.salary-person{grid-template-columns:43px 1fr; row-gap:8px}.salary-amount,.salary-actions{grid-column:2}.salary-amount{text-align:left}.detail-cards{grid-template-columns:1fr}.pay-emp-detail{padding-left:17px}}
 @media (max-width:620px){
-  .emp-row{grid-template-columns:40px 1fr; row-gap:10px;}
-  .emp-actions{grid-column:1 / -1; justify-content:flex-start;}
 }

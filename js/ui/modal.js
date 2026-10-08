@@ -106,3 +106,52 @@ export function infoModal({title, render}){
     modal.classList.add('open');
   });
 }
+
+// A list of actions for one thing (an employee, say): a bottom sheet on a phone, a centred card on
+// wider screens (CSS decides). Replaces a row of small buttons repeated on every line — the row
+// itself becomes the one tap target and the choices appear only when you ask for them.
+// `avatar` is an element for the header (the caller builds it, so this stays free of employee code);
+// `actions`: [{label, icon (static SVG markup), danger, run}]. Choosing one closes the sheet first,
+// then runs it. Tapping outside, Close, or Escape just closes.
+export function actionSheet({title, subtitle, avatar, actions}){
+  document.querySelectorAll('.sheet-overlay').forEach(o => o.remove());
+  const overlay = document.createElement('div');
+  overlay.className = 'sheet-overlay';
+  const sheet = document.createElement('div');
+  sheet.className = 'sheet';
+  sheet.setAttribute('role', 'dialog'); sheet.setAttribute('aria-label', title);
+  const handle = document.createElement('div'); handle.className = 'sheet-handle';
+  const head = document.createElement('div'); head.className = 'sheet-head';
+  const who = document.createElement('div');
+  const t = document.createElement('div'); t.className = 'sheet-title'; t.textContent = title;
+  who.append(t);
+  if(subtitle){ const sub = document.createElement('div'); sub.className = 'sheet-sub'; sub.textContent = subtitle; who.append(sub); }
+  if(avatar) head.append(avatar);
+  head.append(who);
+  sheet.append(handle, head);
+  function close(){
+    overlay.classList.remove('open');
+    document.removeEventListener('keydown', onKey);
+    setTimeout(() => overlay.remove(), 200);
+  }
+  function onKey(e){ if(e.key === 'Escape') close(); }
+  actions.forEach(a => {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'sheet-action' + (a.danger ? ' danger' : '');
+    if(a.icon){ const holder = document.createElement('template'); holder.innerHTML = a.icon; b.append(holder.content); }
+    b.append(document.createTextNode(a.label));
+    b.onclick = () => { close(); a.run(); };
+    sheet.append(b);
+  });
+  const closeBtn = document.createElement('button');
+  closeBtn.type = 'button'; closeBtn.className = 'btn ghost sheet-close'; closeBtn.textContent = 'Close';
+  closeBtn.onclick = close;
+  sheet.append(closeBtn);
+  overlay.append(sheet);
+  overlay.onclick = e => { if(e.target === overlay) close(); };
+  document.addEventListener('keydown', onKey);
+  document.body.append(overlay);
+  requestAnimationFrame(() => overlay.classList.add('open'));
+  sheet.querySelector('.sheet-action')?.focus();
+}

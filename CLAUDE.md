@@ -81,10 +81,11 @@ js/
     shell.js       -- tabs, nav (left rail >=900px, bottom tab bar below), login/logout, admin lock/unlock, live clock
     kiosk.js       -- home screen, punch flow, refreshAll(), punch confirmation
     modal.js       -- promptModal() (input dialog) + infoModal() (read-only, e.g. the
-                      absence-dates popup) — both a styled stand-in for prompt()
+                      absence-dates popup) — both a styled stand-in for prompt() — plus actionSheet()
+                      (a list of actions for one thing: bottom sheet on phones, centred card from 900px)
     payments.js    -- kiosk PIN pad + payment entry, admin reconciliation tab
     appVersion.js  -- polls version.json, silently reloads once idle on a new deploy
-    employees.js   -- admin Employees tab
+    employees.js   -- admin Employees tab: one tappable row per person, their actions in an actionSheet()
     records.js     -- admin Daily records tab: people list + selected person's sessions (see Daily records below)
     report.js      -- admin Monthly report: status-grid calendar + Excel export
     salary.js      -- admin Salary tab (uses js/salary.js's math + report.js's monthData)

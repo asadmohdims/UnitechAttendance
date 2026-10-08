@@ -50,11 +50,18 @@ body.kiosk-active{overflow:hidden;}
 /* Purely informational — which deploy is actually running on this tablet (see js/version.js /
    js/ui/appVersion.js). Deliberately quiet: smaller and dimmer than .muted, never interactive. */
 .app-version{font-size:10px; opacity:.55; margin-top:2px;}
-/* flex-direction:column so the new .payments-banner can stack above .kiosk-badges instead of
-   squeezing beside it in a row — align-items/justify-content:center still centers a single
-   child both ways when the banner is hidden (Attendance mode), so this doesn't change today's
-   one-child layout. */
-.kiosk-main{flex:1; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:28px; padding:32px; overflow:auto;}
+/* flex-direction:column so the .payments-banner can stack above .kiosk-badges instead of squeezing
+   beside it in a row.
+   Centred only while the tiles FIT. `justify-content:center` on a scrolling flex box pushes content
+   that is taller than the box off the TOP edge, where scrolling can't reach it — on a phone the first
+   two employees could not be tapped, and on the tablet the first row was clipped from the 10th
+   employee. Instead, two flexible spacers (::before/::after) share any spare room equally, which
+   centres the group, and shrink to nothing when there is none, so the content starts at the top and
+   scrolls normally. Each spacer's negative margin cancels the flex `gap` next to it. */
+.kiosk-main{flex:1; display:flex; flex-direction:column; align-items:center; gap:28px; padding:32px; overflow:auto;}
+.kiosk-main::before, .kiosk-main::after{content:""; flex:1 0 0; width:0;}
+.kiosk-main::before{margin-bottom:-28px;}
+.kiosk-main::after{margin-top:-28px;}
 .kiosk-badges{display:grid; grid-template-columns:repeat(auto-fit,minmax(188px,224px)); justify-content:center; gap:clamp(16px,2.2vw,26px); width:100%; max-width:980px;}
 /* --lift is each tile's own resting transform (plain tiles: none; in/lunch/missed: a small
    raise) — kept as a variable, not a literal `transform` on .in/.lunch/.missed, specifically so

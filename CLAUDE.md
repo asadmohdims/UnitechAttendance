@@ -370,6 +370,12 @@ tap (`▶`, "Tap to start work") — `handlePunchCapture()`'s branching (open se
 else → clock in) never depended on the on-lunch label to begin with, so behavior is unchanged,
 only the tile's own highlighting. `tileStatus()` stays exported for the kiosk's roster line.
 
+**The tile area is centred only while the tiles fit** (`.kiosk-main` in `css/styles.css`, two flexible
+spacers instead of `justify-content:center`). Centring a scrolling flex box pushes content that is too tall
+off its top edge, where scrolling can't reach it: on a phone the first two employees could not be tapped, and
+on the tablet the first row was clipped from the 10th employee. Checked by measuring tile positions at 390px,
+844x390 and 1180x820 with 3, 8, 9 and 10 employees (layout can't be covered by `node --test`).
+
 **Tiles are reconciled, not rebuilt**: `renderHome()` keeps each employee's existing tile
 (matched by `data-emp-id`) and only updates its name/handlers, then `refreshTileStates()` does the
 clock-state half. It used to wipe the grid, so every wake (`visibilitychange` → `refreshAll()`)

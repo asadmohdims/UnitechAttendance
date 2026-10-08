@@ -22,6 +22,7 @@
   <h1>Unitech Attendance</h1>
   <div class="row" style="gap:8px">
     <div id="clock"></div>
+    <button class="btn small ghost" id="btnKioskTop">Kiosk</button>
     <button class="btn small ghost" id="btnLock" style="display:none">🔒 Lock</button>
     <button class="btn small ghost" id="btnLogout" style="display:none">Sign out</button>
   </div>
@@ -68,34 +69,37 @@
 </section>
 
 <main>
+  <!-- Admin navigation: a left rail on wide screens (desktop and tablet landscape look the same), a
+       bottom tab bar on phones. One element, restyled by CSS — see .admin-panel in styles.css. -->
   <div id="adminTools" class="admin-panel" style="display:none">
-    <button data-tab="employees">Employees</button>
-    <button data-tab="records">Daily records</button>
-    <button data-tab="report">Monthly report</button>
-    <button data-tab="salary">Salary</button>
-    <button data-tab="payments">Payments</button>
-    <button id="btnReturnKiosk">Return to kiosk</button>
+    <button data-tab="records"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="3" width="16" height="18" rx="2"/><path d="M8 8h8M8 12h8M8 16h5"/></svg><span>Records</span></button>
+    <button data-tab="report"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/></svg><span>Report</span></button>
+    <button data-tab="employees"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="9" cy="8" r="3.5"/><path d="M2.5 20c.6-3.6 3.2-5.5 6.5-5.5s5.9 1.9 6.5 5.5M16 4.5a3.5 3.5 0 0 1 0 7M18 14.8c1.8.7 3 2.3 3.5 5.2"/></svg><span>Employees</span></button>
+    <button data-tab="salary"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 4h12M6 9h12M9 4c4 0 6 2 6 5s-2 5-6 5l7 6"/></svg><span>Salary</span></button>
+    <button data-tab="payments"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="6" width="20" height="12" rx="2"/><circle cx="12" cy="12" r="2.5"/><path d="M6 12h.01M18 12h.01"/></svg><span>Payments</span></button>
+    <button id="btnReturnKiosk" class="rail-kiosk"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4M10 17l-5-5 5-5M5 12h12"/></svg><span>Kiosk</span></button>
   </div>
-  <!-- RECORDS -->
-  <section id="tab-records" class="admin-tab" style="display:none">
-    <div class="card">
-      <div class="row">
-        <label class="muted">Date</label>
-        <input type="date" id="recDate" style="width:auto">
+  <!-- RECORDS: the day's people on the left, the selected person's sessions on the right. On a
+       phone only one pane shows at a time (the list, then the person, with a back button). -->
+  <section id="tab-records" class="admin-tab wide" style="display:none">
+    <div class="rec-layout" id="recLayout">
+      <div class="rec-list-pane">
+        <h2 class="rec-title">Daily records</h2>
+        <div class="rec-datebar">
+          <button class="rec-step" id="recPrev" aria-label="Previous day">‹</button>
+          <button class="rec-date" id="recDateBtn" aria-label="Choose a date"><span id="recDateLabel"></span><span id="recDateSub"></span></button>
+          <input type="date" id="recDate" class="rec-date-input" tabindex="-1" aria-hidden="true">
+          <button class="rec-step" id="recNext" aria-label="Next day">›</button>
+        </div>
+        <p class="rec-summary" id="recSummary"></p>
+        <div id="recList"></div>
       </div>
-    </div>
-    <div class="review-alert danger" id="missedAlert" style="display:none">
-      <div><strong id="missedTitle"></strong><span id="missedText"></span></div>
-    </div>
-    <div class="card report-list">
-      <div class="report-list-head"><h3>Records</h3><span id="recCountLabel"></span></div>
-      <div id="recList"></div>
-      <p class="muted" id="recEmpty" style="display:none; padding:0 17px 17px">No records for this date.</p>
+      <div class="rec-detail-pane" id="recDetail"></div>
     </div>
   </section>
 
   <!-- REPORT -->
-  <section id="tab-report" class="admin-tab" style="display:none">
+  <section id="tab-report" class="admin-tab wide" style="display:none">
     <div class="report-top">
       <div>
         <p class="muted">Attendance overview</p>

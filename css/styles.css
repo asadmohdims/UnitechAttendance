@@ -193,8 +193,6 @@ input[type=time]::-webkit-calendar-picker-indicator, input[type=date]::-webkit-c
 .row > *{flex:0 0 auto;}
 .grow{flex:1 1 auto !important;}
 .muted{color:var(--muted); font-size:13px;}
-.open-session{color:var(--green); font-weight:600;}
-.lunch-flag{color:#fbbf24; font-weight:600;}
 #photoView{position:fixed; inset:0; background:rgba(0,0,0,.9); display:none; align-items:center; justify-content:center; z-index:110; cursor:pointer;}
 #photoView.open{display:flex;}
 #photoView img{max-width:92%; max-height:92%; border-radius:12px;}
@@ -345,9 +343,6 @@ h3{font-size:16px; margin-bottom:10px;}
   #pcCheck svg path, #pymCheck svg path{stroke-dashoffset:0;}
   #camFlash.flash, .pin-dots.shake{animation:none;}
 }
-.admin-panel{display:flex; gap:8px; padding:8px; margin-bottom:16px; overflow:auto; background:var(--raised); border-radius:14px;}
-.admin-panel button{white-space:nowrap; min-height:40px; padding:8px 12px; border:1px solid transparent; border-radius:9px; background:transparent; color:var(--muted); cursor:pointer; font-weight:700;}
-.admin-panel button.active{background:var(--card); color:var(--ink); border-color:var(--border);}
 .report-top{display:flex; align-items:flex-start; justify-content:space-between; gap:14px; margin-bottom:16px;}
 .report-top h2{font-size:25px; letter-spacing:-.03em; margin:4px 0 5px;}
 .report-period{display:flex; align-items:center; justify-content:center; gap:9px; padding:8px; margin-bottom:16px; background:var(--raised); border-radius:14px;}
@@ -406,48 +401,173 @@ h3{font-size:16px; margin-bottom:10px;}
 .emp-status.active .dot{background:var(--green);}
 .emp-actions{display:flex; gap:8px; flex-wrap:wrap; justify-content:flex-end;}
 
-/* Daily records tab — grid-list row.
-   Each `.rec-row` is its own independent grid (not a shared table), so column widths are
-   fixed pixel values rather than `auto`/1fr-content-based — otherwise a row with a longer
-   "paid" annotation sizes its own punches/hours columns wider than a plain row, and the
-   columns drift out of alignment down the list. Only `who` (names vary in length anyway,
-   never needs to align to a grid) is left flexible. The actions column is capped
-   (`minmax(90px,180px)`, not `auto`) with `.rec-actions` set to wrap — a 3rd action ("Split
-   for lunch") no longer just grows the row past the card and gets clipped by
-   `.report-list`'s `overflow:hidden`; it wraps onto a second line instead. */
-.rec-row{display:grid; grid-template-columns:44px minmax(110px,1fr) 300px 120px minmax(90px,180px); align-items:center; gap:14px; padding:13px 17px;}
-.rec-row, .rec-group{border-bottom:1px solid var(--border);}
-#recList > *:last-child{border-bottom:0;}
-/* A lunch-break day's two (or more) sessions share one header — avatar, name, status, and the
-   day's combined total — instead of reading as two same-weight rows with a gap in between and
-   the total left as mental arithmetic. Sub-rows nest underneath, indented to align under the
-   header's name rather than its avatar, still showing each session's own exact times (the
-   audit trail) and its own worked/paid figure. */
-.rec-group-header{display:grid; grid-template-columns:44px minmax(110px,1fr) auto; align-items:center; gap:14px; padding:13px 17px 10px;}
-.rec-hours.day-total .rec-hours-stat{font-size:16px;}
-.rec-hours.day-total .rec-hours-stat.paid{font-size:13px;}
-.rec-group-sessions{padding:0 17px 8px 75px;}
-.rec-session-row{display:grid; grid-template-columns:300px 120px 1fr auto; align-items:center; gap:14px; padding:8px 0;}
-.rec-session-row .rec-actions{grid-column:4;}
-.rec-punches{display:flex; gap:18px;}
-.rec-punch{text-align:center;}
-.rec-punch .lbl{display:block; font-size:11px; color:var(--muted); text-transform:uppercase; letter-spacing:.04em; margin-bottom:3px;}
-.rec-punch .val{font-size:13.5px; font-weight:650; font-variant-numeric:tabular-nums; display:flex; align-items:center; justify-content:center; gap:6px;}
-.rec-punch .photo-thumb{width:26px; height:26px; border-radius:6px; cursor:pointer;}
-.paid-note{color:var(--muted); font-size:11.5px; font-style:italic;}
-.rec-punch .paid-note{display:block; margin-top:2px; font-style:normal;}
-.rec-hours{display:flex; flex-direction:column; align-items:flex-end; gap:2px; font-variant-numeric:tabular-nums;}
-.rec-hours-stat{font-weight:700; font-size:14.5px; white-space:nowrap;}
-.rec-hours-stat .lbl{color:var(--muted); font-size:10.5px; font-weight:650; text-transform:uppercase; letter-spacing:.03em; margin-right:5px;}
-.rec-hours-stat.paid{font-size:12.5px; font-weight:650; color:var(--muted);}
-.rec-actions{display:flex; gap:6px; flex-wrap:wrap; justify-content:flex-end; align-content:center;}
-.rec-lunch-divider{display:flex; align-items:center; justify-content:space-between; gap:12px; padding:6px 17px; font-size:12px; font-weight:650; color:var(--muted); background:var(--raised); border-bottom:1px dashed var(--border);}
-/* Reuses --blue (the one brand accent, already used for lunch chips elsewhere) rather than
-   --green (the kiosk tile's clocked-in state) or --amber (the syncing indicator) — this isn't
-   either of those. */
-.rec-lunch-divider.paid{color:#93c5fd; background:rgba(96,165,250,.1); border-bottom-color:#2c4870;}
-.lunch-paid-toggle{min-height:26px; padding:4px 10px; font-size:11.5px; white-space:nowrap;}
-.rec-lunch-divider.paid .lunch-paid-toggle{border-color:#2c4870; color:#93c5fd;}
+/* ============ Admin navigation ============
+   One element (#adminTools), two looks: a left rail on wide screens — desktop and tablet landscape
+   share it, so what you see on either is the same — and a bottom tab bar on phones, where a 660px
+   row of top tabs used to hide half its destinations off-screen with no sign it scrolled. */
+.admin-panel{display:flex; gap:6px; background:#0f1828; margin:0; padding:0; border:0;}
+.admin-panel button{display:flex; flex-direction:column; align-items:center; justify-content:center; gap:4px; min-height:56px; padding:6px 4px; border:0; border-radius:14px; background:none; color:var(--muted); font-size:11px; font-weight:700; cursor:pointer; white-space:nowrap;}
+.admin-panel button svg{display:block;}
+.admin-panel button.active{color:var(--blue); background:var(--raised);}
+#btnKioskTop{display:none;}
+@media (min-width:900px){
+  .admin-panel{position:fixed; left:0; top:0; bottom:0; width:92px; flex-direction:column; align-items:center; padding:16px 0; border-right:1px solid var(--border); z-index:30; overflow:auto;}
+  .admin-panel button{width:72px; min-height:60px;}
+  .admin-panel .rail-kiosk{margin-top:auto;}
+  body:not(.kiosk-active){padding-left:92px;}
+  header, main{max-width:1280px;}
+  .admin-tab:not(.wide){max-width:980px; margin-left:auto; margin-right:auto;}
+}
+@media (max-width:899px){
+  .admin-panel{position:fixed; left:0; right:0; bottom:0; z-index:30; padding:6px 4px calc(6px + env(safe-area-inset-bottom)); border-top:1px solid var(--border);}
+  .admin-panel button{flex:1; min-width:0;}
+  .admin-panel .rail-kiosk{display:none;}
+  #btnKioskTop{display:inline-flex;}
+  #clock{display:none;}
+  body:not(.kiosk-active) main{padding-bottom:110px;}
+}
+
+/* ============ Status chips and callouts (Daily records) ============
+   One chip shape for every state; colour carries one meaning each: amber = needs a look, green =
+   in / fine, pink = possible missed lunch, blue = you changed it, yellow = half day, red = absent,
+   violet = weekly holiday, grey = nothing yet. */
+.chip{display:inline-flex; align-items:center; gap:6px; font-size:11.5px; font-weight:700; border-radius:999px; padding:2px 10px; border:1px solid; margin-top:4px; white-space:nowrap;}
+.chip i{width:7px; height:7px; border-radius:50%; background:currentColor; display:block;}
+.chip.amber{background:#442a08; color:#fcd34d; border-color:#8a5a0a;}
+.chip.green{background:#0f2f1d; color:#86efac; border-color:#1f7a45;}
+.chip.pink{background:#3b1530; color:#f9a8d4; border-color:#8a2a67;}
+.chip.blue{background:#10283f; color:#93c5fd; border-color:#2c5f95;}
+.chip.yellow{background:#2f2a07; color:#fde047; border-color:#8a7a0a;}
+.chip.red{background:#3a1420; color:#fda4af; border-color:#8a3342;}
+.chip.violet{background:#231c45; color:#c4b5fd; border-color:#4b3fa0;}
+.chip.grey{background:var(--raised); color:#c7d2e0; border-color:#3a4c66;}
+.callout{display:flex; gap:12px; align-items:center; justify-content:space-between; padding:12px 14px; margin-bottom:12px; border-radius:14px; border:1px solid; font-size:14px; line-height:1.45;}
+.callout b{color:#fff;}
+.callout-actions{display:flex; gap:8px; flex:0 0 auto; flex-wrap:wrap;}
+.callout.amber{background:#2b1d08; border-color:#8a5a0a; color:#f4e2b4;}
+.callout.green{background:#0e2418; border-color:#1f7a45; color:#c8f0d6;}
+.callout.pink{background:#2d1224; border-color:#8a2a67; color:#f7d0e6;}
+.callout.blue{background:#0c2036; border-color:#2c5f95; color:#cfe3fb;}
+.callout.red{background:#2a1119; border-color:#8a3342; color:#f9d0d7;}
+.callout.violet{background:#1b1638; border-color:#4b3fa0; color:#ddd6fe;}
+.callout.grey, .callout.yellow{background:var(--card); border-color:#3a4c66; color:#d6deea;}
+
+/* ============ Daily records ============
+   Wide: the day's people on the left, the selected person's sessions on the right. Phone: one pane
+   at a time (.show-detail swaps them). Each session reads left to right: in photo, hours paid, out
+   photo, with the time written under each photo — never on it. Every empty photo slot says why. */
+.rec-layout{display:grid; grid-template-columns:minmax(300px,400px) minmax(0,1fr); gap:24px; align-items:start;}
+.rec-list-pane{padding-right:20px; border-right:1px solid var(--border); min-height:60vh;}
+.rec-title{font-size:28px; letter-spacing:-.01em; margin:0 0 12px;}
+.rec-datebar{position:relative; display:grid; grid-template-columns:48px 1fr 48px; gap:8px; align-items:center;}
+.rec-step{min-height:48px; border-radius:12px; border:1px solid var(--border); background:var(--card); color:var(--ink); font-size:22px; cursor:pointer;}
+.rec-step:disabled{opacity:.35; cursor:default;}
+.rec-date{min-height:48px; background:none; border:0; color:var(--ink); font:inherit; text-align:center; cursor:pointer;}
+.rec-date span{display:block;}
+#recDateLabel{font-weight:800; font-size:17px;}
+#recDateSub{font-size:12px; color:var(--muted);}
+/* Beats the global input[type=date] rule (width:100%, min-height:48px) — otherwise this invisible
+   input stretches the page wider than a phone. */
+input.rec-date-input[type=date]{position:absolute; left:50%; top:100%; width:1px; min-height:0; height:1px; padding:0; border:0; opacity:0; pointer-events:none;}
+.rec-summary{font-size:13px; color:var(--muted); margin:12px 0 4px;}
+.rec-summary b{color:var(--ink);} .rec-summary b.warn{color:#fcd34d;}
+.rec-section{font-size:12px; font-weight:800; letter-spacing:.08em; color:var(--muted); margin:14px 0 6px;}
+.rec-people{display:flex; flex-direction:column; gap:2px;}
+.rec-person{display:flex; align-items:center; gap:12px; width:100%; min-height:68px; padding:10px 12px; border:1px solid transparent; border-radius:14px; background:none; color:var(--ink); font:inherit; text-align:left; cursor:pointer;}
+.rec-person:hover{background:rgba(255,255,255,.03);}
+.rec-person.selected{background:var(--raised); border-color:#3a4c66;}
+.rec-avatar{width:42px; height:42px; border-radius:12px; object-fit:cover; background:#293b53; flex:0 0 auto;}
+.rec-avatar.big{width:52px; height:52px;}
+.rec-who{flex:1; min-width:0;}
+.rec-name{font-weight:700; font-size:15.5px; line-height:1.2; overflow-wrap:anywhere;}
+.rec-paid{font-family:'Bebas Neue',sans-serif; font-size:26px; letter-spacing:.02em; line-height:1; font-variant-numeric:tabular-nums;}
+.rec-paid.none{color:var(--muted);}
+.rec-empty{color:var(--muted); padding:12px;}
+.rec-detail-head{display:flex; align-items:center; gap:14px; margin-bottom:12px;}
+.rec-detail-who{flex:1; min-width:0;}
+.rec-detail-date{font-size:12.5px; color:var(--muted);}
+.rec-detail-who h2{font-size:26px; letter-spacing:-.01em; margin:0;}
+.rec-back{display:none;}
+.rec-detail-pane .btn.small, .callout .btn.small{min-height:44px;}
+.rec-strip{display:flex; background:var(--card); border:1px solid var(--border); border-radius:16px; margin-bottom:12px;}
+.rec-strip > div{flex:1; padding:12px 18px; border-left:1px solid var(--border);}
+.rec-strip > div:first-child{border-left:0;}
+.rec-strip b{display:block; font-family:'Bebas Neue',sans-serif; font-weight:400; font-size:34px; letter-spacing:.02em; line-height:1; font-variant-numeric:tabular-nums;}
+.rec-strip b.paid{color:#86efac;}
+.rec-strip span{font-size:11px; font-weight:800; letter-spacing:.08em; color:var(--muted);}
+.rec-stack{display:flex; flex-direction:column; gap:10px;}
+.rec-sess{background:var(--card); border:1px solid var(--border); border-radius:16px; padding:14px 18px 16px;}
+.rec-sess.edited{border-color:#3b6aa3;}
+.rec-sess-head{display:flex; align-items:center; justify-content:space-between; gap:10px; margin-bottom:12px; flex-wrap:wrap;}
+.rec-sess-title{font-size:12px; font-weight:800; letter-spacing:.08em; color:var(--muted);}
+.rec-sess-actions{display:flex; gap:8px; align-items:center; flex-wrap:wrap;}
+.rec-sess-actions .chip{margin-top:0;}
+.btn.small.icon{min-width:44px; padding:0;}
+.rec-flow{display:grid; grid-template-columns:128px minmax(0,1fr) 128px; gap:14px; align-items:start;}
+.rec-ph{width:128px; height:96px; border-radius:12px; position:relative; overflow:hidden; display:grid; place-items:center; text-align:center; font-size:12px; font-weight:700; line-height:1.25; padding:6px;}
+.rec-ph.photo{background:#223046; border:1px solid var(--border);}
+.rec-ph.photo::before{content:""; width:28px; height:28px; border-radius:50%; background:#6f819b; position:absolute; top:18px; left:50%; margin-left:-14px;}
+.rec-ph.photo::after{content:""; width:56px; height:32px; border-radius:28px 28px 0 0; background:#6f819b; position:absolute; bottom:0; left:50%; margin-left:-28px;}
+.rec-ph.photo.loaded::before, .rec-ph.photo.loaded::after{display:none;}
+.rec-ph.photo img{position:absolute; inset:0; width:100%; height:100%; object-fit:cover; cursor:pointer;}
+.rec-ph.empty{border:1.5px dashed;}
+.rec-ph.not-yet, .rec-ph.missing{border-color:#4a5b73; color:var(--muted); background:#101a2a;}
+.rec-ph.auto{border-color:var(--amber); color:#fcd34d; background:#2b1d08;}
+.rec-ph.owner{border-color:var(--blue); color:#93c5fd; background:#10283f;}
+.rec-cap{margin-top:8px;}
+.rec-cap i{display:block; font-style:normal; font-size:10.5px; font-weight:800; letter-spacing:.1em; color:var(--muted);}
+.rec-cap b{display:block; font-size:20px; font-weight:800; font-variant-numeric:tabular-nums; line-height:1.2;}
+.rec-cap u{display:block; text-decoration:none; font-size:12.5px; color:var(--muted); margin-top:2px;}
+.rec-cap b.muted{color:var(--muted);}
+.rec-cap b.flag, .rec-cap u.flag{color:#fcd34d;}
+.rec-cap u.edit{color:#93c5fd;}
+.rec-mid{height:96px; display:flex; flex-direction:column; align-items:center; justify-content:center;}
+.rec-mid b{font-family:'Bebas Neue',sans-serif; font-weight:400; font-size:40px; letter-spacing:.02em; line-height:1; color:#86efac; font-variant-numeric:tabular-nums;}
+.rec-mid b.muted{color:var(--muted);}
+.rec-mid i{font-style:normal; font-size:10.5px; font-weight:800; letter-spacing:.1em; color:var(--muted); text-align:center;}
+.rec-sess.compact .rec-flow{grid-template-columns:minmax(0,1fr) auto minmax(0,1fr); gap:10px; align-items:center;}
+.rec-sess.compact .rec-end{display:flex; align-items:center; gap:10px;}
+.rec-sess.compact .rec-cap{margin-top:0; min-width:0;}
+.rec-sess.compact .rec-ph{width:72px; height:54px; font-size:10px; flex:0 0 auto;}
+.rec-sess.compact .rec-ph.photo::before{width:16px; height:16px; top:9px; margin-left:-8px;}
+.rec-sess.compact .rec-ph.photo::after{width:34px; height:19px; margin-left:-17px;}
+.rec-sess.compact .rec-mid{height:54px;}
+.rec-sess.compact .rec-mid b{font-size:28px;}
+.rec-sess.compact .rec-cap b{font-size:16px;}
+.rec-gap{display:flex; align-items:center; justify-content:space-between; gap:12px; padding:4px 18px; font-size:14px; color:var(--muted);}
+.rec-gap b{color:var(--ink);}
+.rec-gap.paid{padding:8px 18px; background:#0e2418; border:1px solid #1f7a45; border-radius:12px; color:#c8f0d6;}
+.rec-gap.warn{padding:8px 18px; background:#2b1d08; border:1px solid #8a5a0a; border-radius:12px; color:#f4e2b4;}
+.rec-overtime{display:flex; align-items:center; justify-content:space-between; gap:12px; flex-wrap:wrap; margin-top:10px; padding:10px 14px; background:#0e2418; border:1px solid #1f7a45; border-radius:14px; font-size:14px; color:#c8f0d6;}
+.rec-overtime b{color:#fff;}
+.rec-foot{font-size:12.5px; color:var(--muted); line-height:1.5; margin-top:12px;}
+.rec-none{border:1.5px dashed var(--border); border-radius:14px; padding:18px; text-align:center; color:var(--muted);}
+.rec-menu{position:fixed; z-index:200; min-width:200px; background:var(--raised); border:1px solid #3a4c66; border-radius:14px; box-shadow:0 16px 40px rgba(0,0,0,.5); overflow:hidden;}
+.rec-menu-item{display:block; width:100%; min-height:48px; padding:0 16px; background:none; border:0; border-top:1px solid var(--border); color:var(--ink); font:inherit; font-weight:600; text-align:left; cursor:pointer;}
+.rec-menu-item:first-child{border-top:0;}
+.rec-menu-item.danger{color:#fda4af;}
+@media (max-width:899px){
+  .rec-layout{grid-template-columns:1fr; gap:0;}
+  .rec-list-pane{padding-right:0; border-right:0; min-height:0;}
+  .rec-detail-pane{display:none;}
+  .rec-layout.show-detail .rec-list-pane{display:none;}
+  .rec-layout.show-detail .rec-detail-pane{display:block;}
+  .rec-back{display:inline-flex;}
+  .rec-detail-head{flex-wrap:wrap;}
+  .callout{flex-direction:column; align-items:stretch;}
+  .callout-actions .btn{flex:1;}
+  .rec-sess{padding:12px 14px 14px;}
+  .rec-flow{grid-template-columns:96px minmax(0,1fr) 96px; gap:8px;}
+  .rec-ph{width:96px; height:78px; font-size:11px;}
+  .rec-ph.photo::before{width:22px; height:22px; top:14px; margin-left:-11px;}
+  .rec-ph.photo::after{width:46px; height:26px; margin-left:-23px;}
+  .rec-mid{height:78px;} .rec-mid b{font-size:34px;}
+  .rec-cap b{font-size:17px;}
+  .rec-strip > div{padding:10px 8px; text-align:center;}
+  .rec-strip b{font-size:28px;}
+  .rec-strip span{font-size:10px;}
+  .rec-gap{padding:4px 6px;}
+}
 
 /* ============ Payments ============ */
 .payments-banner{display:flex; align-items:center; justify-content:center; gap:10px; padding:13px 20px; background:rgba(96,165,250,.12); border:1px solid #2c4870; border-radius:14px; color:#93c5fd; font-weight:650; font-size:14px; flex:0 0 auto;}
@@ -538,16 +658,4 @@ h3{font-size:16px; margin-bottom:10px;}
 @media (max-width:620px){
   .emp-row{grid-template-columns:40px 1fr; row-gap:10px;}
   .emp-actions{grid-column:1 / -1; justify-content:flex-start;}
-  .rec-row{grid-template-columns:40px 1fr auto; grid-template-areas:"avatar who hours" "punches punches actions"; row-gap:10px;}
-  .rec-row .rec-avatar{grid-area:avatar;}
-  .rec-row .rec-who{grid-area:who;}
-  .rec-row .rec-hours{grid-area:hours;}
-  .rec-row .rec-punches{grid-area:punches; justify-content:flex-start;}
-  .rec-row .rec-actions{grid-area:actions;}
-  .rec-group-header{grid-template-columns:40px 1fr auto;}
-  .rec-group-sessions{padding-left:0;}
-  .rec-session-row{grid-template-columns:1fr auto; grid-template-areas:"punches punches" "hours actions"; row-gap:8px; padding:10px 0;}
-  .rec-session-row .rec-punches{grid-area:punches; justify-content:flex-start;}
-  .rec-session-row .rec-hours{grid-area:hours; align-items:flex-start;}
-  .rec-session-row .rec-actions{grid-area:actions; grid-column:auto;}
 }

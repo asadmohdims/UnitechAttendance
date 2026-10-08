@@ -188,6 +188,7 @@ $('btnAdminEntry').onclick = () => {
   switchTab('employees');
 };
 $('btnReturnKiosk').onclick = () => switchTab('home');
+$('btnKioskTop').onclick = () => switchTab('home'); // phones: the bottom tab bar has no room for it
 document.querySelectorAll('#adminTools [data-tab]').forEach(b => b.onclick = () => {
   const tab = b.dataset.tab;
   if(!DEMO_MODE && !state.adminUnlocked) return requestAdmin(tab);

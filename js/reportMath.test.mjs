@@ -151,6 +151,30 @@ describe('needsReview', () => {
     assert.equal(needsReview([]), false);
     assert.equal(needsReview(undefined), false);
   });
+
+  // The flag asks for a real clock-out; once the owner enters one the day is resolved. Before this,
+  // fixing the time left the photo empty, so the day stayed "Review required" forever.
+  describe('after the owner fixes it', () => {
+    const local = (h, m = 0) => new Date(2026, 9, 7, h, m).toISOString();
+    const midnight = new Date(2026, 9, 8, 0, 0).toISOString();
+    const owner = '2026-10-08T14:00:00.000Z';
+    test('an auto-closed session the owner gave a real clock-out is no longer flagged', () => {
+      const fixed = {clock_in: local(14, 2), clock_out: local(18), out_photo: null, edited_at: owner, orig_clock_in: local(14, 2), orig_clock_out: midnight};
+      assert.equal(needsReview([fixed]), false);
+    });
+    test('an owner edit that left the midnight stamp in place is still flagged', () => {
+      const stillAuto = {clock_in: local(14, 5), clock_out: midnight, out_photo: null, edited_at: owner, orig_clock_in: local(14, 2), orig_clock_out: midnight};
+      assert.equal(needsReview([stillAuto]), true);
+    });
+    test('a day the owner added by hand (no photos at all) is not flagged', () => {
+      const added = {clock_in: local(9), clock_out: local(18), out_photo: null, edited_at: owner, orig_clock_in: null, orig_clock_out: null};
+      assert.equal(needsReview([added]), false);
+    });
+    test('an edited session that is still open is still flagged', () => {
+      const open = {clock_in: local(9), clock_out: null, out_photo: null, edited_at: owner};
+      assert.equal(needsReview([open]), true);
+    });
+  });
 });
 
 describe('dayOffStatus', () => {

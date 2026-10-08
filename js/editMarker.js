@@ -5,6 +5,16 @@
 //   orig_clock_out  likewise (null if the session was still open)
 // A record the owner created from scratch has edited_at but no orig_* — "added by owner".
 // Nothing here guesses at history: rows edited before this existed have no marker and show none.
+import { isAutoClosedSession } from './autoClosed.js';
+
+// True once the owner has looked at a session and given it a real clock-out. Such a session has no
+// out_photo (nobody was at the camera) but is no longer waiting on anyone — without this, entering
+// the real time left the day flagged "No clock-out photo" forever. Still false for an owner edit
+// that left the kiosk's own midnight auto-close stamp in place: that session is still being paid
+// to closing time (autoClosed.js), so it still needs its real clock-out.
+export function isOwnerResolved(session){
+  return !!(session && session.clock_out && session.edited_at && !isAutoClosedSession(session));
+}
 
 // The fields to merge into an update. A second edit moves edited_at but never overwrites orig_*,
 // so the kiosk's own times are always what the first edit found.

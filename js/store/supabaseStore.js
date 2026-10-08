@@ -34,7 +34,10 @@ function toRecordShape(rec){
   return {id:rec.clientId, emp_id:rec.emp_id, date:rec.date, clock_in:rec.clock_in,
     clock_out:rec.clock_out, in_photo:rec.in_photo, out_photo:rec.out_photo,
     lunch_paid:rec.lunch_paid || false, created_at:rec.created_at,
-    edited_at:rec.edited_at || null, orig_clock_in:rec.orig_clock_in || null, orig_clock_out:rec.orig_clock_out || null};
+    edited_at:rec.edited_at || null, orig_clock_in:rec.orig_clock_in || null, orig_clock_out:rec.orig_clock_out || null,
+    // UI-only (never a column): the server may be behind this row, and whether a photo is still on the
+    // tablet — Daily records shows "Syncing" and "Uploading…" from it (js/dayStatus.js).
+    _sync:{pending:needsSync(rec), inPhoto:!!rec.in_photo_blob, outPhoto:!!rec.clock_out && !!rec.out_photo_blob}};
 }
 
 // An outbox row this tablet owns and can edit locally: a punch it created that's still open

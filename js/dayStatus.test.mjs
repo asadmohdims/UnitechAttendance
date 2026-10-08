@@ -137,10 +137,38 @@ describe('plain days', () => {
   });
 });
 
+describe('a punch not uploaded yet', () => {
+  test('Syncing, and the photo slot says it is uploading', () => {
+    const m = model([rec(9, 10, 18, 5, {_sync: {pending: true, inPhoto: false, outPhoto: true}}), ]);
+    assert.equal(m.chip.id, 'syncing');
+    assert.deepEqual(m.callout.actions, []);
+    assert.equal(m.sessions[0].slots.out, 'uploading');
+    assert.equal(m.needsLook, false);
+  });
+  test('a real problem outranks Syncing', () => {
+    const m = model([rec(9, 1, 9, 4, {_sync: {pending: true}}), rec(9, 6, 13, 0)]);
+    assert.equal(m.chip.id, 'check-punches');
+  });
+  test('a synced open session is not Syncing', () => {
+    const m = dayModel({sessions: [{...rec(9, 12, null), date: TODAY, clock_in: new Date(2026, 9, 8, 9, 12).toISOString(), _sync: {pending: false}}], date: TODAY, today: TODAY, now: new Date(2026, 9, 8, 11, 30)});
+    assert.equal(m.chip.id, 'still-in');
+  });
+});
+
 describe('days with no punches', () => {
   const weekday = d => new Date(d + 'T12:00:00').getDay();
-  test('today: Not in yet', () => {
-    assert.equal(emptyDayModel({date: TODAY, today: TODAY, weekday: weekday(TODAY)}).chip.id, 'not-in-yet');
+  const morning = new Date(2026, 9, 8, 9, 40), evening = new Date(2026, 9, 8, 22, 40);
+  test('today before the shop closes: Not in yet', () => {
+    assert.equal(emptyDayModel({date: TODAY, today: TODAY, weekday: weekday(TODAY), now: morning}).chip.id, 'not-in-yet');
+  });
+  test('today after the shop closes: Absent, like the Report says', () => {
+    const m = emptyDayModel({date: TODAY, today: TODAY, weekday: weekday(TODAY), now: evening});
+    assert.equal(m.chip.id, 'absent');
+    assert.equal(m.needsLook, true);
+  });
+  test('a weekly holiday that is today is a holiday, not Not in yet', () => {
+    // 2026-10-09 is a Friday
+    assert.equal(emptyDayModel({date: '2026-10-09', today: '2026-10-09', weekday: 5, now: new Date(2026, 9, 9, 9, 40)}).chip.id, 'holiday');
   });
   test('a past working day: Absent, with Add missed punch as the primary action', () => {
     const m = emptyDayModel({date: '2026-10-07', today: TODAY, weekday: weekday('2026-10-07')});

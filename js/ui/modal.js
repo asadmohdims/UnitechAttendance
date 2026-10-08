@@ -5,10 +5,18 @@ import { $ } from '../utils.js';
 
 const modal = $('promptModal');
 const titleEl = $('promptTitle');
+const noteEl = $('promptNote');
 const fieldsEl = $('promptFields');
 const errEl = $('promptErr');
 const submitBtn = $('promptSubmit');
 const cancelBtn = $('promptCancel');
+
+function setNote(note){
+  noteEl.replaceChildren();
+  const lines = note ? [].concat(note) : [];
+  lines.forEach(l => { const p = document.createElement('div'); p.textContent = l; noteEl.append(p); });
+  noteEl.style.display = lines.length ? '' : 'none';
+}
 
 // fields: [{name, label, type ('text'|'number'|'date'|'time'|'select'), value, placeholder, min,
 // required, options}]. A field is required unless explicitly marked `required: false` (e.g. an
@@ -16,12 +24,14 @@ const cancelBtn = $('promptCancel');
 // `options: [{value, label}]` — for a short, fixed list (an employee picker) rather than free
 // text. Pass an empty `fields` array to use this as a styled confirm() instead of a prompt().
 // `danger: true` styles Save as the red/destructive button, for confirms like "Delete this?".
+// `note` (a string or an array of lines) is shown under the title, to say what is being changed.
 // `validate(values)` may return an error string to refuse Save and keep the dialog open.
 // Resolves with {name: value, ...} on Save (an empty object for a zero-field confirm), or
 // null on Cancel/Escape.
-export function promptModal({title, fields, submitLabel = 'Save', danger = false, validate = null}){
+export function promptModal({title, fields, submitLabel = 'Save', danger = false, validate = null, note = null}){
   return new Promise(resolve => {
     titleEl.textContent = title;
+    setNote(note);
     errEl.textContent = '';
     submitBtn.textContent = submitLabel;
     submitBtn.classList.toggle('red', danger);
@@ -88,6 +98,7 @@ export function promptModal({title, fields, submitLabel = 'Save', danger = false
 export function infoModal({title, render}){
   return new Promise(resolve => {
     titleEl.textContent = title;
+    setNote(null);
     errEl.textContent = '';
     fieldsEl.innerHTML = '';
     render(fieldsEl);

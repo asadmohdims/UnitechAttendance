@@ -696,7 +696,7 @@ function phoneDayCard(md, e, d){
   const since = e.created_at ? dateStr(new Date(e.created_at)) : undefined;
   const model = info.sessions
     ? dayModel({sessions: info.sessions, date, today, now: new Date(), overtimeHours: overtimeHours[e.id][d]})
-    : emptyDayModel({date, today, weekday: new Date(`${date}T12:00:00`).getDay(), employeeSince: since});
+    : emptyDayModel({date, today, weekday: new Date(`${date}T12:00:00`).getDay(), employeeSince: since, now: new Date()});
   const card = el('div', 'rp-day-card');
   if(!model){ return card; }
   card.append(el('div', 'rp-day-head', el('h3', null, new Date(`${date}T12:00:00`).toLocaleDateString('en-IN', {weekday:'short', day:'numeric', month:'short'})),
@@ -713,7 +713,7 @@ function phoneDayCard(md, e, d){
   if(overtimeHours[e.id][d]) card.append(el('div', 'rp-sess', el('span', null, 'Overtime'), el('span', 'rp-sess-paid', `${fmtHours(overtimeHours[e.id][d])} paid`)));
   const actions = el('div', 'rp-day-actions');
   if(model.kind === 'worked'){
-    actions.append(phoneBtn('btn small green', 'Open in Daily records', () => { showPersonDay(date, e.id); switchTab('records'); }));
+    actions.append(phoneBtn('btn small green', 'Open in Daily records', () => { showPersonDay(date, e.id, () => switchTab('report')); switchTab('records'); }));
   }else if(model.chip && model.chip.id === 'absent'){
     actions.append(phoneBtn('btn small green', 'Add missed punch', () => addMissedPunch(e, date, renderReport)));
   }else if(model.chip && model.chip.id === 'holiday'){

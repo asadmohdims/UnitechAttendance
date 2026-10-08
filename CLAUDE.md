@@ -355,9 +355,19 @@ only draws them. Three rules keep every day readable:
   "Check punches", not "Needs clock-out", because entering a clock-out time is not the real fix there.
 - Everyone on the roster gets a row, including days with no punches (Absent / Not in yet / Holiday), except
   days before the person was added or in the future. Today's morning is not called a half day.
-- Not built (designed, deferred): a "Syncing" chip for a punch not yet uploaded (the global sync indicator
-  covers it), "Don't pay this holiday" from this screen (it lives in the Report), and delete-with-undo
-  (delete still asks to confirm).
+- **Syncing**: a punch this tablet has not finished uploading (`supabaseStore.js` marks such rows `_sync`,
+  never a column) gets a "Syncing" chip, an amber "Saved on the tablet" callout and an "Uploading…" photo
+  slot. It only appears on the tablet that holds the unsynced punch, and never in demo mode (no outbox).
+- Today with no punches is "Not in yet" only until `SHOP_CLOSING_*`; after that it reads Absent, like the
+  Report's cell for today. A weekly holiday that is today is a holiday.
+- The Edit dialog says what is being changed: the day, what the kiosk recorded, whether it was closed
+  automatically, and any earlier edit (`editNote()` in records.js; `promptModal`'s `note`).
+- Arriving from the Report's phone view, Back returns there (`showPersonDay(date, empId, onBack)`); the
+  return is cleared on any other navigation.
+- Not built, deliberately: delete-with-undo. Delete keeps its confirm dialog. An undo would have to put the
+  row back through the outbox and the server, and the record's photos are removed from Storage when it is
+  deleted, so a restore would come back without them; the confirm already guards the mistake. Also not
+  built: "Don't pay this holiday" from this screen (it lives in the Report).
 
 ## Kiosk tile states
 
@@ -582,6 +592,14 @@ Bebas Neue (one "signage" identity); no logo mark anywhere. Panel is two flex gr
 distribute. **The roster line lives inside `.kiosk-identity`, not as a sibling of
 `.kiosk-top`/`.kiosk-footer`** — this broke the row's mobile `space-between` layout once already
 when tried as a sibling; keep it nested if this area gets touched again.
+
+**Kiosk on a phone** (<= 760px, `css/styles.css`): a short header (name and roster left, time and date
+right, the mode button under them, 136px instead of the old 178px), "Admin access" and the version in a
+small bar pinned to the bottom (a 44px tap target, no longer sitting on the header's border), and tiles two
+across so eight people fit in about one screen. Tablet portrait (761px and up) keeps the bar above and
+larger tiles; it still has the old absolutely-positioned admin link and version, which overlap the bar's
+bottom border. Measured at 390px and 360px with 8 employees: first and last tile reachable, nothing under
+the bottom bar, no horizontal scroll, and the tablet-landscape layout unchanged.
 
 **Motion**: every tappable control gives real press feedback and springs back to rest via a
 `--lift` custom property that composes with state classes (`.badge-tile.in`/`.lunch`/`.missed`)

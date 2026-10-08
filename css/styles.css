@@ -107,6 +107,32 @@ body.kiosk-active{overflow:hidden;}
   .kiosk-admin-link{position:absolute; bottom:-6px; left:18px; padding:4px 0;}
   .app-version{position:absolute; bottom:-6px; right:18px; margin-top:0;}
 }
+/* Kiosk on a phone (<= 760px). The old compact bar crammed six things into ~178px (a fifth of the
+   screen): the date wrapped to three lines, the mode button touched the clock, and "Admin access" and
+   the version sat on the bar's bottom border. Now: a short header (name + roster on the left, the time
+   and date on the right, the mode button underneath), the admin link and version in a small bar pinned
+   to the bottom, and the tiles two across so eight people fit in about a screen and a half instead of
+   three. Tablet portrait (761px+) keeps the bar above and its larger tiles. */
+@media (max-width:760px){
+  .kiosk-side{display:grid; grid-template-columns:minmax(0,1fr) auto; grid-template-areas:"id hero" "mode mode"; gap:8px 12px; align-items:center; padding:12px 16px 10px;}
+  .kiosk-identity{grid-area:id;}
+  .kiosk-hero{grid-area:hero;}
+  .kiosk-greet{display:none;}
+  .kiosk-roster{line-height:1.3;}
+  .kiosk-date{white-space:nowrap; font-size:12.5px;}
+  .kiosk-mode-btn{grid-area:mode; min-height:44px; padding:8px 16px; font-size:15px;}
+  .kiosk-footer{position:fixed; left:0; right:0; bottom:0; z-index:5; display:flex; flex-direction:row; align-items:center; justify-content:space-between; gap:12px; padding:2px 16px calc(2px + env(safe-area-inset-bottom)); background:#0a1424; border-top:1px solid var(--border);}
+  .kiosk-admin-link{position:static; min-height:44px; padding:0 4px;}
+  .app-version{position:static; margin:0;}
+  .sync-status{margin:0;}
+  .kiosk-main{padding:16px 14px 76px; gap:16px;}
+  .kiosk-badges{grid-template-columns:repeat(2,minmax(0,1fr)); gap:12px;}
+  .badge-tile{padding:16px 8px 12px;}
+  .badge-tile .avatar{width:56px; height:56px; margin-bottom:10px;}
+  .badge-tile .name{font-size:15px; margin-bottom:5px; overflow-wrap:anywhere;}
+  .badge-tile .status{font-size:12.5px;}
+  .payments-banner{padding:10px 14px; font-size:13px;}
+}
 /* Same fade-in idiom as .modal-overlay (opacity/visibility/pointer-events, not a display:none/
    flex hard cut) — this is the single most-repeated screen in the app (every punch, every
    employee), so it shouldn't be the one overlay that pops in with zero transition while every
@@ -179,6 +205,8 @@ body.kiosk-active{overflow:hidden;}
 .auth-card h2{font-size:20px; letter-spacing:-.02em; margin-bottom:14px;}
 .auth-card input{margin-bottom:10px;}
 .auth-card .modal-err{color:var(--red);}
+.modal-note{margin:-6px 0 14px; font-size:13px; line-height:1.45; color:var(--muted);}
+.modal-note div:first-child{color:var(--ink); font-weight:650;}
 .modal-field-label{display:block; color:var(--muted); font-size:13px; font-weight:650; margin:0 0 6px;}
 .modal-field-label ~ .modal-field-label{margin-top:14px;}
 /* infoModal()'s content for "which exact dates" (js/ui/report.js's showAbsenceDetail) — scrolls
@@ -524,6 +552,7 @@ input.rec-date-input[type=date]{position:absolute; left:50%; top:100%; width:1px
 .rec-ph.not-yet, .rec-ph.missing{border-color:#4a5b73; color:var(--muted); background:#101a2a;}
 .rec-ph.auto{border-color:var(--amber); color:#fcd34d; background:#2b1d08;}
 .rec-ph.owner{border-color:var(--blue); color:#93c5fd; background:#10283f;}
+.rec-ph.uploading{border-color:var(--amber); color:#fcd34d; background:#2b1d08;}
 .rec-cap{margin-top:8px;}
 .rec-cap i{display:block; font-style:normal; font-size:10.5px; font-weight:800; letter-spacing:.1em; color:var(--muted);}
 .rec-cap b{display:block; font-size:20px; font-weight:800; font-variant-numeric:tabular-nums; line-height:1.2;}
@@ -749,6 +778,15 @@ input.rec-date-input[type=date]{position:absolute; left:50%; top:100%; width:1px
 .resolve-row-text strong{display:block; font-size:13.5px;}
 .resolve-row-text span{display:block; color:#93c5fd; font-size:12px; margin-top:2px;}
 .resolve-toggle{min-height:38px; padding:7px 16px; border-radius:20px; border:1px solid var(--border); background:var(--card); color:var(--muted); font-weight:700; font-size:12.5px; flex:0 0 auto; cursor:pointer;}
+
+/* The Report's review banner on a phone: one line and a button, not a paragraph naming everyone
+   (the people list below carries a Review chip on each of them). */
+@media (max-width:899px){
+  #reviewAlert{align-items:center; flex-direction:row; padding:10px 14px; margin-bottom:12px;}
+  #reviewAlert span{display:none;}
+  #reviewAlert strong{font-size:14px;}
+  #reviewAlert .btn{width:auto; min-height:44px; flex:0 0 auto;}
+}
 
 /* Payments on a phone. The employee row kept a 160px minimum for the name, so the amount and its
    status chip were pushed past the card's edge and clipped ("₹5,000" cut off). The name column now

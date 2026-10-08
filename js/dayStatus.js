@@ -19,8 +19,8 @@ const MIN = 60000;
 
 // Lower number wins the list row's single chip.
 export const CHIP_RANK = {
-  'needs-clock-out': 1, 'check-punches': 2, 'still-in': 3, 'no-lunch': 4, 'edited': 5, 'added': 5, 'half-day': 6,
-  'absent': 7, 'holiday': 8, 'not-in-yet': 8
+  'needs-clock-out': 1, 'check-punches': 2, 'syncing': 3, 'still-in': 4, 'no-lunch': 5, 'edited': 6, 'added': 6, 'half-day': 7,
+  'absent': 8, 'holiday': 9, 'not-in-yet': 9
 };
 
 function closingTime(session){
@@ -54,14 +54,17 @@ export function sessionProblems(sessions){
   return problems;
 }
 
-// Why a photo slot is empty, or that it isn't. in: photo | owner | missing.
-// out: photo | not-yet | auto | owner | missing. Each type renders in its own style.
+// Why a photo slot is empty, or that it isn't. in: photo | uploading | owner | missing.
+// out: photo | uploading | not-yet | auto | owner | missing. Each type renders in its own style.
 export function slotTypes(s){
   const added = !!s.edited_at && !s.orig_clock_in && !s.orig_clock_out;
-  const inType = s.in_photo ? 'photo' : (added || s.edited_at ? 'owner' : 'missing');
+  // `_sync` is set by the store for a punch this tablet has not finished uploading (supabaseStore.js):
+  // the photo exists, on the tablet, and is on its way.
+  const inType = s._sync?.inPhoto ? 'uploading' : s.in_photo ? 'photo' : (added || s.edited_at ? 'owner' : 'missing');
   let outType;
   if(!s.clock_out) outType = 'not-yet';
   else if(isAutoClosedSession(s)) outType = 'auto';
+  else if(s._sync?.outPhoto) outType = 'uploading';
   else if(s.out_photo) outType = 'photo';
   else outType = s.edited_at ? 'owner' : 'missing';
   return {in: inType, out: outType};
@@ -134,6 +137,9 @@ export function dayModel({sessions, date, today, now = new Date(), overtimeHours
     else if(p.kind === 'short'){ actions.push({id: 'delete-session', label: 'Delete session…', index: p.index}); actions.push({id: 'edit-session', label: 'Edit', index: p.index}); }
     else actions.push({id: 'edit-session', label: p.kind === 'overlap' ? `Edit session ${p.index + 1}` : 'Edit session', primary: true, index: p.index});
     callout = {id: 'check-punches', tone: 'amber', params: {problems, paid: paidTotal}, actions};
+  }else if(sessions.some(r => r._sync?.pending)){
+    chip = {id: 'syncing', tone: 'amber', text: 'Syncing'};
+    callout = {id: 'syncing', tone: 'amber', params: {}, actions: []};
   }else if(!last.clock_out){
     chip = {id: 'still-in', tone: 'green', text: 'Still in'};
     callout = {id: 'still-in', tone: 'green', params: {since: last.clock_in}, actions: []};
@@ -159,18 +165,23 @@ export function dayModel({sessions, date, today, now = new Date(), overtimeHours
 }
 
 // The model for a person with NO sessions on `date`. Returns null when there is nothing worth a row
-// (a day that has not happened yet, or one before the person was added).
-export function emptyDayModel({date, today, weekday, employeeSince}){
-  if(date === today){
-    return {kind: 'empty', chip: {id: 'not-in-yet', tone: 'grey', text: 'Not in yet'},
-      callout: {id: 'not-in-yet', tone: 'grey', params: {}, actions: [{id: 'add-punch', label: 'Add missed punch'}]},
-      sessions: [], paidTotal: null, lunch: null, needsLook: false};
-  }
+// (a day that has not happened yet, or one before the person was added). Today counts as "not in
+// yet" only until the shop closes; after that nobody is going to arrive, so it reads as Absent, the
+// same as the Report's cell for today. A weekly holiday is a holiday today too.
+export function emptyDayModel({date, today, weekday, employeeSince, now = new Date()}){
   const status = dayOffStatus({date, weekday, employeeSince, today});
   if(status === 'holiday'){
     return {kind: 'empty', chip: {id: 'holiday', tone: 'violet', text: 'Holiday'},
       callout: {id: 'holiday', tone: 'violet', params: {}, actions: []},
       sessions: [], paidTotal: null, lunch: null, needsLook: false};
+  }
+  if(date === today){
+    const closing = new Date(now); closing.setHours(SHOP_CLOSING_HOUR, SHOP_CLOSING_MINUTE, 0, 0);
+    if(now < closing){
+      return {kind: 'empty', chip: {id: 'not-in-yet', tone: 'grey', text: 'Not in yet'},
+        callout: {id: 'not-in-yet', tone: 'grey', params: {}, actions: [{id: 'add-punch', label: 'Add missed punch'}]},
+        sessions: [], paidTotal: null, lunch: null, needsLook: false};
+    }
   }
   if(status === 'off'){
     return {kind: 'empty', chip: {id: 'absent', tone: 'red', text: 'Absent'},

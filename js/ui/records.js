@@ -17,13 +17,18 @@ recDate.onchange = () => renderRecords();
 export function setRecordsDate(date){ recDate.value = date; }
 // Opens Daily records on one person's day (the Report's phone view hands off here instead of
 // duplicating the editing screens). The caller switches the tab, which renders.
-export function showPersonDay(date, empId){ recDate.value = date; selectedEmpId = empId; showDetail = true; }
+// `onBack` (optional) makes the phone's Back button return to wherever the owner came from, instead of
+// to this tab's list.
+export function showPersonDay(date, empId, onBack = null){ recDate.value = date; selectedEmpId = empId; showDetail = true; returnTo = onBack; }
+// Called when another tab is opened, so a stale "back to the Report" never outlives that trip.
+export function clearRecordsReturn(){ returnTo = null; }
 
 // ---------- layout state ----------
 // On wide screens the list and the selected person's detail sit side by side. On a phone only one
 // shows at a time: the list, then (after a tap) the person, with a back button.
 let selectedEmpId = null;
 let showDetail = false;
+let returnTo = null;
 const layout = $('recLayout');
 function syncLayout(){ layout.classList.toggle('show-detail', showDetail); }
 
@@ -31,7 +36,7 @@ function shiftDay(n){
   const d = new Date(recDate.value + 'T12:00:00');
   d.setDate(d.getDate() + n);
   recDate.value = dateStr(d);
-  showDetail = false;
+  showDetail = false; returnTo = null;
   renderRecords();
 }
 $('recPrev').onclick = () => shiftDay(-1);
@@ -189,7 +194,7 @@ function personRow(entry){
   if(model.chip) who.append(h('span', `chip ${model.chip.tone}`, h('i'), model.chip.text));
   const paid = h('div', 'rec-paid' + (model.paidTotal === null ? ' none' : ''), model.paidTotal === null ? '—' : fmtHours(model.paidTotal));
   const row = button('rec-person' + (emp.id === selectedEmpId ? ' selected' : ''), [avatar, who, paid], () => {
-    selectedEmpId = emp.id; showDetail = true;
+    selectedEmpId = emp.id; showDetail = true; returnTo = null;
     renderRecordsFromCache();
   });
   row.dataset.empId = emp.id;
@@ -240,6 +245,7 @@ function slot(type, view, side){
     'not-yet': 'Not yet',
     'auto': `Closed automatically ${fmtTime(r.clock_out)}`,
     'owner': 'Entered by you',
+    'uploading': 'Uploading…',
     'missing': 'No photo'
   }[type];
   return h('div', `rec-ph empty ${type}`, text);
@@ -323,6 +329,7 @@ export function calloutText(model, emp, date){
   const name = emp.name;
   const sess = i => model.sessions[i].record;
   switch(c.id){
+    case 'syncing': return ['Saved on the tablet.', 'It uploads when Wi-Fi returns. Nothing to do.'];
     case 'still-in': return [`In since ${fmtTime(c.params.since)}.`, `Hours count once ${name} clocks out.`];
     case 'needs-clock-out': return ['No clock-out tap.', `The system closed it at ${fmtTime(c.params.closedAt)}. Pay counts to ${fmtTime(c.params.countedTo)} (${fmtHours(c.params.paid)}) until you enter the real time.`];
     case 'open-past': return ['Never clocked out.', `This session is still open from ${fmtDay(date, {weekday:'short', day:'numeric', month:'short'})}. Enter the real clock-out time.`];
@@ -363,7 +370,11 @@ function renderDetail(entry, date){
 
   const avatar = h('img', 'rec-avatar big'); avatar.alt = ''; applyAvatar(avatar, emp);
   const head = h('div', 'rec-detail-head',
-    button('btn small ghost rec-back', '‹ Back', () => { showDetail = false; syncLayout(); }, {'aria-label': 'Back to the day'}),
+    button('btn small ghost rec-back', returnTo ? '‹ Report' : '‹ Back', () => {
+      showDetail = false;
+      const back = returnTo; returnTo = null;
+      if(back) back(); else syncLayout();
+    }, {'aria-label': returnTo ? 'Back to the Report' : 'Back to the day'}),
     avatar,
     h('div', 'rec-detail-who', h('div', 'rec-detail-date', fmtDay(date, {weekday:'short', day:'numeric', month:'short', year:'numeric'})), h('h2', null, emp.name)),
     model.kind === 'worked' && !overtimeHours
@@ -471,7 +482,7 @@ export async function renderRecords(){
     const since = emp.created_at ? dateStr(new Date(emp.created_at)) : undefined;
     const model = sessions
       ? dayModel({sessions, date, today, now, overtimeHours})
-      : emptyDayModel({date, today, weekday, employeeSince: since});
+      : emptyDayModel({date, today, weekday, employeeSince: since, now});
     if(model) entries.push({emp, model, overtimeHours});
   });
   // Needs-a-look first (and the rest in roster order), so what matters is at the top.
@@ -480,9 +491,25 @@ export async function renderRecords(){
   renderRecordsFromCache();
 }
 
+// What the owner is about to change, in plain words: which day, what the kiosk recorded, and whether
+// it has been edited before. Shown at the top of the Edit dialog, which used to say only a name.
+function editNote(r){
+  const day = fmtDay(r.date, {weekday:'short', day:'numeric', month:'short', year:'numeric'});
+  const when = (inIso, outIso) => `${fmtTime(inIso)} to ${outIso ? fmtTime(outIso) : 'still in'}`;
+  if(r.edited_at){
+    const kiosk = r.orig_clock_in || r.orig_clock_out
+      ? `The kiosk recorded ${when(r.orig_clock_in || r.clock_in, r.orig_clock_out)}. Last edited ${fmtDateTime(r.edited_at)}.`
+      : `You added this record on ${fmtDateTime(r.edited_at)}.`;
+    return [day, kiosk];
+  }
+  const closed = isAutoClosedSession(r) ? ' The kiosk closed it automatically, so enter the real clock-out.' : '';
+  return [day, `The kiosk recorded ${when(r.clock_in, r.clock_out)}.${closed}`];
+}
+
 export async function editRecord(r, emp, afterSave = renderRecords){
   const result = await promptModal({
     title: `Edit — ${emp ? emp.name : 'record'}`,
+    note: editNote(r),
     fields: [
       {name:'clockIn', label:'Clock in', type:'time', value: new Date(r.clock_in).toTimeString().slice(0,5)},
       {name:'clockOut', label:'Clock out (leave empty if still in)', type:'time', value: r.clock_out ? new Date(r.clock_out).toTimeString().slice(0,5) : '', required:false}
@@ -510,6 +537,7 @@ export async function editRecord(r, emp, afterSave = renderRecords){
 export async function addMissedPunch(emp, date, afterSave = renderRecords){
   const result = await promptModal({
     title: `Add a missed punch — ${emp.name}`,
+    note: [fmtDay(date, {weekday:'short', day:'numeric', month:'short', year:'numeric'}), 'This adds punches that were never recorded, so there will be no photos.'],
     submitLabel: 'Add',
     fields: [
       {name:'clockIn', label:'Clock in', type:'time'},

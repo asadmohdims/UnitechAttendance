@@ -16,9 +16,10 @@ const cancelBtn = $('promptCancel');
 // `options: [{value, label}]` — for a short, fixed list (an employee picker) rather than free
 // text. Pass an empty `fields` array to use this as a styled confirm() instead of a prompt().
 // `danger: true` styles Save as the red/destructive button, for confirms like "Delete this?".
+// `validate(values)` may return an error string to refuse Save and keep the dialog open.
 // Resolves with {name: value, ...} on Save (an empty object for a zero-field confirm), or
 // null on Cancel/Escape.
-export function promptModal({title, fields, submitLabel = 'Save', danger = false}){
+export function promptModal({title, fields, submitLabel = 'Save', danger = false, validate = null}){
   return new Promise(resolve => {
     titleEl.textContent = title;
     errEl.textContent = '';
@@ -63,6 +64,10 @@ export function promptModal({title, fields, submitLabel = 'Save', danger = false
         if(!v && required){ errEl.textContent = 'Please fill in all fields.'; input.focus(); return; }
         values[name] = v;
       }
+      // Optional check on the whole form, e.g. clock-out before clock-in: shown inline and the
+      // dialog stays open, so the owner corrects the field instead of losing what they typed.
+      const problem = validate && validate(values);
+      if(problem){ errEl.textContent = problem; return; }
       close(values);
     };
     cancelBtn.onclick = () => close(null);

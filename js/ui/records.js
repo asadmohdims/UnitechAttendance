@@ -4,6 +4,7 @@ import { store } from '../store/index.js';
 import { applyAvatar } from '../avatars.js';
 import { refreshAll, tileStatus } from './kiosk.js';
 import { promptModal } from './modal.js';
+import { buildEntryTimes } from '../timeEntry.js';
 import { recHoursRounded, paidPunchTime } from '../rounding.js';
 import { countedClockOut } from '../autoClosed.js';
 import { dayHoursFromSessions, lunchGapIndex } from '../reportMath.js';
@@ -385,24 +386,18 @@ export async function editRecord(r, emp, afterSave = renderRecords){
     fields: [
       {name:'clockIn', label:'Clock in', type:'time', value: new Date(r.clock_in).toTimeString().slice(0,5)},
       {name:'clockOut', label:'Clock out (leave empty if still in)', type:'time', value: r.clock_out ? new Date(r.clock_out).toTimeString().slice(0,5) : '', required:false}
-    ]
+    ],
+    // Refuse instead of guessing "it must have crossed midnight" (see js/timeEntry.js).
+    validate: v => buildEntryTimes(r.date, v.clockIn, v.clockOut, r).error || null
   });
   if(!result) return;
-  const mk = hhmm => {
-    const [h, m] = hhmm.split(':').map(Number);
-    const d = new Date(r.date + 'T00:00:00');
-    d.setHours(h, m, 0, 0);
-    return d;
-  };
-  const inD = mk(result.clockIn);
-  let outD = null;
-  if(result.clockOut){
-    outD = mk(result.clockOut);
-    if(outD < inD) outD = new Date(outD.getTime() + 86400000); // crossed midnight
-  }
+  const times = buildEntryTimes(r.date, result.clockIn, result.clockOut, r);
+  // Nothing actually changed (same minutes): write nothing, so the exact punch seconds and the
+  // "edited" marker are not touched by an open-and-save.
+  if(!times.changed) return toast('No changes to save.');
   busy(true);
   try{
-    await store.updateRecordTimes(r.id, inD.toISOString(), outD ? outD.toISOString() : null);
+    await store.updateRecordTimes(r.id, times.inIso, times.outIso);
     await refreshAll();
     await afterSave();
   }catch(err){ toast('Failed: ' + err.message); }
@@ -421,24 +416,14 @@ export async function addMissedPunch(emp, date, afterSave = renderRecords){
     fields: [
       {name:'clockIn', label:'Clock in', type:'time'},
       {name:'clockOut', label:'Clock out (leave empty if still in)', type:'time', required:false}
-    ]
+    ],
+    validate: v => buildEntryTimes(date, v.clockIn, v.clockOut).error || null
   });
   if(!result) return;
-  const mk = hhmm => {
-    const [h, m] = hhmm.split(':').map(Number);
-    const d = new Date(date + 'T00:00:00');
-    d.setHours(h, m, 0, 0);
-    return d;
-  };
-  const inD = mk(result.clockIn);
-  let outD = null;
-  if(result.clockOut){
-    outD = mk(result.clockOut);
-    if(outD < inD) outD = new Date(outD.getTime() + 86400000); // crossed midnight
-  }
+  const times = buildEntryTimes(date, result.clockIn, result.clockOut);
   busy(true);
   try{
-    await store.addManualRecord(emp.id, date, inD.toISOString(), outD ? outD.toISOString() : null);
+    await store.addManualRecord(emp.id, date, times.inIso, times.outIso);
     await refreshAll();
     await afterSave();
   }catch(err){ toast('Failed: ' + err.message); }

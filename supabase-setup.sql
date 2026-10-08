@@ -156,3 +156,12 @@ create index if not exists overtime_hours_emp_idx on overtime_hours(emp_id);
 alter table overtime_hours enable row level security;
 create policy "authenticated full access" on overtime_hours
   for all to authenticated using (true) with check (true);
+
+-- Edit marker: records that the OWNER changed (or created) a record's times, and what the kiosk had
+-- captured before the first edit, so the app never amends a punch silently. All nullable and
+-- additive: existing rows are untouched and show no marker (past edits are unknowable, not guessed).
+-- Run this block in the SQL editor BEFORE deploying the version that writes these columns. (The app
+-- still saves edits if it hasn't been run yet — it just can't record the marker.)
+alter table records add column if not exists edited_at timestamptz;
+alter table records add column if not exists orig_clock_in timestamptz;
+alter table records add column if not exists orig_clock_out timestamptz;

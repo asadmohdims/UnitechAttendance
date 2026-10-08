@@ -103,3 +103,36 @@ describe('demoStore interface parity', () => {
     assert.equal(Object.keys(await demoStore.listOpenSessions()).length, 0);
   });
 });
+
+describe('demoStore edit marker', () => {
+  test('an owner-added record is marked as added by the owner, with no kiosk originals', async () => {
+    const [shakib] = await demoStore.listEmployees();
+    const rec = await demoStore.addManualRecord(shakib.id, '2026-10-06', '2026-10-06T08:32:00.000Z', null);
+    assert.ok(rec.edited_at);
+    assert.equal(rec.orig_clock_in, null);
+    assert.equal(rec.orig_clock_out, null);
+  });
+
+  test('the first edit keeps what the kiosk captured; a second edit never overwrites it', async () => {
+    const [shakib] = await demoStore.listEmployees();
+    // A kiosk-style record (exact seconds, no marker at all), seeded directly because the demo
+    // clockIn() needs the browser's FileReader for its photo.
+    const kiosk = { id: 'demo-rec-kiosk', emp_id: shakib.id, date: '2026-10-06', clock_in: '2026-10-06T08:32:09.412Z',
+      clock_out: null, in_photo: null, out_photo: null, created_at: '2026-10-06T08:32:10.000Z' };
+    globalThis.localStorage.setItem('attendance_demo_records', JSON.stringify([kiosk]));
+    const original = { clock_in: kiosk.clock_in, clock_out: null };
+
+    await demoStore.updateRecordTimes(kiosk.id, '2026-10-06T08:32:00.000Z', '2026-10-06T11:05:00.000Z');
+    let [row] = (await demoStore.listRecordsForRange('2000-01-01', '2100-01-01')).filter(r => r.id === kiosk.id);
+    assert.ok(row.edited_at);
+    assert.equal(row.orig_clock_in, original.clock_in);
+    assert.equal(row.orig_clock_out, null);
+    assert.equal(row.clock_out, '2026-10-06T11:05:00.000Z');
+
+    await demoStore.updateRecordTimes(kiosk.id, '2026-10-06T08:32:00.000Z', '2026-10-06T12:35:00.000Z');
+    [row] = (await demoStore.listRecordsForRange('2000-01-01', '2100-01-01')).filter(r => r.id === kiosk.id);
+    assert.equal(row.orig_clock_in, original.clock_in, 'second edit must keep the kiosk original');
+    assert.equal(row.orig_clock_out, null);
+    assert.equal(row.clock_out, '2026-10-06T12:35:00.000Z');
+  });
+});

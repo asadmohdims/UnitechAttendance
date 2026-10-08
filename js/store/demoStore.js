@@ -1,5 +1,6 @@
 // localStorage-backed implementation of the store interface, used when DEMO_MODE is true.
 import { dateStr } from '../utils.js';
+import { editMarkerFor, addedByOwnerMarker } from '../editMarker.js';
 
 const DEMO_EMPLOYEES_KEY = 'attendance_demo_employees';
 const DEMO_RECORDS_KEY = 'attendance_demo_records';
@@ -91,7 +92,8 @@ function getEmployeePinRecord(id){
 function addManualRecord(empId, date, clockInIso, clockOutIso){
   const id = 'demo-rec-' + Date.now();
   const nowIso = new Date().toISOString();
-  const data = {id, emp_id:empId, date, clock_in:clockInIso, clock_out:clockOutIso, in_photo:null, out_photo:null, created_at:nowIso};
+  const data = {id, emp_id:empId, date, clock_in:clockInIso, clock_out:clockOutIso, in_photo:null, out_photo:null, created_at:nowIso,
+    ...addedByOwnerMarker(nowIso)};
   const records = loadRecords();
   records.push(data);
   saveRecords(records);
@@ -144,6 +146,8 @@ function updateRecordTimes(recordId, clockInIso, clockOutIsoOrNull){
   const records = loadRecords();
   const idx = records.findIndex(x => x.id === recordId);
   if(idx < 0) throw new Error('Record not found');
+  // Same marker as supabaseStore.js: that an owner edited this, and what the kiosk had captured.
+  Object.assign(records[idx], editMarkerFor(records[idx], new Date().toISOString()));
   records[idx].clock_in = clockInIso;
   records[idx].clock_out = clockOutIsoOrNull;
   saveRecords(records);

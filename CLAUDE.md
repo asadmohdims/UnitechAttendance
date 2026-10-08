@@ -65,6 +65,9 @@ js/
   autoClosed.js      -- pure: recognises an auto-closed session, caps its counted clock-out at closing time
   missedClockIn.js   -- pure "hasn't shown up today" predicate
   punchCooldown.js   -- pure duplicate-punch window (latest punch per employee, lock-until time)
+  timeEntry.js       -- pure: typed HH:MM -> stored instants for an owner edit; refuses clock-out <= clock-in
+                        (no silent "crossed midnight" +24h), keeps unchanged fields' exact seconds
+  editMarker.js      -- pure: edited_at / orig_clock_in / orig_clock_out marker for owner edits
   reportMath.js      -- pure per-day hours/review-flag/session-grouping math for the report
   rounding.js        -- pure payroll rounding (grace-window rule) + recHoursRounded()
   store/
@@ -72,6 +75,7 @@ js/
     demoStore.js       -- localStorage-backed
     supabaseStore.js   -- Supabase-backed, offline-resilient (see below)
     outbox.js          -- IndexedDB queue used only by supabaseStore.js
+    outboxRules.js     -- pure: what sync does to an outbox row after a send (rev/syncedRev optimistic lock)
   ui/
     shell.js       -- tabs, nav, login/logout, admin lock/unlock, live clock
     kiosk.js       -- home screen, punch flow, refreshAll(), punch confirmation
@@ -105,6 +109,20 @@ treated as the one unacceptable failure mode — this is why the design exists.
 - **A client-generated `crypto.randomUUID()` IS the eventual Postgres `records.id`** (overrides
   the column's `default gen_random_uuid()` on upsert) — no temp-id reconciliation step. Syncing
   is just `upsert({id: clientId, ...})`, safe to retry.
+- **Every outbox change is an atomic `outbox.update(id, fn)`** (one IndexedDB readwrite
+  transaction: read, change, write), never `getItem` ... `putItem` across an `await`. Each real
+  content change bumps `rev`; a successful sync records `syncedRev`. After sending, sync applies
+  its result only if the row still has the `rev` it sent (`js/store/outboxRules.js`): a clock-out
+  tapped while the open row was in flight is kept and goes out on the next pass. The old pattern
+  wrote the sync's stale copy back over the tap (lost update). `needsSync()` is also the sync
+  indicator's "pending" test, and an already-synced open session is no longer re-upserted every 30s.
+  Legacy rows without `rev` are treated as "send once more" (same idempotent upsert) — no migration.
+  `splitSessionForLunch` writes the new afternoon row *before* shortening the morning one so a crash
+  between them can only duplicate, never lose, the end-of-day punch. Deliberately NOT done: a
+  compensating server delete when a row is deleted mid-sync — "row is missing" can also mean another
+  tab already synced it, and deleting the server copy then would be worse than the rare resurrection.
+- Deleting a still-open session from the tablet that clocked it in also deletes the server copy
+  (`existsOnServer()`); a never-synced row is deleted locally with no network.
 - Sync fires on every write (`outbox.kick()`), on the browser's `online` event, and every 30s as
   a fallback (`startBackgroundSync`/`runSync` in `outbox.js`/`supabaseStore.js`).
 - A row **stays in the outbox** after its clock-in syncs if the session is still open
@@ -226,6 +244,27 @@ when the server can't be reached.
   macOS Files & Folders access to Documents, or it silently never starts listening. Manifest validity, icon files, and the version/appVersion wiring are all verifiable in
   the sandbox; actual installability (the "Add to Home Screen" prompt, standalone launch,
   orientation lock, real SW registration) needs a real Chrome/device.
+
+## Owner edits are never silent
+
+Real data (Oct 2026) showed sessions hand-closed with no way to tell what they were before, when, or
+by whom, and a 4:35 typed against a 2:02 PM clock-in silently became 4:35 AM *next day* (the edit
+dialog used to add 24h whenever clock-out < clock-in). Now:
+- `buildEntryTimes()` (`js/timeEntry.js`, used by Edit and Add missed punch) **refuses** clock-out
+  <= clock-in inline (`promptModal`'s `validate`), because no shift here crosses midnight. Editing an
+  auto-closed row pre-fills 00:00, which therefore has to be corrected, on purpose.
+- A time whose minute is unchanged keeps its exact stored instant (the dialog only has minutes and
+  used to zero the seconds of *both* fields); a save with no real change writes nothing.
+- `records.edited_at / orig_clock_in / orig_clock_out` (nullable, additive; `editMarkerFor()`):
+  `edited_at` = last owner edit, `orig_*` = what the kiosk captured, saved on the **first** edit only.
+  An owner-created record has `edited_at` and null `orig_*` ("added by owner"). Past edits are *not*
+  backfilled — a zero-seconds timestamp is a fingerprint of an edit, not proof, and we don't write
+  guesses into history. Marker writes are best-effort: if the migration isn't applied the edit still
+  saves without it, and kiosk punch sync only sends these columns for an edited row.
+- The kiosk and the admin share one Supabase login (admin unlock is a client-side gate), so the
+  database cannot say *who* edited, only when and what. Supabase's API logs are the only other trace.
+- Showing the marker in Daily records / the Report day-detail panel is part of the Daily records
+  redesign (design first, see git log); until then the data is captured but not displayed.
 
 ## Lunch-break support
 
@@ -553,6 +592,10 @@ unlocked on every admin tab.
 
 ## Known gaps — what's left before go-live
 
+0. **Run the edit-marker migration** (last block of `supabase-setup.sql`: three `add column if not
+   exists` statements) in the Supabase SQL editor, *before* deploying the version that writes
+   them. Until then edits still save but record no marker.
+
 1. **Three placeholder constants in `js/config.js`** still need the shop owner's real numbers:
    `LUNCH_CUTOFF_HOUR`, `MISSED_CLOCKIN_HOUR`, `WEEKLY_HOLIDAY_DAY`. These are the shop's own
    operating facts, not engineering judgment calls — don't change them without being told the
@@ -582,7 +625,7 @@ Some pure logic has automated coverage via Node's **built-in** test runner (`nod
 `node:assert`) — zero npm installs, zero config, zero build step, consistent with the "no
 build step" constraint above (it's testing, not bundling).
 
-- Run everything: `node --test js/` from the project root (139 tests as of this writing, all
+- Run everything: `node --test js/` from the project root (183 tests as of this writing, all
   passing).
 - Test files are co-located with the code they cover, named `*.test.mjs`.
 - Covered: `js/salary.js` (proration, retroactive rate-selection, boundary/leap-year dates,
@@ -603,6 +646,10 @@ build step" constraint above (it's testing, not bundling).
   no cross-origin script or stylesheet in `index.html`), `js/signedOutGuard.js` (which requests
   count as signed out, the local 401, the roster-cache rule, and a replay of the 30 Sep incident
   against the real vendored supabase-js).
+- Also covered: `js/store/outboxRules.js` (replays the lost-update incident: a clock-out tapped
+  mid-sync survives; legacy rows; photo-clear; failure bookkeeping), `js/timeEntry.js` (the 4:35
+  regression, precision preservation), `js/editMarker.js` and demoStore's first-edit-wins.
+  `outbox.update()` itself needs real IndexedDB, so it is verified in a browser, not in `node --test`.
 - Deliberately **not** covered: `supabaseStore.js` (touches the real network/DB — verify via the
   console against the live project instead) and the UI layer (no headless-browser tool set up —
   new tooling, ask first). Both stores share the same pure `salary.js`/`reportMath.js`/

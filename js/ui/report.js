@@ -3,11 +3,12 @@ import { state } from '../state.js';
 import { store } from '../store/index.js';
 import { applyAvatar } from '../avatars.js';
 import { switchTab } from './shell.js';
-import { setRecordsDate, editRecord, deleteRecordFlow, toggleLunchPaid, splitForLunch, addMissedPunch, addOrEditOvertime, removeOvertime } from './records.js';
+import { setRecordsDate, showPersonDay, calloutText, editRecord, deleteRecordFlow, toggleLunchPaid, splitForLunch, addMissedPunch, addOrEditOvertime, removeOvertime } from './records.js';
 import { infoModal } from './modal.js';
 import { buildDayHours, groupByEmployeeDay, needsReview, dayHoursFromSessions, dayOffStatus, isHalfDay, lunchGapIndex, isPossibleMissedLunch } from '../reportMath.js';
 import { recHoursRounded, paidPunchTime } from '../rounding.js';
 import { countedClockOut } from '../autoClosed.js';
+import { dayModel, emptyDayModel } from '../dayStatus.js';
 
 const repMonth = $('repMonth');
 repMonth.value = dateStr().slice(0,7);
@@ -18,6 +19,10 @@ let lastReportData = null;
 // Keyed by employee id + day-of-month rather than a DOM reference, since a save always rebuilds
 // every row from scratch.
 let openDetailKey = null;
+// Phone view (below 900px, where a 31-column grid cannot fit): people first, then one person's
+// month as a calendar. The wide table above is hidden there by CSS; both render from the same data.
+const phoneMq = matchMedia('(max-width:899px)');
+let phone = {empId: null, day: null}; // empId null = the people list
 
 $('btnPrevMonth').onclick = () => shiftMonthInput(repMonth, -1, renderReport);
 $('btnNextMonth').onclick = () => shiftMonthInput(repMonth, 1, renderReport);
@@ -28,6 +33,7 @@ $('btnReviewRecords').onclick = () => {
   const first = lastReportData?.reviewRecords?.[0];
   if(!first) return;
   const day = Number(first.date.slice(8,10));
+  if(phoneMq.matches){ phone = {empId: first.emp_id, day}; renderPhoneReport(lastReportData); return; }
   const tr = Array.from(document.querySelectorAll('#reportTable tbody > tr')).find(t => t._empId === first.emp_id);
   const sessions = lastReportData.sessionsByDay[first.emp_id]?.[day];
   const emp = lastReportData.emps.find(e => e.id === first.emp_id);
@@ -185,7 +191,46 @@ export async function renderReport(){
     $('reviewTitle').textContent = `${reviewRecords.length} attendance ${reviewRecords.length === 1 ? 'entry needs' : 'entries need'} review`;
     $('reviewText').textContent = parts.join('; ') + '.';
   }
-  renderDetailCalendar({ym, days, emps, hours, payHours, openFlags, reviewFlags, gapStatus, dockedDays, overtimeHours, sessionsByDay, employeeStats});
+  lastReportData = {...md, employeeStats};
+  renderDetailCalendar(lastReportData);
+  renderPhoneReport(lastReportData);
+}
+
+// What one day's cell is, for one employee: its colour classes and the text it shows. Shared by the
+// desktop calendar's pills and the phone view's month grid, so the two can never disagree about a day.
+function pillInfo(md, empId, d){
+  const {hours, payHours, openFlags, reviewFlags, gapStatus, dockedDays, sessionsByDay} = md;
+  const sessions = (sessionsByDay[empId] || {})[d];
+  const open = openFlags[empId][d];
+  const hasHours = hours[empId][d] !== null;
+  // "flagged" = needs review but isn't genuinely still open — i.e. the day's last session
+  // was closed with no clock-out photo (midnight stale-close, or admin-added) and the owner has
+  // not fixed it. Hours ARE known (hasHours), so this shows the hours with an amber marker, not the
+  // '!' used for a truly open session (where there's no final number to show yet).
+  const flagged = reviewFlags[empId][d] && !open;
+  // An earlier session closed with no photo that DID get a follow-up punch (a legacy lunch
+  // auto-close, Split for lunch, or an admin-added punch) is worth a quiet, informational
+  // note (blue) — distinct from a day whose last session never got confirmed (amber, via `flagged`).
+  const autoInfo = !flagged && sessions && sessions.some(s => s.clock_out && !s.out_photo);
+  // Only reached with no punches at all (not open, no hours) — 'holiday' or 'off', see
+  // dayOffStatus() in reportMath.js, or null for nothing to show.
+  const gap = !open && !hasHours ? gapStatus[empId][d] : null;
+  // A single-session day with notably fewer hours than a full day gets its own colour; one with
+  // close to a full day's hours (worked straight through) stays 'full' — see isHalfDay().
+  const half = hasHours && isHalfDay(sessions, hours[empId][d]);
+  // A single session that IS a full day's hours has no recorded lunch gap either — a quiet
+  // corner-dot nudge, not the amber "needs review" treatment (see isPossibleMissedLunch()).
+  const unbroken = hasHours && !half && isPossibleMissedLunch(sessions, hours[empId][d]);
+  // A Friday the owner has explicitly excluded from this employee's pay this month. Still reads as
+  // 'holiday', just with a corner dot.
+  const docked = gap === 'holiday' && dockedDays[empId][d];
+  const className = 'daypill' + (open ? ' review' : hasHours ? (half ? ' half' : ' full') : gap ? ` ${gap}` : '')
+    + (flagged ? ' flagged' : '') + (autoInfo ? ' auto' : '') + (unbroken ? ' unbroken' : '') + (docked ? ' docked' : '')
+    + (hasHours && !open ? ' has-hours' : '');
+  // The pill shows PAID hours (payHours, the grace-window-rounded figure Salary pays on); the exact
+  // times stay in the day panel and Daily records. Exact hours decide which STATE a day is in.
+  const text = open ? '!' : hasHours ? fmtHours(payHours[empId][d]) : gap === 'holiday' ? 'F' : gap === 'off' ? 'A' : '';
+  return {sessions, open, hasHours, flagged, gap, half, unbroken, docked, className, text};
 }
 
 // Each day is a status pill, not a number — a day can have more than one session now (a
@@ -193,7 +238,8 @@ export async function renderReport(){
 // pinned (position:sticky) so they're never the ones scrolled out of view; the day columns
 // are what scrolls. Clicking a day expands an inline row with that day's actual session
 // times and lunch gap, reusing the same in/out/lunch vocabulary as the Daily records tab.
-function renderDetailCalendar({ym, days, emps, hours, payHours, openFlags, reviewFlags, gapStatus, dockedDays, overtimeHours, sessionsByDay, employeeStats}){
+function renderDetailCalendar(md){
+  const {ym, days, emps, hours, payHours, openFlags, reviewFlags, gapStatus, dockedDays, overtimeHours, sessionsByDay, employeeStats} = md;
   let h = '<tr><th class="col-emp">Employee</th>';
   for(let d=1; d<=days; d++) h += `<th>${d}</th>`;
   h += '<th class="col-days">Days</th><th class="col-absent">Absent</th><th class="col-total">Total hrs</th></tr>';
@@ -232,51 +278,12 @@ function renderDetailCalendar({ym, days, emps, hours, payHours, openFlags, revie
     tr._empId = e.id; // lets the reopen-after-save pass below find this row again post-rebuild
 
     for(let d=1; d<=days; d++){
-      const sessions = sessionsForEmp[d];
-      const open = openFlags[e.id][d];
-      const hasHours = hours[e.id][d] !== null;
-      // "flagged" = needs review but isn't genuinely still open — i.e. the day's last session
-      // was closed with no clock-out photo (midnight stale-close, or admin-added). Hours ARE
-      // known (hasHours), so this shows the day number with an amber marker, not the '!' used
-      // for a truly open session (where there's no final number to show yet).
-      const flagged = reviewFlags[e.id][d] && !open;
-      // An earlier session closed with no photo that DID get a follow-up punch (a legacy lunch
-      // auto-close, Split for lunch, or an admin-added punch) is worth a quiet, informational
-      // note (blue) — distinct from a day whose last session never got confirmed (amber, via
-      // `flagged` above).
-      const autoInfo = !flagged && sessions && sessions.some(s => s.clock_out && !s.out_photo);
-      // Only reached with no punches at all (not open, no hours) — 'holiday' or 'off', see
-      // dayOffStatus() in reportMath.js for what decides which, or null for nothing to show.
-      const gap = !open && !hasHours ? gapStatus[e.id][d] : null;
-      // A single-session day with notably fewer hours than a full day (only a morning or only
-      // an afternoon punch) gets its own color — a single session with close to a full day's
-      // hours (worked straight through, no break) stays 'full'. See isHalfDay() in reportMath.js.
-      const half = hasHours && isHalfDay(sessions, hours[e.id][d]);
+      const info = pillInfo(md, e.id, d);
+      const {sessions, open, hasHours, gap, half, unbroken, docked} = info;
       if(half) halfDayCount++;
-      // A single session that IS a full day's hours has no recorded lunch gap either — could be
-      // a genuine no-break shift, or a forgotten lunch punch; punch data alone can't tell which,
-      // so this is a quiet corner-dot nudge (not the amber "needs review" treatment), same visual
-      // language as .auto below. See isPossibleMissedLunch() in reportMath.js.
-      const unbroken = hasHours && !half && isPossibleMissedLunch(sessions, hours[e.id][d]);
-      // A Friday the owner has explicitly excluded from this employee's pay this month — see
-      // the day-detail panel opened by clicking the pill below. Still reads as 'holiday' (the
-      // day itself didn't stop being a Friday), just with the same quiet corner-dot treatment
-      // .auto/.flagged/.unbroken already use for "worth noticing" states on top of a base pill.
-      const docked = gap === 'holiday' && dockedDays[e.id][d];
       const pill = document.createElement('div');
-      pill.className = 'daypill' + (open ? ' review' : hasHours ? (half ? ' half' : ' full') : gap ? ` ${gap}` : '')
-        + (flagged ? ' flagged' : '') + (autoInfo ? ' auto' : '') + (unbroken ? ' unbroken' : '') + (docked ? ' docked' : '')
-        + (hasHours && !open ? ' has-hours' : '');
-      // The column header above already carries the day-of-month, so the pill itself shows the
-      // one thing that header can't: this day's hours, at a glance, with no click needed (the
-      // owner's ask, 2026-09-12). Shows PAID hours (payHours, the same grace-window-rounded
-      // figure Salary pays on — js/rounding.js) rather than the exact punch-to-punch figure
-      // (2026-09-12, superseding this file's earlier "Report always shows exact times" rule —
-      // see the Payroll rounding section in CLAUDE.md, updated to match). Exact hours (`hours`)
-      // still drive which STATE a day is in (half/full/unbroken all classify off real attendance,
-      // not pay) — only the number printed in the pill changed; the day-detail panel below and
-      // Daily records keep the exact audit-trail times.
-      pill.textContent = open ? '!' : hasHours ? fmtHours(payHours[e.id][d]) : gap === 'holiday' ? 'F' : gap === 'off' ? 'A' : '';
+      pill.className = info.className;
+      pill.textContent = info.text;
       if(unbroken) pill.title = 'Single session, no recorded break — check whether a lunch punch was missed';
       else if(docked) pill.title = 'Marked unpaid for this employee — click to restore';
       else if(hasHours) pill.title = `Day ${d} — ${fmtHours(payHours[e.id][d])} paid, click for session detail`;
@@ -576,6 +583,146 @@ function renderDayDetail(row, inner, sessions, emp, day, overtimeHoursForDay){
 
   row._key = `${emp.id}:${day}`;
   row.classList.add('open');
+}
+
+
+// ---------- phone view ----------
+const el = (tag, cls, ...kids) => {
+  const n = document.createElement(tag);
+  if(cls) n.className = cls;
+  kids.flat().forEach(k => { if(k != null && k !== false) n.append(k.nodeType ? k : document.createTextNode(k)); });
+  return n;
+};
+const phoneBtn = (cls, label, onclick) => { const b = el('button', cls, label); b.type = 'button'; b.onclick = onclick; return b; };
+
+// One small square per day of the month, coloured like the desktop pills — the people list's
+// at-a-glance version of the calendar it replaces.
+function dayDotClass(info){
+  if(info.open) return 'review';
+  if(info.flagged) return 'flag';
+  if(info.hasHours) return info.half ? 'half' : 'full';
+  if(info.gap === 'holiday') return 'hol';
+  if(info.gap === 'off') return 'off';
+  return 'none';
+}
+
+function renderPhoneReport(md){
+  const list = $('rpList'), person = $('rpPerson');
+  const stat = phone.empId && md.employeeStats.find(s => s.employee.id === phone.empId);
+  if(!stat) phone = {empId: null, day: null};
+  list.style.display = stat ? 'none' : '';
+  person.style.display = stat ? '' : 'none';
+  if(stat) renderPhonePerson(md, stat); else renderPhoneList(md);
+}
+
+function statStrip(items){
+  return el('div', 'rp-strip', items.map(([value, label, tone]) => el('div', null, el('b', tone, value), el('span', null, label))));
+}
+
+function renderPhoneList(md){
+  const {days, employeeStats} = md;
+  const list = $('rpList');
+  list.innerHTML = '';
+  let hours = 0, dayCount = 0, absent = 0, half = 0;
+  employeeStats.forEach(({employee: e, total, daysWorked, daysOff}) => {
+    hours += total; dayCount += daysWorked; absent += daysOff;
+    for(let d = 1; d <= days; d++) if(pillInfo(md, e.id, d).half) half++;
+  });
+  list.append(statStrip([[fmtHours(hours), 'HOURS'], [String(dayCount), 'DAYS IN', 'good'], [String(absent), 'ABSENT', 'bad'], [String(half), 'HALF', 'half']]));
+  const rows = el('div', 'rp-people');
+  employeeStats.forEach(stat => {
+    const {employee: e, total, hasOpen, daysOff} = stat;
+    const avatar = el('img', 'rp-avatar'); avatar.alt = ''; applyAvatar(avatar, e);
+    let halfDays = 0;
+    const dots = el('div', 'rp-dots');
+    for(let d = 1; d <= days; d++){
+      const info = pillInfo(md, e.id, d);
+      if(info.half) halfDays++;
+      dots.append(el('i', dayDotClass(info)));
+    }
+    const sub = el('div', 'rp-sub',
+      hasOpen ? el('span', 'chip amber', el('i'), 'Review') : null,
+      daysOff ? ` ${daysOff} ${daysOff === 1 ? 'day off' : 'days off'}` : null,
+      halfDays ? ` ${halfDays} half ${halfDays === 1 ? 'day' : 'days'}` : null);
+    const row = phoneBtn('rp-person', null, () => { phone = {empId: e.id, day: null}; renderPhoneReport(md); window.scrollTo(0, 0); });
+    row.append(el('div', 'rp-top', avatar, el('div', 'rp-who', el('div', 'rp-name', e.name), sub), el('div', 'rp-total', fmtHours(total))), dots);
+    rows.append(row);
+  });
+  list.append(rows);
+  list.append(el('div', 'rp-legend',
+    ...[['full', 'Full'], ['half', 'Half'], ['off', 'Absent'], ['hol', 'Holiday'], ['flag', 'Review']].map(([c, t]) => el('span', null, el('i', c), t))));
+}
+
+function renderPhonePerson(md, stat){
+  const {ym, days, payHours, overtimeHours} = md;
+  const {employee: e, total, daysWorked, daysOff} = stat;
+  const host = $('rpPerson');
+  host.innerHTML = '';
+  const avatar = el('img', 'rp-avatar'); avatar.alt = ''; applyAvatar(avatar, e);
+  host.append(el('div', 'rp-person-head',
+    phoneBtn('rp-back', '‹', () => { phone = {empId: null, day: null}; renderPhoneReport(md); }),
+    avatar,
+    el('div', 'rp-who', el('div', 'rp-sub', new Date(`${ym}-01T12:00:00`).toLocaleDateString('en-IN', {month:'long', year:'numeric'})), el('h2', 'rp-name big', e.name))));
+  host.querySelector('.rp-back').setAttribute('aria-label', 'Back to everyone');
+  host.append(statStrip([[fmtHours(total), 'HOURS'], [String(daysWorked), 'DAYS IN', 'good'], [String(daysOff), 'ABSENT', 'bad']]));
+
+  // Calendar: Monday-first, blank cells before the 1st.
+  const first = new Date(`${ym}-01T12:00:00`).getDay();
+  const grid = el('div', 'rp-cal');
+  ['MO','TU','WE','TH','FR','SA','SU'].forEach(w => grid.append(el('div', 'rp-wd', w)));
+  for(let i = 0; i < (first + 6) % 7; i++) grid.append(el('div'));
+  for(let d = 1; d <= days; d++){
+    const info = pillInfo(md, e.id, d);
+    const kind = dayDotClass(info);
+    const clickable = !!info.sessions || info.gap === 'holiday' || info.gap === 'off';
+    const cell = el(clickable ? 'button' : 'div', `rp-day ${kind}` + (phone.day === d ? ' sel' : '') + (info.hasHours && !info.open ? ' has-hours' : ''),
+      el('small', null, String(d)), el('b', null, info.text));
+    if(clickable){ cell.type = 'button'; cell.onclick = () => { phone.day = phone.day === d ? null : d; renderPhoneReport(md); }; }
+    grid.append(cell);
+  }
+  host.append(el('div', 'rp-cal-card', grid, el('div', 'rp-legend',
+    ...[['full', 'Full'], ['half', 'Half'], ['off', 'Absent'], ['hol', 'Holiday'], ['flag', 'Review']].map(([c, t]) => el('span', null, el('i', c), t)))));
+
+  if(phone.day) host.append(phoneDayCard(md, e, phone.day));
+}
+
+// The tapped day, in a sentence or two. Fixing things happens in Daily records (one set of editing
+// screens), so a worked day hands off there; an absence offers the missed-punch form right here, and
+// a paid Friday the same "mark unpaid" toggle the desktop panel has.
+function phoneDayCard(md, e, d){
+  const {ym, overtimeHours, dockedDays} = md;
+  const date = `${ym}-${pad(d)}`, today = dateStr();
+  const info = pillInfo(md, e.id, d);
+  const since = e.created_at ? dateStr(new Date(e.created_at)) : undefined;
+  const model = info.sessions
+    ? dayModel({sessions: info.sessions, date, today, now: new Date(), overtimeHours: overtimeHours[e.id][d]})
+    : emptyDayModel({date, today, weekday: new Date(`${date}T12:00:00`).getDay(), employeeSince: since});
+  const card = el('div', 'rp-day-card');
+  if(!model){ return card; }
+  card.append(el('div', 'rp-day-head', el('h3', null, new Date(`${date}T12:00:00`).toLocaleDateString('en-IN', {weekday:'short', day:'numeric', month:'short'})),
+    model.chip ? el('span', `chip ${model.chip.tone}`, el('i'), model.chip.text) : null));
+  if(model.callout){
+    const [lead, rest] = calloutText(model, e, date);
+    card.append(el('p', 'rp-callout', el('b', null, lead), ' ', rest));
+  }
+  model.sessions.forEach(v => {
+    const r = v.record;
+    card.append(el('div', 'rp-sess', el('span', null, `${fmtTime(r.clock_in)} → ${r.clock_out ? fmtTime(r.clock_out) : 'still in'}`),
+      el('span', 'rp-sess-paid', v.paid !== null ? `${fmtHours(v.paid)} paid` : '')));
+  });
+  if(overtimeHours[e.id][d]) card.append(el('div', 'rp-sess', el('span', null, 'Overtime'), el('span', 'rp-sess-paid', `${fmtHours(overtimeHours[e.id][d])} paid`)));
+  const actions = el('div', 'rp-day-actions');
+  if(model.kind === 'worked'){
+    actions.append(phoneBtn('btn small green', 'Open in Daily records', () => { showPersonDay(date, e.id); switchTab('records'); }));
+  }else if(model.chip && model.chip.id === 'absent'){
+    actions.append(phoneBtn('btn small green', 'Add missed punch', () => addMissedPunch(e, date, renderReport)));
+  }else if(model.chip && model.chip.id === 'holiday'){
+    const docked = dockedDays[e.id][d];
+    if(docked) card.append(el('p', 'rp-callout', el('b', null, 'Marked unpaid this month.')));
+    actions.append(phoneBtn('btn small ghost', docked ? 'Restore as paid' : 'Mark unpaid', () => toggleHolidayPay(e.id, date, docked)));
+  }
+  if(actions.children.length) card.append(actions);
+  return card;
 }
 
 // A click anywhere outside an open detail row — and outside the pill that opens one, the shared

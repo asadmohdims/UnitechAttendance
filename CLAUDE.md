@@ -620,6 +620,17 @@ area gets touched again:
   unique bits (days-off count, review-state badge) now live under the employee's name in the
   calendar's own sticky `.col-emp` cell, so the two views can't drift apart.
 
+**Report on a phone** (below 900px): the 31-column grid cannot fit 390px — its four pinned columns alone
+were wider than the screen, so no days showed at all — so the wide table, the five metric cards and the
+legend are hidden there and replaced by `#reportPhone`: everyone first (hours, and a one-line colour strip
+of their month), then one person's month as a Monday-first 7-column calendar, with the tapped day's summary
+below it. Both views are drawn from the same data and the same `pillInfo()` (`js/ui/report.js`), which
+also builds the desktop pills, so a day can't read differently on the two. The day card says what Daily
+records would (`calloutText()`) and hands off to it ("Open in Daily records") instead of duplicating the
+editing screens; an absence offers "Add missed punch" and a paid Friday keeps "Mark unpaid". The review
+alert's button opens the first flagged person's day. The desktop pills were checked identical (296 pills,
+class, text and title) before and after pulling `pillInfo()` out.
+
 Pinch-zoom (`user-scalable`) toggles on the single `<meta name=viewport>` tag in `switchTab()` —
 locked only on the kiosk home tab (stops accidental zoom mid-queue on the shared tablet),
 unlocked on every admin tab.

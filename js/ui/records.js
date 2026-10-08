@@ -15,6 +15,9 @@ recDate.value = dateStr();
 recDate.onchange = () => renderRecords();
 
 export function setRecordsDate(date){ recDate.value = date; }
+// Opens Daily records on one person's day (the Report's phone view hands off here instead of
+// duplicating the editing screens). The caller switches the tab, which renders.
+export function showPersonDay(date, empId){ recDate.value = date; selectedEmpId = empId; showDetail = true; }
 
 // ---------- layout state ----------
 // On wide screens the list and the selected person's detail sit side by side. On a phone only one
@@ -314,7 +317,8 @@ function gapRow(prevView, nextView, isLunch){
     button('btn small ghost', paid ? 'Undo' : 'Pay as work', () => toggleLunchPaid(prev)));
 }
 
-function calloutText(model, emp, date){
+// Exported so the Report's phone view can say the same thing, in the same words, about a day.
+export function calloutText(model, emp, date){
   const c = model.callout;
   const name = emp.name;
   const sess = i => model.sessions[i].record;

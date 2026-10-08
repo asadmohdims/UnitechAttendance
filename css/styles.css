@@ -576,6 +576,68 @@ input.rec-date-input[type=date]{position:absolute; left:50%; top:100%; width:1px
   .rec-gap{padding:4px 6px;}
 }
 
+/* ============ Report on a phone ============
+   A 31-column grid cannot fit 390px (its pinned columns alone were wider than the screen, so no days
+   showed at all). Below 900px the Report shows everyone first, each with a one-line colour strip of
+   their month, then one person's month as a 7-column calendar. Same colours and numbers as the wide
+   grid — both are drawn from pillInfo() in js/ui/report.js. */
+.report-phone{display:none;}
+@media (max-width:899px){
+  #reportDetail, .report-summary{display:none;}
+  .report-phone{display:block;}
+}
+.rp-strip{display:flex; background:var(--card); border:1px solid var(--border); border-radius:16px; margin-bottom:14px; text-align:center;}
+.rp-strip > div{flex:1; padding:10px 4px; border-left:1px solid var(--border);}
+.rp-strip > div:first-child{border-left:0;}
+.rp-strip b{display:block; font-family:'Bebas Neue',sans-serif; font-weight:400; font-size:28px; letter-spacing:.02em; line-height:1; font-variant-numeric:tabular-nums;}
+.rp-strip b.good{color:#86efac;} .rp-strip b.bad{color:var(--red);} .rp-strip b.half{color:var(--yellow);}
+.rp-strip span{font-size:10.5px; font-weight:800; letter-spacing:.06em; color:var(--muted);}
+.rp-people{background:var(--card); border:1px solid var(--border); border-radius:16px; overflow:hidden;}
+.rp-person{display:flex; flex-direction:column; gap:10px; width:100%; min-height:84px; padding:12px 14px; background:none; border:0; border-top:1px solid var(--border); color:var(--ink); font:inherit; text-align:left; cursor:pointer;}
+.rp-person:first-child{border-top:0;}
+.rp-top{display:flex; align-items:center; gap:12px;}
+.rp-avatar{width:40px; height:40px; border-radius:12px; object-fit:cover; background:#293b53; flex:0 0 auto;}
+.rp-who{flex:1; min-width:0;}
+.rp-name{font-weight:700; font-size:16px; line-height:1.2; overflow-wrap:anywhere;}
+.rp-name.big{font-size:21px; margin:0;}
+.rp-sub{font-size:12.5px; color:var(--muted); margin-top:2px; display:flex; align-items:center; gap:6px; flex-wrap:wrap;}
+.rp-sub .chip{margin-top:0;}
+.rp-total{font-family:'Bebas Neue',sans-serif; font-size:28px; letter-spacing:.02em; line-height:1; font-variant-numeric:tabular-nums;}
+.rp-dots{display:flex; gap:2px;}
+.rp-dots i{flex:1 1 0; min-width:0; max-width:10px; height:10px; border-radius:2px; background:#243247;}
+.rp-dots i.full, .rp-legend i.full{background:var(--green);}
+.rp-dots i.half, .rp-legend i.half{background:var(--yellow);}
+.rp-dots i.off, .rp-legend i.off{background:var(--red);}
+.rp-dots i.hol, .rp-legend i.hol{background:var(--violet);}
+.rp-dots i.flag, .rp-dots i.review, .rp-legend i.flag{background:var(--amber);}
+.rp-legend{display:flex; gap:12px; flex-wrap:wrap; font-size:11.5px; color:var(--muted); margin-top:12px;}
+.rp-legend i{display:inline-block; width:10px; height:10px; border-radius:3px; margin-right:5px; vertical-align:-1px;}
+.rp-person-head{display:flex; align-items:center; gap:10px; margin-bottom:12px;}
+.rp-back{width:44px; min-height:44px; border-radius:12px; border:1px solid var(--border); background:var(--card); color:var(--ink); font-size:22px; cursor:pointer;}
+.rp-cal-card{background:var(--card); border:1px solid var(--border); border-radius:16px; padding:10px; margin-bottom:12px;}
+.rp-cal{display:grid; grid-template-columns:repeat(7,minmax(0,1fr)); gap:4px;}
+.rp-wd{font-size:11px; font-weight:800; letter-spacing:.06em; color:var(--muted); text-align:center; padding:4px 0;}
+.rp-day{min-height:54px; border-radius:10px; border:1px solid var(--border); background:#101a2a; padding:4px 5px; display:flex; flex-direction:column; justify-content:space-between; color:var(--ink); font:inherit; text-align:left;}
+.rp-day small{font-size:10.5px; color:var(--muted); font-weight:700; line-height:1;}
+.rp-day b{font-size:13px; font-weight:800; line-height:1; text-align:center; font-variant-numeric:tabular-nums;}
+.rp-day.full{background:#0f2f1d; border-color:#1f7a45;} .rp-day.full b{color:#86efac;}
+.rp-day.half{background:#2f2a07; border-color:#8a7a0a;} .rp-day.half b{color:#fde047;}
+.rp-day.off{background:#2a1119; border:1px dashed var(--red);} .rp-day.off b{color:#fda4af;}
+.rp-day.hol{background:#231c45; border-color:#6d5bd0;} .rp-day.hol b{color:#c4b5fd;}
+.rp-day.flag, .rp-day.review{background:#2b1d08; border-color:var(--amber);} .rp-day.flag b, .rp-day.review b{color:#fcd34d;}
+.rp-day.none{background:transparent; border-color:#1a2638;} .rp-day.none small{color:#4a5b73;}
+.rp-day.sel{box-shadow:0 0 0 2px var(--blue);}
+.rp-day-card{background:var(--card); border:1px solid #3b6aa3; border-radius:16px; padding:14px 16px;}
+.rp-day-head{display:flex; align-items:center; justify-content:space-between; gap:10px;}
+.rp-day-head h3{font-size:17px; margin:0;}
+.rp-day-head .chip{margin-top:0;}
+.rp-callout{font-size:14px; line-height:1.45; color:#d6deea; margin:8px 0;}
+.rp-callout b{color:#fff;}
+.rp-sess{display:flex; justify-content:space-between; gap:8px; padding:8px 0; border-top:1px solid var(--border); font-size:15px; font-variant-numeric:tabular-nums;}
+.rp-sess-paid{color:var(--muted);}
+.rp-day-actions{display:flex; gap:8px; margin-top:10px;}
+.rp-day-actions .btn{min-height:44px; flex:1;}
+
 /* ============ Payments ============ */
 .payments-banner{display:flex; align-items:center; justify-content:center; gap:10px; padding:13px 20px; background:rgba(96,165,250,.12); border:1px solid #2c4870; border-radius:14px; color:#93c5fd; font-weight:650; font-size:14px; flex:0 0 auto;}
 

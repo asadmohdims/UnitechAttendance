@@ -366,8 +366,9 @@ only draws them. Three rules keep every day readable:
   return is cleared on any other navigation.
 - Not built, deliberately: delete-with-undo. Delete keeps its confirm dialog. An undo would have to put the
   row back through the outbox and the server, and the record's photos are removed from Storage when it is
-  deleted, so a restore would come back without them; the confirm already guards the mistake. Also not
-  built: "Don't pay this holiday" from this screen (it lives in the Report).
+  deleted, so a restore would come back without them; the confirm already guards the mistake.
+- A holiday row offers "Mark unpaid" / "Restore as paid" (the same `day_pay_overrides` toggle as the Report's
+  day panel, via `store.setDayOverride`).
 
 ## Kiosk tile states
 
@@ -596,9 +597,8 @@ when tried as a sibling; keep it nested if this area gets touched again.
 **Kiosk on a phone** (<= 760px, `css/styles.css`): a short header (name and roster left, time and date
 right, the mode button under them, 136px instead of the old 178px), "Admin access" and the version in a
 small bar pinned to the bottom (a 44px tap target, no longer sitting on the header's border), and tiles two
-across so eight people fit in about one screen. Tablet portrait (761px and up) keeps the bar above and
-larger tiles; it still has the old absolutely-positioned admin link and version, which overlap the bar's
-bottom border. Measured at 390px and 360px with 8 employees: first and last tile reachable, nothing under
+across so eight people fit in about one screen. Tablet portrait (761px and up, upright) keeps the bar above
+and larger tiles, but shares the pinned bottom bar for the admin link and version. Measured at 390px and 360px with 8 employees: first and last tile reachable, nothing under
 the bottom bar, no horizontal scroll, and the tablet-landscape layout unchanged.
 
 **Motion**: every tappable control gives real press feedback and springs back to rest via a

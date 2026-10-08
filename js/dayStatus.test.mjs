@@ -179,7 +179,12 @@ describe('days with no punches', () => {
   test('the weekly holiday (Friday): Holiday, nothing to do', () => {
     const m = emptyDayModel({date: '2026-10-02', today: TODAY, weekday: weekday('2026-10-02')});
     assert.equal(m.chip.id, 'holiday');
-    assert.deepEqual(m.callout.actions, []);
+    assert.deepEqual(m.callout.actions.map(a => a.label), ['Mark unpaid']);
+  });
+  test('a holiday the owner marked unpaid offers to restore it', () => {
+    const m = emptyDayModel({date: '2026-10-02', today: TODAY, weekday: 5, docked: true});
+    assert.equal(m.callout.params.docked, true);
+    assert.deepEqual(m.callout.actions.map(a => a.label), ['Restore as paid']);
   });
   test('a future day, or a day before the person was added: no row', () => {
     assert.equal(emptyDayModel({date: '2026-10-09', today: TODAY, weekday: 5}), null);

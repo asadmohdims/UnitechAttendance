@@ -349,7 +349,7 @@ export function calloutText(model, emp, date){
     case 'half-day': return ['Half day.', `One session of ${fmtHours(c.params.hours)}, so there is no lunch to look for.`];
     case 'not-in-yet': return ['No punches yet today.', 'Nothing to do until you expect them.'];
     case 'absent': return [`No punches on ${fmtDay(date, {weekday:'short', day:'numeric', month:'short'})}.`, `If ${name} was actually in, add the missed punch.`];
-    case 'holiday': return [`${fmtDay(date, {weekday:'long'})} is the weekly holiday.`, 'Paid without punches (unless you marked it unpaid in the Report).'];
+    case 'holiday': return [`${fmtDay(date, {weekday:'long'})} is the weekly holiday.`, c.params.docked ? `You marked it unpaid for ${name} this month.` : 'Paid without punches.'];
     default: return ['', ''];
   }
 }
@@ -360,6 +360,18 @@ function runAction(a, model, emp, date){
   if(a.id === 'delete-session') return deleteRecordFlow(rec, emp);
   if(a.id === 'split') return splitForLunch(rec, emp);
   if(a.id === 'add-punch') return addMissedPunch(emp, date);
+  if(a.id === 'toggle-holiday') return toggleHolidayPay(emp, date, model.callout.params.docked);
+}
+
+// Excludes one paid Friday from one person's pay (or puts it back) — the same reversible, no-confirm
+// toggle the Report's day panel has, via the same store call (`paid` is the opposite of "docked").
+async function toggleHolidayPay(emp, date, currentlyDocked){
+  busy(true);
+  try{
+    await store.setDayOverride(emp.id, date, currentlyDocked);
+    await renderRecords();
+  }catch(err){ toast('Failed: ' + err.message); }
+  busy(false);
 }
 
 function renderDetail(entry, date){
@@ -463,6 +475,10 @@ export async function renderRecords(){
   try{ overtimeRows = await store.listOvertimeForRange(date, date); }catch(err){ /* see comment above */ }
   const overtimeByEmp = {};
   overtimeRows.forEach(o => { overtimeByEmp[o.emp_id] = Number(o.hours); });
+  // Same best-effort read for the "paid holiday marked unpaid" overrides (only used on a holiday).
+  let overrides = [];
+  try{ overrides = await store.listDayPayOverrides(date, date); }catch(err){ /* see above */ }
+  const dockedEmps = new Set(overrides.filter(o => o.paid === false).map(o => o.emp_id));
   busy(false);
 
   // listRecordsForDate sorts by clock_in globally, which can interleave different employees'
@@ -482,7 +498,7 @@ export async function renderRecords(){
     const since = emp.created_at ? dateStr(new Date(emp.created_at)) : undefined;
     const model = sessions
       ? dayModel({sessions, date, today, now, overtimeHours})
-      : emptyDayModel({date, today, weekday, employeeSince: since, now});
+      : emptyDayModel({date, today, weekday, employeeSince: since, now, docked: dockedEmps.has(emp.id)});
     if(model) entries.push({emp, model, overtimeHours});
   });
   // Needs-a-look first (and the rest in roster order), so what matters is at the top.

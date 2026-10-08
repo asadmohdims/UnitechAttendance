@@ -696,7 +696,7 @@ function phoneDayCard(md, e, d){
   const since = e.created_at ? dateStr(new Date(e.created_at)) : undefined;
   const model = info.sessions
     ? dayModel({sessions: info.sessions, date, today, now: new Date(), overtimeHours: overtimeHours[e.id][d]})
-    : emptyDayModel({date, today, weekday: new Date(`${date}T12:00:00`).getDay(), employeeSince: since, now: new Date()});
+    : emptyDayModel({date, today, weekday: new Date(`${date}T12:00:00`).getDay(), employeeSince: since, now: new Date(), docked: !!dockedDays[e.id][d]});
   const card = el('div', 'rp-day-card');
   if(!model){ return card; }
   card.append(el('div', 'rp-day-head', el('h3', null, new Date(`${date}T12:00:00`).toLocaleDateString('en-IN', {weekday:'short', day:'numeric', month:'short'})),
@@ -718,7 +718,6 @@ function phoneDayCard(md, e, d){
     actions.append(phoneBtn('btn small green', 'Add missed punch', () => addMissedPunch(e, date, renderReport)));
   }else if(model.chip && model.chip.id === 'holiday'){
     const docked = dockedDays[e.id][d];
-    if(docked) card.append(el('p', 'rp-callout', el('b', null, 'Marked unpaid this month.')));
     actions.append(phoneBtn('btn small ghost', docked ? 'Restore as paid' : 'Mark unpaid', () => toggleHolidayPay(e.id, date, docked)));
   }
   if(actions.children.length) card.append(actions);

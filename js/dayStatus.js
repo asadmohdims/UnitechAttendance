@@ -167,12 +167,14 @@ export function dayModel({sessions, date, today, now = new Date(), overtimeHours
 // The model for a person with NO sessions on `date`. Returns null when there is nothing worth a row
 // (a day that has not happened yet, or one before the person was added). Today counts as "not in
 // yet" only until the shop closes; after that nobody is going to arrive, so it reads as Absent, the
-// same as the Report's cell for today. A weekly holiday is a holiday today too.
-export function emptyDayModel({date, today, weekday, employeeSince, now = new Date()}){
+// same as the Report's cell for today. A weekly holiday is a holiday today too. `docked`: the owner has
+// marked this paid holiday unpaid for this person (the Report's day_pay_overrides).
+export function emptyDayModel({date, today, weekday, employeeSince, now = new Date(), docked = false}){
   const status = dayOffStatus({date, weekday, employeeSince, today});
   if(status === 'holiday'){
     return {kind: 'empty', chip: {id: 'holiday', tone: 'violet', text: 'Holiday'},
-      callout: {id: 'holiday', tone: 'violet', params: {}, actions: []},
+      callout: {id: 'holiday', tone: 'violet', params: {docked},
+        actions: [{id: 'toggle-holiday', label: docked ? 'Restore as paid' : 'Mark unpaid'}]},
       sessions: [], paidTotal: null, lunch: null, needsLook: false};
   }
   if(date === today){

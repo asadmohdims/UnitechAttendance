@@ -67,6 +67,14 @@ function button(cls, label, onclick, attrs = {}){
   return b;
 }
 
+// The pencil that means "you set this, not the kiosk" — same glyph in the list, the day line and on each
+// changed time, so it only has to be learned once. Static markup, no user data.
+function penIcon(){
+  const span = h('span', 'pen');
+  span.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>';
+  return span;
+}
+
 // "1 hr 3 min", "45 min", "2 hr" — for gaps, where the H:MM of paid hours would read as a clock time.
 function fmtGap(hours){
   const m = Math.max(0, Math.round(hours * 60));
@@ -192,7 +200,9 @@ function personRow(entry){
   applyAvatar(avatar, emp);
   const who = h('div', 'rec-who', h('div', 'rec-name', emp.name));
   if(model.chip) who.append(h('span', `chip ${model.chip.tone}`, h('i'), model.chip.text));
-  const paid = h('div', 'rec-paid' + (model.paidTotal === null ? ' none' : ''), model.paidTotal === null ? '—' : fmtHours(model.paidTotal));
+  const paid = h('div', 'rec-paid' + (model.paidTotal === null ? ' none' : ''),
+    model.ownerPunchCount ? penIcon() : null, model.paidTotal === null ? '—' : fmtHours(model.paidTotal));
+  if(model.ownerPunchCount) paid.title = 'You set or changed a punch on this day';
   const row = button('rec-person' + (emp.id === selectedEmpId ? ' selected' : ''), [avatar, who, paid], () => {
     selectedEmpId = emp.id; showDetail = true; returnTo = null;
     renderRecordsFromCache();
@@ -211,6 +221,8 @@ function renderList(entries, date){
   summary.replaceChildren(h('b', null, String(entries.length)), entries.length === 1 ? ' person' : ' people');
   if(needs.length) summary.append(' · ', h('b', 'warn', String(needs.length)), ' need a look');
   if(stillIn) summary.append(' · ', h('b', null, String(stillIn)), ' still in');
+  const withEdits = entries.filter(e => e.model.ownerPunchCount).length;
+  if(withEdits) summary.append(' · ', penIcon(), ' ', h('b', null, String(withEdits)), ' with your edits');
   if(!entries.length){
     list.append(h('p', 'rec-empty', 'No one to show for this day.'));
     return;
@@ -258,19 +270,22 @@ function caption(kind, iso, view, side){
   if(type === 'not-yet'){ cap.append(h('b', 'muted', '—')); return cap; }
   if(type === 'auto'){ cap.append(h('b', 'flag', 'no tap')); return cap; }
   const flagged = side === 'in' && view.flagIn;
-  cap.append(h('b', flagged ? 'flag' : null, fmtTime(iso)));
+  // A time the owner set is blue with a pencil, with what the kiosk recorded under it; the other punch of
+  // the same session stays plain, so it is clear which half was touched.
+  const mine = view.mine[side];
+  const time = h('b', flagged ? 'flag' : mine ? 'mine' : null, mine ? penIcon() : null, fmtTime(iso));
+  if(mine) time.title = 'Set by you, not by the kiosk';
+  cap.append(time);
   const countedIso = side === 'out' ? view.countedOut : iso;
   const paid = paidPunchTime(iso, countedIso);
   if(paid) cap.append(h('u', null, `counts as ${fmtTime(paid.toISOString())}`));
   if(flagged) cap.append(h('u', 'flag', 'after closing'));
-  // What the kiosk captured before the owner changed it — never silently amended.
-  const orig = side === 'in' ? r.orig_clock_in : r.orig_clock_out;
-  // Compared as shown (to the minute): an edit that kept a time keeps its exact instant too, so
-  // anything that still reads the same on screen is not worth a note.
-  if(r.edited_at && orig && fmtTime(orig) !== fmtTime(iso)){
-    const wasAuto = side === 'out' && isAutoClosedSession({...r, clock_out: orig});
-    cap.append(h('u', 'edit', wasAuto ? `was: closed automatically ${fmtTime(orig)}`
-      : type === 'photo' ? `photo taken at ${fmtTime(orig)}` : `was ${fmtTime(orig)}`));
+  if(mine){
+    const orig = side === 'in' ? view.mine.wasIn : view.mine.wasOut;
+    if(view.mine.added) cap.append(h('u', 'edit', 'added by you'));
+    else if(!orig) cap.append(h('u', 'edit', 'kiosk had no clock-out'));
+    else if(side === 'out' && isAutoClosedSession({...r, clock_out: orig})) cap.append(h('u', 'edit', `kiosk closed it automatically ${fmtTime(orig)}`));
+    else cap.append(h('u', 'edit', 'kiosk recorded ', h('s', null, fmtTime(orig))));
   }
   return cap;
 }
@@ -374,6 +389,13 @@ async function toggleHolidayPay(emp, date, currentlyDocked){
   busy(false);
 }
 
+// "3 of 4 punches were set by you, not the kiosk."
+function ownerLine(model){
+  const n = model.ownerPunchCount, total = model.punchCount;
+  if(n === total) return total === 1 ? 'This punch was set by you, not the kiosk' : `All ${total} punches were set by you, not the kiosk`;
+  return `${n} of ${total} punches ${n === 1 ? 'was' : 'were'} set by you, not the kiosk`;
+}
+
 function renderDetail(entry, date){
   const pane = $('recDetail');
   pane.innerHTML = '';
@@ -388,7 +410,8 @@ function renderDetail(entry, date){
       if(back) back(); else syncLayout();
     }, {'aria-label': returnTo ? 'Back to the Report' : 'Back to the day'}),
     avatar,
-    h('div', 'rec-detail-who', h('div', 'rec-detail-date', fmtDay(date, {weekday:'short', day:'numeric', month:'short', year:'numeric'})), h('h2', null, emp.name)),
+    h('div', 'rec-detail-who', h('div', 'rec-detail-date', fmtDay(date, {weekday:'short', day:'numeric', month:'short', year:'numeric'})), h('h2', null, emp.name),
+      model.ownerPunchCount ? h('div', 'rec-mine-line', penIcon(), ownerLine(model)) : null),
     model.kind === 'worked' && !overtimeHours
       ? button('btn small ghost', '+ Overtime', () => addOrEditOvertime(emp.id, emp.name, date, null)) : null);
   pane.append(head);

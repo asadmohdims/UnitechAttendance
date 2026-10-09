@@ -3,7 +3,7 @@
 // Run with: node --test js/
 import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
-import { dayModel, emptyDayModel, sessionProblems, slotTypes } from './dayStatus.js';
+import { dayModel, emptyDayModel, sessionProblems, slotTypes, ownerPunches } from './dayStatus.js';
 
 const DATE = '2026-10-07', TODAY = '2026-10-08';
 const at = (h, m = 0, dayOffset = 0) => new Date(2026, 9, 7 + dayOffset, h, m).toISOString();
@@ -111,6 +111,49 @@ describe('owner changes', () => {
     const m = model([rec(9, 16, 13, 1), rec(14, 11, 18, 7)], {overtimeHours: 2});
     assert.equal(m.paidTotal, 9.5);
     assert.equal(m.chip.id, 'overtime');
+  });
+});
+
+describe('which punches are the owner\'s', () => {
+  const EDITED_AT = '2026-10-08T10:00:00.000Z';
+  test('a kiosk-only session has none', () => {
+    assert.deepEqual(ownerPunches(rec(9, 0, 13, 0)), {in: false, out: false, added: false, wasIn: null, wasOut: null});
+  });
+  test('only the punch that moved is the owner\'s; the other stays the kiosk\'s', () => {
+    const r = rec(9, 5, 13, 2, {edited_at: EDITED_AT, orig_clock_in: at(9, 41), orig_clock_out: at(13, 2)});
+    const m = ownerPunches(r);
+    assert.equal(m.in, true);
+    assert.equal(m.out, false);
+    assert.equal(m.wasIn, at(9, 41));
+  });
+  test('an edit that kept the time (same minute, different seconds) is not a change', () => {
+    const r = rec(9, 5, 13, 2, {edited_at: EDITED_AT, orig_clock_in: new Date(2026, 9, 7, 9, 5, 40).toISOString(), orig_clock_out: at(13, 2)});
+    assert.equal(ownerPunches(r).in, false);
+  });
+  test('a clock-out typed for a session that was open (or auto-closed to midnight) is the owner\'s', () => {
+    const open = rec(14, 2, 18, 0, {out_photo: null, edited_at: EDITED_AT, orig_clock_in: at(14, 2), orig_clock_out: null});
+    assert.deepEqual([ownerPunches(open).in, ownerPunches(open).out, ownerPunches(open).wasOut], [false, true, null]);
+    const auto = rec(14, 2, 18, 0, {out_photo: null, edited_at: EDITED_AT, orig_clock_in: at(14, 2), orig_clock_out: at(0, 0, 1)});
+    assert.equal(ownerPunches(auto).out, true);
+  });
+  test('a record the owner created: both punches, or just the clock-in when it has no clock-out', () => {
+    const both = rec(14, 5, 18, 10, {in_photo: null, out_photo: null, edited_at: EDITED_AT, orig_clock_in: null, orig_clock_out: null});
+    assert.deepEqual([ownerPunches(both).in, ownerPunches(both).out, ownerPunches(both).added], [true, true, true]);
+    const inOnly = rec(14, 5, null, 0, {in_photo: null, edited_at: EDITED_AT, orig_clock_in: null, orig_clock_out: null});
+    assert.deepEqual([ownerPunches(inOnly).in, ownerPunches(inOnly).out], [true, false]);
+  });
+  test('the day counts them against all recorded punches, even when a more urgent chip wins', () => {
+    const changed = rec(9, 5, 13, 2, {edited_at: EDITED_AT, orig_clock_in: at(9, 41), orig_clock_out: at(13, 2)});
+    const added = rec(14, 5, 18, 10, {in_photo: null, out_photo: null, edited_at: EDITED_AT, orig_clock_in: null, orig_clock_out: null});
+    const m = model([changed, added]);
+    assert.equal(m.ownerPunchCount, 3);
+    assert.equal(m.punchCount, 4);
+    const plain = model([rec(9, 1, 13, 4), rec(14, 7, 18, 22)]);
+    assert.equal(plain.ownerPunchCount, 0);
+    // An open session with an edit elsewhere in the day: "Still in" wins the chip, the count is unaffected.
+    const withOpen = model([changed, rec(14, 0, null, 0)]);
+    assert.equal(withOpen.ownerPunchCount, 1);
+    assert.equal(withOpen.punchCount, 3);
   });
 });
 

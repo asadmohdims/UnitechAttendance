@@ -70,6 +70,28 @@ export function slotTypes(s){
   return {in: inType, out: outType};
 }
 
+// Which of a session's two punches the OWNER set rather than the kiosk. Compared to the minute, as the
+// screen shows it: an edit that kept a time keeps its exact instant, so it is not "changed".
+//   in/out   true when that punch is the owner's
+//   wasIn/wasOut   what the kiosk recorded (null when there was none, or when the owner created the row)
+// A record the owner created (edited_at but no orig_*) has both punches theirs, bar a clock-out left
+// empty. A punch that was still open when first edited (orig_clock_out null) and now has a time is
+// theirs too. Rows edited before the marker existed have no edited_at and so show nothing.
+const sameMinute = (a, b) => Math.floor(new Date(a) / MIN) === Math.floor(new Date(b) / MIN);
+export function ownerPunches(s){
+  const none = {in: false, out: false, added: false, wasIn: null, wasOut: null};
+  if(!s.edited_at) return none;
+  const added = !s.orig_clock_in && !s.orig_clock_out;
+  if(added) return {...none, in: true, out: !!s.clock_out, added: true};
+  return {
+    in: !!s.orig_clock_in && !sameMinute(s.orig_clock_in, s.clock_in),
+    out: !!s.clock_out && (!s.orig_clock_out || !sameMinute(s.orig_clock_out, s.clock_out)),
+    added: false,
+    wasIn: s.orig_clock_in || null,
+    wasOut: s.orig_clock_out || null
+  };
+}
+
 function sessionLabel(index, count, session){
   if(count === 1){
     const h = new Date(session.clock_in).getHours();
@@ -96,6 +118,7 @@ export function dayModel({sessions, date, today, now = new Date(), overtimeHours
       soFar: !r.clock_out && isToday ? Math.max(0, (now - new Date(r.clock_in)) / 3600000) : null,
       countedOut: r.clock_out ? countedClockOut(r) : null,
       edited: !!r.edited_at,
+      mine: ownerPunches(r),
       flagIn: problems.some(p => p.index === i && p.kind === 'late-start'),
       problems: problems.filter(p => p.index === i)
     };
@@ -158,8 +181,13 @@ export function dayModel({sessions, date, today, now = new Date(), overtimeHours
     chip = {id: 'overtime', tone: 'green', text: `+${overtimeHours}h overtime`};
   }
 
+  // "3 of 4 punches were set by you": how much of the day the kiosk did NOT record. It is shown beside the
+  // hours in the list as well, because the list's single chip is usually taken by something more urgent.
+  const ownerPunchCount = sessionViews.reduce((n, v) => n + (v.mine.in ? 1 : 0) + (v.mine.out ? 1 : 0), 0);
+  const punchCount = sessions.reduce((n, r) => n + 1 + (r.clock_out ? 1 : 0), 0);
+
   return {
-    kind: 'worked', chip, callout, problems, sessions: sessionViews, paidTotal, lunch,
+    kind: 'worked', chip, callout, problems, sessions: sessionViews, paidTotal, lunch, ownerPunchCount, punchCount,
     needsLook: !!chip && (chip.id === 'needs-clock-out' || chip.id === 'check-punches')
   };
 }

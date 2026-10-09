@@ -565,6 +565,16 @@ input.rec-date-input[type=date]{position:absolute; left:50%; top:100%; width:1px
 .rec-cap b.muted{color:var(--muted);}
 .rec-cap b.flag, .rec-cap u.flag{color:#fcd34d;}
 .rec-cap u.edit{color:#93c5fd;}
+.rec-cap u s{color:var(--muted); text-decoration-color:#7f8da1;}
+/* A time the owner set: blue with a pencil. Same glyph in the list's hours and the day line. */
+.rec-cap b.mine{color:#93c5fd; display:flex; align-items:center; gap:6px;}
+.pen{display:inline-flex; flex:0 0 auto; color:#93c5fd;}
+.pen svg{width:1em; height:1em;}
+.rec-cap b.mine .pen{font-size:15px;}
+.rec-paid{display:flex; align-items:center; gap:7px;}
+.rec-paid .pen{font-size:14px;}
+.rec-mine-line{display:flex; align-items:center; gap:7px; margin-top:2px; font-size:13px; font-weight:650; color:#93c5fd;}
+.rec-summary .pen{font-size:12px; vertical-align:-.1em;}
 .rec-mid{height:96px; display:flex; flex-direction:column; align-items:center; justify-content:center;}
 .rec-mid b{font-family:'Bebas Neue',sans-serif; font-weight:400; font-size:40px; letter-spacing:.02em; line-height:1; color:#86efac; font-variant-numeric:tabular-nums;}
 .rec-mid b.muted{color:var(--muted);}

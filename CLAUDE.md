@@ -265,9 +265,15 @@ dialog used to add 24h whenever clock-out < clock-in). Now:
   saves without it, and kiosk punch sync only sends these columns for an edited row.
 - The kiosk and the admin share one Supabase login (admin unlock is a client-side gate), so the
   database cannot say *who* edited, only when and what. Supabase's API logs are the only other trace.
-- Daily records shows the marker: an "Edited" chip, the kiosk's original time under an edited punch
-  ("was 5:41 PM", "photo taken at ..."), and "Entered by you" in a photo slot the owner typed. The
-  Report day-detail panel does not show it yet.
+- Daily records shows the marker at three levels (`ownerPunches()` in `js/dayStatus.js` decides which
+  punches are the owner's): the **time itself** is blue with a pencil and says what the kiosk recorded
+  underneath ("kiosk recorded ~~9:41 AM~~", "added by you", "kiosk had no clock-out"), while the
+  session's other punch stays plain so it is clear which half was touched; the **detail header** says
+  "3 of 4 punches were set by you, not the kiosk"; the **people list** puts the same pencil beside the
+  hours. The pencil is separate from the single chip on purpose: the chip is taken by anything more
+  urgent ("Needs clock-out"), which used to hide an edit completely. The "Edited" chip and "Entered by
+  you" photo slot remain. A same-minute edit is not shown as a change. The Report day-detail panel does
+  not show it yet.
 
 ## Lunch-break support
 
@@ -693,7 +699,7 @@ Some pure logic has automated coverage via Node's **built-in** test runner (`nod
 `node:assert`) — zero npm installs, zero config, zero build step, consistent with the "no
 build step" constraint above (it's testing, not bundling).
 
-- Run everything: `node --test js/` from the project root (213 tests as of this writing, all
+- Run everything: `node --test js/` from the project root (225 tests as of this writing, all
   passing).
 - Test files are co-located with the code they cover, named `*.test.mjs`.
 - Covered: `js/salary.js` (proration, retroactive rate-selection, boundary/leap-year dates,

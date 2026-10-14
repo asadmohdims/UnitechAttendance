@@ -35,6 +35,23 @@ narrative iteration history here, just the resulting design and any non-obvious 
   testing — serve it (`python3 -m http.server 8743` from the project root) and open
   `http://localhost:8743`.
 
+## 2.0 rebuild (in progress, branch `v2-react`; the live app below is unchanged)
+
+The no-build rule above applies to the **live app**. The owner has asked for a 2.0 UI rebuild in `v2/`
+(Vite + React 19 + TypeScript, our own Timecard CSS, no Tailwind/shadcn), built beside the live app and
+deployed only at an explicit cutover. `v2/` reuses `js/store/*` and the pure `js/*.js` modules unchanged
+(a Vite plugin rewrites only the `DEMO_MODE` line of `js/config.js`; the vendored supabase-js global is
+provided from npm). Do not edit those shared modules for v2's sake; the live app still runs them.
+
+- Plan: `/Users/asad/.claude/plans/purrfect-skipping-karp.md` (stack, steps, risks, regression tests).
+- Parity checklist (what the live app does vs the design): `v2/PARITY.md`. Update it as screens are built.
+- Design: Timecard design system `https://claude.ai/artifact/KzxKqSUN3rihzLhvpjz4Z9` and screens canvas
+  `https://claude.ai/artifact/GNPVhdUoyDmES5x2cok6qs`. Admin is Days / Month / People; the kiosk grid never
+  reorders; status colours are palette v1.2; fonts are Figtree + IBM Plex Mono (Figtree has the rupee sign).
+- Before any cutover: the service worker moves to `vite-plugin-pwa` and CLAUDE.md "Known gaps" item 2 (the
+  real-tablet offline checklist) must be re-verified on the v2 build. `.github/workflows/deploy.yml` must also
+  exclude `v2/` from the staged site until then.
+
 ## Architecture
 
 ```

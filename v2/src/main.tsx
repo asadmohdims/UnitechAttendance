@@ -5,6 +5,7 @@ import './styles/fonts.css'
 import './styles/tokens.css'
 import './styles/components.css'
 import './styles/base.css'
+import './admin/admin.css'
 import { App } from './App'
 
 createRoot(document.getElementById('root')!).render(

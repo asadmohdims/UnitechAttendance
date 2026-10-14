@@ -185,3 +185,32 @@ Design notes that had leaked into screens were removed from the canvas; the word
 - **Days footnote** (changed from the live app): "Pay counts each punch to the nearest quarter hour, with up to 10
   minutes of grace. Times marked ✎ were set by you; the rest are what the kiosk recorded." The live wording
   (`js/ui/records.js`, `rec-foot`) says every time is what the kiosk recorded, which is false once a punch is edited.
+
+## Built in v2 so far (kiosk home and punch flow, 2026-10-14)
+
+Tile grid with state band, side panel (roster line, clock, Payments, Admin access, version, sync), camera dialog
+(shutter off until a frame decodes, refuses a photo that did not come out, retry-safe), confirmations (in, out,
+already clocked), the 2-minute duplicate window in both directions, the midnight auto-close (only on data fetched
+this session), the sync indicator, and offline-first reads. Not built: Payments mode and its PIN flow, Admin access.
+Both say "isn't built in 2.0 yet" when tapped. Tests: `src/kiosk/*.test.*`, `src/data/*.test.*`.
+
+Not drawn on the canvas, decided here and open for your call: the empty-roster message (live wording kept),
+the very first load with nothing saved yet (grid simply empty until the first fetch lands), the camera
+"unavailable" text for causes other than a denied permission, the "Failed: …, try again." line when a punch
+cannot be saved, and the shutter flash (kept from the live app).
+
+## Built in v2: admin shell and Days (read view), 2026-10-14
+
+Admin shell (left rail from 900px, bottom tab bar below, Kiosk exit), unlock dialog (re-checks the owner's
+password against the saved session, same wording as live; demo mode goes straight in), deep link
+`#/admin/days/YYYY-MM-DD`. Days: period control, Needs attention queue (month of the day shown), the day's
+list split into "Needs a look" and "Everyone else", person detail with callout, strip, timeline, session cards with
+photo-slot reasons, owner-edit marks (time, header line, session stamp, list pencil), lunch gap, overtime row,
+footnote, photo viewer. Callout wording is ported from `calloutText()` and covered by tests.
+
+Works for real: lunch "Pay as work" / "Undo", holiday "Mark unpaid" / "Restore as paid", "Split for lunch".
+Say "isn't built in 2.0 yet" when used: Enter clock-out time / Edit, the session menu (Delete), Add missed
+punch, Add / Edit / Remove overtime. Month and People tabs. Queue has no payment-mismatch items (Payments is
+deferred). Deliberate differences from live: rows inside a group are ordered by chip importance (missing
+clock-out before absent), the screen opens on the queue's first item for that day, and the Needs attention queue
+is new (M3).

@@ -5,6 +5,7 @@ import { adminNeedsPassword } from './admin/auth'
 import { DaysScreen } from './admin/days/DaysScreen'
 import { useRoute } from './admin/route'
 import { Kiosk } from './kiosk/Kiosk'
+import { SheetsProvider } from './ui/Sheets'
 import { NOT_BUILT, useToast } from './ui/useToast'
 
 export function App() {
@@ -29,6 +30,7 @@ export function App() {
   if (route.view === 'admin') {
     return (
       <>
+        <SheetsProvider>
         <AdminShell tab={route.tab} onTab={(tab) => go({ view: 'admin', tab })} onKiosk={() => go({ view: 'kiosk' })}>
           {route.tab === 'days' ? (
             <DaysScreen onNotice={notify} initialDate={route.date} />
@@ -36,6 +38,7 @@ export function App() {
             <p className="body app-muted">{NOT_BUILT(route.tab === 'month' ? 'Month' : 'People')}</p>
           )}
         </AdminShell>
+        </SheetsProvider>
         {toast}
       </>
     )

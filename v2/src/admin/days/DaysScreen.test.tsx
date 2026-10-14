@@ -1,11 +1,14 @@
-import { act, fireEvent, render, screen, within } from '@testing-library/react'
+import { act, fireEvent, render as rtlRender, screen, within } from '@testing-library/react'
+import type { ReactElement } from 'react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { queryCache } from '../../data/queryCache'
 import { store } from '../../data/store'
 import type { Employee, RecordRow } from '../../data/types'
+import { SheetsProvider } from '../../ui/Sheets'
 import { DaysScreen } from './DaysScreen'
 
 const now = new Date(2026, 9, 14, 11, 0) // Wed 14 Oct, 11:00
+const render = (ui: ReactElement) => rtlRender(<SheetsProvider>{ui}</SheetsProvider>)
 const D = '2026-10-13'
 const at = (d: string, h: number, m = 0) => new Date(`${d}T${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:00`).toISOString()
 const staff: Employee[] = [
@@ -84,11 +87,90 @@ describe('Days', () => {
     expect(setLunchPaid).toHaveBeenCalledWith('f1', true)
   })
 
-  it('says what is not built yet instead of looking dead', async () => {
+  const save = (name = 'Save') => act(async () => { fireEvent.click(screen.getByRole('button', { name })) })
+  const type = (label: string | RegExp, value: string) => fireEvent.change(screen.getByLabelText(label), { target: { value } })
+
+  it('enters the real clock-out for a session the system closed, and writes only that', async () => {
     boot([...shakib, ...faizan])
-    const notify = await open()
+    const update = vi.spyOn(store, 'updateRecordTimes').mockResolvedValue(undefined)
+    await open()
     fireEvent.click(screen.getByRole('button', { name: 'Enter clock-out time' }))
-    expect(notify).toHaveBeenCalledWith("Editing a session isn't built in 2.0 yet.")
+    const dialog = await screen.findByRole('dialog')
+    expect(within(dialog).getByText('Edit Shakib')).toBeInTheDocument()
+    expect(within(dialog).getByText(/The kiosk closed it automatically, so enter the real clock-out\./)).toBeInTheDocument()
+    type(/Clock out/, '18:30')
+    await save()
+    expect(update).toHaveBeenCalledTimes(1)
+    const [id, inIso, outIso] = update.mock.calls[0]
+    expect(id).toBe('s2')
+    expect(inIso).toBe(shakib[1].clock_in) // clock-in untouched: its exact stored instant is kept
+    expect(new Date(outIso as string).getHours()).toBe(18)
+  })
+
+  it('refuses a clock-out before the clock-in in the board\'s words, and writes nothing', async () => {
+    boot([...shakib, ...faizan])
+    const update = vi.spyOn(store, 'updateRecordTimes')
+    await open()
+    fireEvent.click(screen.getByRole('button', { name: 'Enter clock-out time' }))
+    await screen.findByRole('dialog')
+    type(/Clock out/, '13:30')
+    await save()
+    expect(screen.getByText('Clock out must be after the 2:02 PM clock in.')).toBeInTheDocument()
+    expect(update).not.toHaveBeenCalled()
+  })
+
+  it('says there is nothing to save when the times did not change', async () => {
+    boot([...shakib, ...faizan])
+    const update = vi.spyOn(store, 'updateRecordTimes')
+    const notify = await open()
+    // The morning session: its stored times are valid, so an untouched Save is a no-op.
+    // (The auto-closed one opens at 12:00 AM on purpose, and has to be corrected.)
+    fireEvent.click(screen.getAllByRole('button', { name: 'Edit' })[0])
+    await screen.findByRole('dialog')
+    await save()
+    expect(update).not.toHaveBeenCalled()
+    expect(notify).toHaveBeenCalledWith('No changes to save.')
+  })
+
+  it('adds a missed punch for an absent person', async () => {
+    boot([...faizan]) // Shakib has no punches: Absent
+    const add = vi.spyOn(store, 'addManualRecord').mockResolvedValue({} as RecordRow)
+    await open()
+    fireEvent.click(screen.getByRole('button', { name: 'Add missed punch' }))
+    const dialog = await screen.findByRole('dialog')
+    expect(within(dialog).getByText('Add a missed punch for Shakib')).toBeInTheDocument()
+    type('Clock in', '09:00')
+    type(/Clock out/, '18:00')
+    await save('Add')
+    expect(add).toHaveBeenCalledTimes(1)
+    expect(add.mock.calls[0][0]).toBe('b')
+    expect(add.mock.calls[0][1]).toBe(D)
+  })
+
+  it('deletes a session only after the confirmation', async () => {
+    boot([...shakib, ...faizan])
+    const del = vi.spyOn(store, 'deleteRecord').mockResolvedValue(undefined)
+    await open()
+    fireEvent.click(screen.getAllByRole('button', { name: 'More for this session' })[0])
+    fireEvent.click(await screen.findByRole('button', { name: 'Delete session…' }))
+    expect(await screen.findByText('Delete this record for Shakib?')).toBeInTheDocument()
+    expect(del).not.toHaveBeenCalled()
+    await save('Delete')
+    expect(del).toHaveBeenCalledWith(expect.objectContaining({ id: 's1' }))
+  })
+
+  it('adds overtime, and refuses something that is not a number of hours', async () => {
+    boot([...shakib, ...faizan])
+    const set = vi.spyOn(store, 'setOvertimeHours').mockResolvedValue(undefined)
+    await open()
+    fireEvent.click(screen.getByRole('button', { name: 'Add overtime' }))
+    await screen.findByRole('dialog')
+    type('Overtime hours', '0')
+    await save()
+    expect(screen.getByText('Enter a valid number of hours.')).toBeInTheDocument()
+    type('Overtime hours', '2')
+    await save()
+    expect(set).toHaveBeenCalledWith('b', D, 2)
   })
 
   it('draws from the saved day on first paint while the network never answers', () => {

@@ -5,9 +5,11 @@ import { useCachedQuery } from '../../data/useCachedQuery'
 import { usePhotoUrl } from '../../data/usePhotoUrl'
 import type { DayPayOverride, Employee, OvertimeRow, RecordRow } from '../../data/types'
 import { dateKey, fmtHours, initials } from '../../format'
-import { NOT_BUILT } from '../../ui/useToast'
+import { refreshKioskData } from '../../data/invalidate'
+import { useSheets } from '../../ui/Sheets'
 import { useNow } from '../../kiosk/useNow'
 import { buildAttentionQueue, buildDayEntries } from '../dayEntries'
+import { sessionEditForm, missedPunchForm, overtimeForm, confirmDeleteForm } from '../forms'
 import { calloutStamp, chipText, fmtDayShort } from '../dayText'
 import { defaultLunchWindow, MIN_SPLITTABLE_MS } from '../lunchSplit'
 import type { CalloutAction, DayEntry, SessionView, Tone } from '../types'
@@ -42,6 +44,7 @@ interface Props {
 }
 
 export function DaysScreen({ onNotice, initialDate, nowOverride }: Props) {
+  const sheets = useSheets()
   const tick = useNow(30000)
   const now = nowOverride ?? tick
   const today = dateKey(now)
@@ -93,12 +96,52 @@ export function DaysScreen({ onNotice, initialDate, nowOverride }: Props) {
       try {
         await fn()
         await reload()
+        void refreshKioskData(now)
       } catch (err) {
         onNotice(`Failed: ${(err as Error).message}`)
       }
     },
-    [reload, onNotice],
+    [reload, onNotice, now],
   )
+
+  const editSession = async (session: SessionView, entry: DayEntry) => {
+    const form = sessionEditForm(session.record, entry.emp.name)
+    const v = await sheets.prompt(form.config)
+    if (!v) return
+    const times = form.resolve(v)
+    if (!times || !times.changed) return onNotice('No changes to save.') // nothing moved: write nothing, keep the exact seconds
+    await attempt(() => store.updateRecordTimes(session.record.id, times.inIso, times.outIso))
+  }
+
+  const addMissedPunch = async (entry: DayEntry) => {
+    const form = missedPunchForm(date, entry.emp.name)
+    const v = await sheets.prompt(form.config)
+    if (!v) return
+    const times = form.resolve(v)
+    if (!times) return
+    await attempt(() => store.addManualRecord(entry.emp.id, date, times.inIso, times.outIso).then(() => undefined))
+  }
+
+  const deleteSession = async (session: SessionView, entry: DayEntry) => {
+    const v = await sheets.prompt(confirmDeleteForm(entry.emp.name))
+    if (!v) return
+    await attempt(() => store.deleteRecord(session.record))
+  }
+
+  const setOvertime = async (entry: DayEntry) => {
+    const v = await sheets.prompt(overtimeForm(entry.emp.name, entry.overtimeHours))
+    if (!v) return
+    await attempt(() => store.setOvertimeHours(entry.emp.id, date, Number(v.hours)))
+  }
+
+  const splitSession = (session: SessionView) => {
+    const { clock_in, clock_out, id } = session.record
+    if (!clock_out || new Date(clock_out).getTime() - new Date(clock_in).getTime() < MIN_SPLITTABLE_MS) {
+      return onNotice('This session is too short to split off a 1-hour lunch.')
+    }
+    const { start, end } = defaultLunchWindow(new Date(clock_in), new Date(clock_out))
+    return void attempt(() => store.splitSessionForLunch(id, start.toISOString(), end.toISOString()))
+  }
 
   const actions: PersonActions = {
     toggleLunch: (gapSession: SessionView) => void attempt(() => store.setLunchPaid(gapSession.record.id, !gapSession.record.lunch_paid)),
@@ -108,23 +151,22 @@ export function DaysScreen({ onNotice, initialDate, nowOverride }: Props) {
         const docked = !!entry.model.callout?.params.docked
         return void attempt(() => store.setDayOverride(entry.emp.id, date, docked))
       }
-      if (a.id === 'split' && session) {
-        const { clock_in, clock_out, id } = session.record
-        if (!clock_out || new Date(clock_out).getTime() - new Date(clock_in).getTime() < MIN_SPLITTABLE_MS) {
-          return onNotice('This session is too short to split off a 1-hour lunch.')
-        }
-        const { start, end } = defaultLunchWindow(new Date(clock_in), new Date(clock_out))
-        return void attempt(() => store.splitSessionForLunch(id, start.toISOString(), end.toISOString()))
-      }
-      if (a.id === 'delete-session') return onNotice(NOT_BUILT('Deleting a session'))
-      if (a.id === 'add-punch') return onNotice(NOT_BUILT('Adding a missed punch'))
-      return onNotice(NOT_BUILT('Editing a session'))
+      if (a.id === 'split' && session) return splitSession(session)
+      if (a.id === 'delete-session' && session) return void deleteSession(session, entry)
+      if (a.id === 'add-punch') return void addMissedPunch(entry)
+      if (session) return void editSession(session, entry)
     },
-    addOvertime: () => onNotice(NOT_BUILT('Overtime')),
-    editOvertime: () => onNotice(NOT_BUILT('Overtime')),
-    removeOvertime: () => onNotice(NOT_BUILT('Overtime')),
-    editSession: () => onNotice(NOT_BUILT('Editing a session')),
-    sessionMenu: () => onNotice(NOT_BUILT('The session menu')),
+    addOvertime: (entry) => void setOvertime(entry),
+    editOvertime: (entry) => void setOvertime(entry),
+    removeOvertime: (entry) => void attempt(() => store.deleteOvertimeHours(entry.emp.id, date)),
+    editSession: (session, entry) => void editSession(session, entry),
+    sessionMenu: async (session, entry) => {
+      const items: { label: string; danger?: boolean; run: () => void }[] = []
+      if (entry.model.sessions.length === 1 && session.record.clock_out) items.push({ label: 'Split for lunch', run: () => splitSession(session) })
+      items.push({ label: 'Delete session…', danger: true, run: () => void deleteSession(session, entry) })
+      const i = await sheets.choose({ title: `${entry.emp.name}, ${session.label[0] + session.label.slice(1).toLowerCase()}`, items })
+      if (i !== null) items[i].run()
+    },
   }
 
   useEffect(() => {

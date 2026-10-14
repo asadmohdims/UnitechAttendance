@@ -48,6 +48,10 @@ provided from npm). Do not edit those shared modules for v2's sake; the live app
   after a failure or 3s, so v2 never awaits it for a first draw: `useCachedQuery` renders the last good value
   at once and refetches behind it, and photos are saved on the device (`photoCache.ts`). Every store call goes
   through `store.ts`, which makes each method return a promise (demoStore returns plain values). v1 is untouched.
+- Status (2026-10-14): built and tested in v2 (`npm test` in `v2/`): the offline-first data layer, the kiosk home and
+  punch flow, the admin shell with unlock, and the Days screen including edit, delete, add missed punch, split for
+  lunch, lunch paid and overtime. Not built: Payments (kiosk flow and Month tab, deliberately deferred), Month
+  Attendance/Pay, People, the service worker (plan step 6). Run it: `npm --prefix v2 run dev` (demo mode, port 5173).
 - Parity checklist (what the live app does vs the design): `v2/PARITY.md`. Update it as screens are built.
 - Design: Timecard design system `https://claude.ai/artifact/KzxKqSUN3rihzLhvpjz4Z9` and screens canvas
   `https://claude.ai/artifact/GNPVhdUoyDmES5x2cok6qs`. Admin is Days / Month / People; the kiosk grid never

@@ -208,9 +208,14 @@ list split into "Needs a look" and "Everyone else", person detail with callout, 
 photo-slot reasons, owner-edit marks (time, header line, session stamp, list pencil), lunch gap, overtime row,
 footnote, photo viewer. Callout wording is ported from `calloutText()` and covered by tests.
 
-Works for real: lunch "Pay as work" / "Undo", holiday "Mark unpaid" / "Restore as paid", "Split for lunch".
-Say "isn't built in 2.0 yet" when used: Enter clock-out time / Edit, the session menu (Delete), Add missed
-punch, Add / Edit / Remove overtime. Month and People tabs. Queue has no payment-mismatch items (Payments is
-deferred). Deliberate differences from live: rows inside a group are ordered by chip importance (missing
+Works for real: lunch "Pay as work" / "Undo", holiday "Mark unpaid" / "Restore as paid", "Split for lunch",
+Enter clock-out time / Edit (typed times validated by the live `buildEntryTimes`; an unchanged save writes nothing),
+Delete session with confirm, Add missed punch, Add / Edit / Remove overtime. Month and People tabs say
+"isn't built in 2.0 yet". The queue has no payment-mismatch items (Payments is deferred).
+Wording from the Dialogs board where it differs from live: the clock-out error reads "Clock out must be after the
+2:02 PM clock in." (live: "Clock-out must be later than clock-in on the same day. Check AM/PM."), the title is
+"Edit Shakib" (live: "Edit — Shakib"), the overtime hint is "Paid at the normal hourly rate." Time fields are the
+browser's own time input, not the text field the board draws, so AM/PM and 24-hour entry both work.
+Deliberate differences from live: rows inside a group are ordered by chip importance (missing
 clock-out before absent), the screen opens on the queue's first item for that day, and the Needs attention queue
 is new (M3).

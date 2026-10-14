@@ -49,8 +49,8 @@ provided from npm). Do not edit those shared modules for v2's sake; the live app
   `https://claude.ai/artifact/GNPVhdUoyDmES5x2cok6qs`. Admin is Days / Month / People; the kiosk grid never
   reorders; status colours are palette v1.2; fonts are Figtree + IBM Plex Mono (Figtree has the rupee sign).
 - Before any cutover: the service worker moves to `vite-plugin-pwa` and CLAUDE.md "Known gaps" item 2 (the
-  real-tablet offline checklist) must be re-verified on the v2 build. `.github/workflows/deploy.yml` must also
-  exclude `v2/` from the staged site until then.
+  real-tablet offline checklist) must be re-verified on the v2 build. `.github/workflows/deploy.yml` already
+  excludes `v2/` from the staged site; remove that exclusion only at cutover.
 
 ## Architecture
 

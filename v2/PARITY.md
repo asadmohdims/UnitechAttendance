@@ -173,3 +173,15 @@ Before the fix: 17 OK, 29 PART, 34 MISSING.
 5. **M5**: drop the "N days off / Review required" row labels in favour of the month strip?
 6. **M7**: editing a day from Month (edit, delete, split, lunch, overtime inline) becomes a hand-off to Days. One place to edit, but one more tap. Keep or restore inline?
 7. **E6**: person page with summaries is new. Keep?
+
+## Copy taken off the canvas (build from here)
+
+Design notes that had leaked into screens were removed from the canvas; the wording is kept here.
+
+- **Days · session menu**: "Split for lunch" appears only on a single closed session. Under 70 minutes it says
+  "This session is too short to split off a 1-hour lunch."
+- **Month · Payments**: deleting a payment asks again: "Delete this payment entry for Raju?"
+- Already covered above: no-rate calculation text (Y4), payment date-row wording (Z5).
+- **Days footnote** (changed from the live app): "Pay counts each punch to the nearest quarter hour, with up to 10
+  minutes of grace. Times marked ✎ were set by you; the rest are what the kiosk recorded." The live wording
+  (`js/ui/records.js`, `rec-foot`) says every time is what the kiosk recorded, which is false once a punch is edited.

@@ -33,6 +33,7 @@ export default defineConfig({
   resolve: { alias: { '@': path.resolve(__dirname, 'src'), '@legacy': legacyJs } },
   server: { fs: { allow: ['..'] } },
   test: {
+    globals: true,
     environment: 'jsdom',
     setupFiles: ['./src/test/setup.ts'],
     css: false,

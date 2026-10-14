@@ -29,7 +29,7 @@ jobs:
       - name: Prepare site (exclude archive/)
         run: |
           mkdir _site
-          rsync -a --exclude='archive' --exclude='.git' --exclude='_site' ./ _site/
+          rsync -a --exclude='archive' --exclude='v2' --exclude='.git' --exclude='_site' ./ _site/
 
       # Stamps this deploy with a real version string — there's no bundler/build step to inject
       # one, so it's done here instead. Overwrites the repo's committed 'dev' placeholders in

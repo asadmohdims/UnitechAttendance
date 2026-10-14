@@ -18,3 +18,8 @@ for (const name of ['localStorage', 'sessionStorage'] as const) {
   Object.defineProperty(globalThis, name, { value: new MemoryStorage(), configurable: true, writable: true })
   Object.defineProperty(window, name, { value: (globalThis as unknown as Record<string, Storage>)[name], configurable: true, writable: true })
 }
+
+// jsdom has no object URLs; photos are shown through them.
+let objectUrlCounter = 0
+URL.createObjectURL = () => `blob:test/${++objectUrlCounter}`
+URL.revokeObjectURL = () => {}

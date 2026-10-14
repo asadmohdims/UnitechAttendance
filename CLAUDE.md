@@ -44,6 +44,10 @@ deployed only at an explicit cutover. `v2/` reuses `js/store/*` and the pure `js
 provided from npm). Do not edit those shared modules for v2's sake; the live app still runs them.
 
 - Plan: `/Users/asad/.claude/plans/purrfect-skipping-karp.md` (stack, steps, risks, regression tests).
+- Data layer (`v2/src/data/`): v2 reads are offline-first. The legacy store awaits the server and falls back
+  after a failure or 3s, so v2 never awaits it for a first draw: `useCachedQuery` renders the last good value
+  at once and refetches behind it, and photos are saved on the device (`photoCache.ts`). Every store call goes
+  through `store.ts`, which makes each method return a promise (demoStore returns plain values). v1 is untouched.
 - Parity checklist (what the live app does vs the design): `v2/PARITY.md`. Update it as screens are built.
 - Design: Timecard design system `https://claude.ai/artifact/KzxKqSUN3rihzLhvpjz4Z9` and screens canvas
   `https://claude.ai/artifact/GNPVhdUoyDmES5x2cok6qs`. Admin is Days / Month / People; the kiosk grid never

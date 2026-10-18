@@ -6,10 +6,12 @@ import { queryCache } from '../data/queryCache'
 import { store } from '../data/store'
 import type { Employee, RecordRow, SyncStatus } from '../data/types'
 import { useCachedQuery } from '../data/useCachedQuery'
-import { dateKey, fmtDateLong, fmtTime, initials } from '../format'
+import { dateKey, fmtDateLong, fmtDateShort, fmtTime, initials } from '../format'
 import { CameraDialog, type CapturePhoto } from './CameraDialog'
 import { EmployeeTile } from './EmployeeTile'
 import { performPunch, repeatTap } from './punch'
+import { PaymentConfirm } from './payments/PaymentConfirm'
+import { PaymentsFlow, type PaymentSaved } from './payments/PaymentsFlow'
 import { PunchConfirm, type Confirmation } from './PunchConfirm'
 import { useNow } from './useNow'
 import './kiosk.css'
@@ -58,6 +60,10 @@ export function Kiosk({ mediaDevices, capture, onAdminAccess }: KioskProps) {
   const [pending, setPending] = useState<Pending | null>(null)
   const [confirmation, setConfirmation] = useState<Confirmation | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
+  // Payments is a mode of the same grid, not another screen; saving a payment always returns to Attendance.
+  const [mode, setMode] = useState<'attendance' | 'payments'>('attendance')
+  const [payFor, setPayFor] = useState<Employee | null>(null)
+  const [paid, setPaid] = useState<PaymentSaved | null>(null)
   const [sync, setSync] = useState<SyncStatus>({ pending: 0, stuck: false, signedOut: false })
 
   const announce = useCallback((msg: string) => setNotice(msg), [])
@@ -200,33 +206,47 @@ export function Kiosk({ mediaDevices, capture, onAdminAccess }: KioskProps) {
           </div>
           <div className="kiosk-clock">
             <div className="clock">{fmtTime(clock)}</div>
-            <div className="body-strong kiosk-muted">{fmtDateLong(clock)}</div>
+            <div className="body-strong kiosk-muted kiosk-date--long">{fmtDateLong(clock)}</div>
+            <div className="caption kiosk-muted kiosk-date--short">{fmtDateShort(clock)}</div>
           </div>
         </div>
 
         <div className="kiosk-side__bottom">
-          {/* Not built in 2.0 yet (plan step 2, payments flow). Says so on use rather than looking dead. */}
-          <button type="button" className="tc-btn tc-btn--secondary tc-btn--kiosk" style={{ width: '100%' }} onClick={() => announce("Payments isn't built in 2.0 yet.")}>
-            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-              <rect x="2" y="6" width="20" height="12" rx="2" />
-              <circle cx="12" cy="12" r="2.5" />
-              <path d="M6 12h.01M18 12h.01" />
-            </svg>
-            Payments
+          <button type="button" className="tc-btn tc-btn--secondary tc-btn--kiosk kiosk-mode-btn" style={{ width: '100%' }} onClick={() => setMode(mode === 'payments' ? 'attendance' : 'payments')}>
+            {mode === 'payments' ? (
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                <rect x="4" y="4" width="16" height="16" rx="3" />
+                <path d="M8.5 12.5l2.5 2.5 4.5-5" />
+              </svg>
+            ) : (
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                <rect x="2" y="6" width="20" height="12" rx="2" />
+                <circle cx="12" cy="12" r="2.5" />
+                <path d="M6 12h.01M18 12h.01" />
+              </svg>
+            )}
+            {mode === 'payments' ? 'Attendance' : 'Payments'}
           </button>
           <div className="kiosk-side__meta">
             <button type="button" className="tc-btn tc-btn--quiet" style={{ padding: 0 }} onClick={() => (onAdminAccess ? onAdminAccess() : announce("Admin isn't built in 2.0 yet."))}>Admin access</button>
             <span className="caption kiosk-version">v {APP_VERSION}</span>
           </div>
-          <div className={syncView.cls} role="status"><span className="tc-sync__dot" />{syncView.text}</div>
+          <div className={`${syncView.cls} kiosk-sync`} role="status"><span className="tc-sync__dot" />{syncView.text}</div>
         </div>
       </aside>
 
       <main className="kiosk-main">
-        <div className="heading kiosk-muted">Tap your name to clock in or out</div>
+        {mode === 'payments' ? (
+          <div className="body-strong kiosk-banner">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><rect x="2" y="6" width="20" height="12" rx="2" /><circle cx="12" cy="12" r="2.5" /></svg>
+            Tap your name to log a payment you received
+          </div>
+        ) : (
+          <div className="heading kiosk-muted">Tap your name to clock in or out</div>
+        )}
         <div className="kiosk-grid">
           {active.map((e) => (
-            <EmployeeTile key={e.id} emp={e} open={open[e.id]} onTap={onTapTile} />
+            <EmployeeTile key={e.id} emp={e} open={open[e.id]} paymentsMode={mode === 'payments'} onTap={mode === 'payments' ? () => setPayFor(e) : onTapTile} />
           ))}
         </div>
         {/* The design does not draw an empty roster; this is the live app's wording, pending a decision. */}
@@ -242,6 +262,27 @@ export function Kiosk({ mediaDevices, capture, onAdminAccess }: KioskProps) {
           onCancel={() => setPending(null)}
           mediaDevices={mediaDevices}
           capture={capture}
+        />
+      )}
+      {payFor && (
+        <PaymentsFlow
+          key={payFor.id}
+          emp={payFor}
+          today={today}
+          onClose={() => setPayFor(null)}
+          onSaved={(saved) => {
+            setPayFor(null)
+            setPaid(saved)
+          }}
+        />
+      )}
+      {paid && (
+        <PaymentConfirm
+          saved={paid}
+          onDone={() => {
+            setPaid(null)
+            setMode('attendance')
+          }}
         />
       )}
       {confirmation && <PunchConfirm c={confirmation} onDone={() => setConfirmation(null)} />}

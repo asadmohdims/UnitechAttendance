@@ -59,9 +59,11 @@ interface Props {
   now: Date
   actions: PersonActions
   onOpenPhoto: (url: string, caption: string) => void
+  /** Phone only: back to the day's list. Hidden from 900px up, where the list stays beside the person. */
+  onBack: () => void
 }
 
-export function PersonDay({ entry, date, now, actions, onOpenPhoto }: Props) {
+export function PersonDay({ entry, date, now, actions, onOpenPhoto, onBack }: Props) {
   const { emp, model, overtimeHours } = entry
   const avatar = usePhotoUrl(emp.avatar)
   const [broken, setBroken] = useState<string | null>(null)
@@ -81,6 +83,7 @@ export function PersonDay({ entry, date, now, actions, onOpenPhoto }: Props) {
 
   return (
     <section className="day-detail" aria-label={`${emp.name}, ${fmtDayShort(date)}`}>
+      <button type="button" className="tc-btn tc-btn--quiet day-back" onClick={onBack}>‹ Days</button>
       <div className="day-detail__head">
         <span className="tc-avatar" style={{ overflow: 'hidden', padding: 0 }}>
           {avatar && broken !== avatar ? <img src={avatar} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} onError={() => setBroken(avatar)} /> : <span aria-hidden="true">{initials(emp.name)}</span>}

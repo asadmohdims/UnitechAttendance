@@ -1,5 +1,6 @@
-import { useEffect } from 'react'
+import { useEffect, useRef } from 'react'
 import { fmtHours, fmtTime } from '../format'
+import { hapticSuccess } from '../ui/haptics'
 
 export interface Confirmation {
   kind: 'in' | 'out' | 'repeat-in' | 'repeat-out'
@@ -17,10 +18,18 @@ const SHOW_MS = 1800
 
 // Wording from the Kiosk · punch flow board, panels 2 to 4. Tapping it, or waiting, dismisses it.
 export function PunchConfirm({ c, onDone }: { c: Confirmation; onDone: () => void }) {
+  // The timer must outlive re-renders: the kiosk redraws every second for its clock, and an inline
+  // onDone is a new function each time, which used to restart this timer before it could fire.
+  const done = useRef(onDone)
+  done.current = onDone
+  // A short buzz where the device has one, so a punch is felt even if the screen is not looked at.
   useEffect(() => {
-    const t = setTimeout(onDone, SHOW_MS)
+    if (c.kind === 'in' || c.kind === 'out') hapticSuccess()
+  }, [c])
+  useEffect(() => {
+    const t = setTimeout(() => done.current(), SHOW_MS)
     return () => clearTimeout(t)
-  }, [c, onDone])
+  }, [c])
 
   const repeat = c.kind === 'repeat-in' || c.kind === 'repeat-out'
   const verb = { in: 'Clocked in', out: 'Clocked out', 'repeat-in': 'Already clocked in', 'repeat-out': 'Already clocked out' }[c.kind]

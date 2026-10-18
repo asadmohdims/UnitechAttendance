@@ -18,6 +18,11 @@ export function fmtDateLong(d: Date): string {
   return `${weekday}, ${d.getDate()} ${month}`
 }
 
+/** "Tue 13 Oct": the short form for a phone header. */
+export function fmtDateShort(d: Date): string {
+  return `${d.toLocaleDateString('en-GB', { weekday: 'short' }).replace(',', '')} ${d.getDate()} ${d.toLocaleDateString('en-GB', { month: 'short' })}`
+}
+
 /** Local calendar day as YYYY-MM-DD, the shape `records.date` uses. */
 export function dateKey(d: Date = new Date()): string {
   const p = (n: number) => String(n).padStart(2, '0')

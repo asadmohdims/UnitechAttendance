@@ -54,6 +54,8 @@ export interface Payment {
   amount: number
   occurred_on: string
   entered_by: 'employee' | 'owner'
+  /** When it was logged (the database stamps it; a client-built row may not have one yet). */
+  created_at?: string
 }
 
 export interface PaymentResolution {

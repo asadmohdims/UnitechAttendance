@@ -50,7 +50,7 @@ export function buildDayEntries({ employees, records, overtime, overrides, date,
 export interface QueueItem {
   emp: Employee
   date: string
-  chipId: 'needs-clock-out' | 'check-punches'
+  chipId: 'needs-clock-out' | 'check-punches' | 'payment-mismatch'
   text: string
   sub: string
 }
@@ -67,7 +67,10 @@ export function buildAttentionQueue(employees: Employee[], records: RecordRow[],
     byDate.get(r.date)!.push(r)
   }
   const items: QueueItem[] = []
-  for (const [date, rows] of byDate) {
+  for (const [date, unsorted] of byDate) {
+    // The month query returns rows in no particular order, but "Check punches" reads sessions in
+    // clock-in order (a later session starting before an earlier one ended looks like an overlap).
+    const rows = unsorted.slice().sort((a, b) => new Date(a.clock_in).getTime() - new Date(b.clock_in).getTime())
     const dayOvertime = overtime.filter((o) => o.date === date)
     for (const e of buildDayEntries({ employees, records: rows, overtime: dayOvertime, overrides: [], date, now })) {
       const id = e.model.chip?.id

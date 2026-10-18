@@ -2,31 +2,23 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { queryCache } from '../../data/queryCache'
 import { store } from '../../data/store'
 import { useCachedQuery } from '../../data/useCachedQuery'
-import { usePhotoUrl } from '../../data/usePhotoUrl'
 import type { DayPayOverride, Employee, OvertimeRow, RecordRow } from '../../data/types'
-import { dateKey, fmtHours, initials } from '../../format'
+import { dateKey, fmtHours } from '../../format'
+import { Avatar } from '../../ui/Avatar'
 import { refreshKioskData } from '../../data/invalidate'
 import { useSheets } from '../../ui/Sheets'
 import { useNow } from '../../kiosk/useNow'
 import { buildAttentionQueue, buildDayEntries } from '../dayEntries'
+import { buildLedger, paymentQueueItems } from '../month/paymentsModel'
+import { usePaymentsMonth } from '../month/useMonthData'
 import { sessionEditForm, missedPunchForm, overtimeForm, confirmDeleteForm } from '../forms'
-import { calloutStamp, chipText, fmtDayShort } from '../dayText'
+import { calloutStamp, chipText, fmtDayShort, rowTimes } from '../dayText'
 import { defaultLunchWindow, MIN_SPLITTABLE_MS } from '../lunchSplit'
 import type { CalloutAction, DayEntry, SessionView, Tone } from '../types'
 import { PeriodControl } from './PeriodControl'
 import { PersonDay, type PersonActions } from './PersonDay'
 
 const STAMP: Record<Tone, string> = { amber: 'attention', green: 'in', pink: 'neutral', blue: 'owner', yellow: 'neutral', grey: 'neutral', red: 'alert', violet: 'holiday' }
-
-function Avatar({ emp }: { emp: Employee }) {
-  const url = usePhotoUrl(emp.avatar)
-  const [broken, setBroken] = useState<string | null>(null)
-  return (
-    <span className="tc-avatar" style={{ overflow: 'hidden', padding: 0 }}>
-      {url && broken !== url ? <img src={url} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} onError={() => setBroken(url)} /> : <span aria-hidden="true">{initials(emp.name)}</span>}
-    </span>
-  )
-}
 
 function monthBounds(date: string, today: string) {
   const [y, m] = date.split('-').map(Number)
@@ -39,11 +31,13 @@ interface Props {
   onNotice: (msg: string) => void
   /** A day to open on (from a link such as #/admin/days/2026-10-12). Defaults to today. */
   initialDate?: string
+  /** A person to open on (from a link such as #/admin/days/2026-10-12/<employee id>). */
+  initialEmp?: string
   /** Injected in tests. */
   nowOverride?: Date
 }
 
-export function DaysScreen({ onNotice, initialDate, nowOverride }: Props) {
+export function DaysScreen({ onNotice, initialDate, initialEmp, nowOverride }: Props) {
   const sheets = useSheets()
   const tick = useNow(30000)
   const now = nowOverride ?? tick
@@ -54,7 +48,10 @@ export function DaysScreen({ onNotice, initialDate, nowOverride }: Props) {
     setDateState(d)
     window.history.replaceState(null, '', `#/admin/days/${d}`)
   }, [])
-  const [selected, setSelected] = useState<string | null>(null)
+  const [selected, setSelected] = useState<string | null>(initialEmp ?? null)
+  // Phone: the list and one person's day are two screens. `opened` is true once a person was chosen on purpose.
+  const [opened, setOpened] = useState(!!initialEmp)
+  const open = (empId: string) => { setSelected(empId); setOpened(true) }
   const [viewer, setViewer] = useState<{ url: string; caption: string } | null>(null)
 
   const employeesQ = useCachedQuery<Employee[]>('employees', () => store.listEmployees())
@@ -72,7 +69,13 @@ export function DaysScreen({ onNotice, initialDate, nowOverride }: Props) {
     () => buildDayEntries({ employees, records: recordsQ.data ?? [], overtime: overtimeQ.data ?? [], overrides: overridesQ.data ?? [], date, now }),
     [employees, recordsQ.data, overtimeQ.data, overridesQ.data, date, now],
   )
-  const queue = useMemo(() => buildAttentionQueue(employees, monthQ.data ?? [], monthOvertimeQ.data ?? [], now), [employees, monthQ.data, monthOvertimeQ.data, now])
+  // Payment mismatches join the queue: the Days board lists them beside the attendance items.
+  const pay = usePaymentsMonth(month.ym)
+  const queue = useMemo(() => {
+    const attendance = buildAttentionQueue(employees, monthQ.data ?? [], monthOvertimeQ.data ?? [], now)
+    const payments = pay.payments ? paymentQueueItems(buildLedger(pay.payments, pay.resolutions, employees)) : []
+    return [...attendance, ...payments].sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : a.emp.name.localeCompare(b.emp.name)))
+  }, [employees, monthQ.data, monthOvertimeQ.data, now, pay.payments, pay.resolutions])
 
   // Open on the first item in the queue that belongs to this day, else the first that needs a look.
   const queuedForDay = queue.find((q) => q.date === date)
@@ -184,11 +187,16 @@ export function DaysScreen({ onNotice, initialDate, nowOverride }: Props) {
       </span>
     ) : null
 
+  const times = (e: DayEntry) => rowTimes(e.model)
+
   const row = (e: DayEntry) => (
-    <button key={e.emp.id} type="button" className="tc-queue__row days-row" aria-pressed={current?.emp.id === e.emp.id} onClick={() => setSelected(e.emp.id)}>
+    <button key={e.emp.id} type="button" className="tc-queue__row days-row" aria-pressed={current?.emp.id === e.emp.id} onClick={() => open(e.emp.id)}>
       <Avatar emp={e.emp} />
-      <span className="tc-queue__title">{e.emp.name}</span>
-      <span>{stamp(e)}</span>
+      <span className="days-row__who">
+        <span className="tc-queue__title">{e.emp.name}</span>
+        <span className={`days-row__times days-row__times--${times(e).tone}`}>{times(e).text}</span>
+      </span>
+      <span className="days-row__stamp">{stamp(e)}</span>
       <span className="time days-row__paid">
         {(e.model.ownerPunchCount ?? 0) > 0 && <span aria-label="includes times you set" title="You set or changed a punch on this day">✎ </span>}
         {e.model.paidTotal === null ? '—' : fmtHours(e.model.paidTotal)}
@@ -197,7 +205,7 @@ export function DaysScreen({ onNotice, initialDate, nowOverride }: Props) {
   )
 
   return (
-    <div className="days">
+    <div className={`days${opened ? ' days--detail' : ''}`}>
       <header className="days__header">
         <div>
           <h1 className="title-1" style={{ margin: 0 }}>Days</h1>
@@ -208,36 +216,6 @@ export function DaysScreen({ onNotice, initialDate, nowOverride }: Props) {
 
       <div className="days__cols">
         <section className="days__left">
-          <div className="days__block">
-            <div className="days__blockhead">
-              <h2 className="heading" style={{ margin: 0 }}>Needs attention</h2>
-              <span className="caption app-muted">{queue.length} across the month</span>
-            </div>
-            {queue.length === 0 ? (
-              <p className="body app-muted days__empty">Nothing needs a look this month.</p>
-            ) : (
-              <div className="tc-queue" role="list">
-                {queue.map((q) => (
-                  <button
-                    key={`${q.date}-${q.emp.id}`}
-                    type="button"
-                    role="listitem"
-                    className="tc-queue__row days-queue"
-                    aria-pressed={q.date === date && current?.emp.id === q.emp.id}
-                    onClick={() => { setDate(q.date); setSelected(q.emp.id) }}
-                  >
-                    <Avatar emp={q.emp} />
-                    <div>
-                      <div className="tc-queue__title">{q.emp.name}</div>
-                      <div className="tc-queue__sub">{fmtDayShort(q.date)}</div>
-                      <div style={{ marginTop: 6 }}><span className="tc-stamp tc-stamp--attention">{calloutStamp(q.chipId)}</span></div>
-                    </div>
-                  </button>
-                ))}
-              </div>
-            )}
-          </div>
-
           <div className="days__block">
             <h2 className="heading" style={{ margin: 0 }}>{fmtDayShort(date)}</h2>
             <p className="body app-muted" style={{ margin: 0 }}>
@@ -260,10 +238,42 @@ export function DaysScreen({ onNotice, initialDate, nowOverride }: Props) {
               </>
             )}
           </div>
+
+          <div className="days__block">
+            <div className="days__blockhead">
+              <h2 className="heading" style={{ margin: 0 }}>Needs attention</h2>
+              <span className="caption app-muted">{queue.length} across the month</span>
+            </div>
+            {queue.length === 0 ? (
+              <p className="body app-muted days__empty">Nothing needs a look this month.</p>
+            ) : (
+              <div className="tc-queue" role="list">
+                {queue.map((q) => (
+                  <button
+                    key={`${q.date}-${q.emp.id}`}
+                    type="button"
+                    role="listitem"
+                    className="tc-queue__row days-queue"
+                    aria-pressed={q.date === date && current?.emp.id === q.emp.id}
+                    onClick={() => { setDate(q.date); open(q.emp.id) }}
+                  >
+                    <Avatar emp={q.emp} />
+                    <div>
+                      <div className="tc-queue__title">{q.emp.name}</div>
+                      <div className="tc-queue__sub">{fmtDayShort(q.date)}{q.sub ? ` · ${q.sub}` : ''}</div>
+                      <div style={{ marginTop: 6 }}>
+                        {q.chipId === 'payment-mismatch' ? <span className="tc-stamp tc-stamp--alert">{q.text}</span> : <span className="tc-stamp tc-stamp--attention">{calloutStamp(q.chipId)}</span>}
+                      </div>
+                    </div>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
         </section>
 
         {current ? (
-          <PersonDay entry={current} date={date} now={now} actions={actions} onOpenPhoto={(url, caption) => setViewer({ url, caption })} />
+          <PersonDay entry={current} date={date} now={now} actions={actions} onOpenPhoto={(url, caption) => setViewer({ url, caption })} onBack={() => setOpened(false)} />
         ) : (
           <div className="days__none body app-muted">Pick a person to see their day.</div>
         )}

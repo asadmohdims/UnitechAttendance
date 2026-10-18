@@ -97,3 +97,29 @@ export function ownerLine(count: number, total: number): string {
   if (count === total) return total === 1 ? 'This punch was set by you, not the kiosk' : `All ${total} punches were set by you, not the kiosk`
   return `${count} of ${total} punches ${count === 1 ? 'was' : 'were'} set by you, not the kiosk`
 }
+
+export interface RowTimes {
+  text: string
+  tone: 'in' | 'muted' | 'attention'
+}
+
+/**
+ * The line under a person's name in the day list: who is in, since when, and when they left.
+ * Two sessions is the normal day (a lunch gap), so only three or more are called out.
+ */
+export function rowTimes(model: DayModel): RowTimes {
+  const s = model.sessions
+  if (s.length === 0) {
+    const id = model.chip?.id
+    return { text: id === 'not-in-yet' ? 'Not in yet' : id === 'holiday' ? 'Holiday' : 'No punches', tone: 'muted' }
+  }
+  const last = s[s.length - 1]
+  const first = fmtTime(s[0].record.clock_in)
+  const more = s.length > 2 ? ` · ${s.length} sessions` : ''
+  if (last.slots.out === 'not-yet') {
+    return { text: s.length === 1 ? `In since ${first}` : `${first} – still in${more}`, tone: 'in' }
+  }
+  // The kiosk closed it at midnight: there is no real clock-out to show.
+  if (last.slots.out === 'auto') return { text: `${first} – no clock-out${more}`, tone: 'attention' }
+  return { text: `${first} – ${fmtTime(last.record.clock_out as string)}${more}`, tone: 'muted' }
+}

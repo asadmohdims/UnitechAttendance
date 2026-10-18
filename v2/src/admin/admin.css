@@ -36,6 +36,11 @@
 .tc-queue > button.tc-queue__row[aria-pressed="true"]{background:var(--brand-tint)}
 .days-queue{grid-template-columns:auto 1fr}
 .days-row{min-height:64px}
+.days-row__who{min-width:0;display:flex;flex-direction:column}
+.days-row__times{font:500 13px/18px var(--font-mono);color:var(--ink-muted)}
+.days-row__times--in{color:var(--in-ink)}
+.days-row__times--attention{color:var(--attention-ink)}
+.day-back{display:none;align-self:flex-start;padding:0 var(--space-2)}
 .days-row__paid{min-width:64px;text-align:right}
 
 .day-detail{flex:1.5 1 500px;min-width:0;display:flex;flex-direction:column;gap:var(--space-4);padding:var(--space-5);background:var(--surface);border:1.5px solid var(--line);border-radius:var(--radius-md);box-shadow:var(--shadow-1)}
@@ -54,3 +59,27 @@
 .gap--warn{background:var(--attention-wash);color:var(--attention-ink)}
 .photo-btn{border:0;cursor:zoom-in;font:inherit}
 .photo-viewer{position:fixed;inset:0;z-index:50;border-radius:0;gap:var(--space-4)}
+
+/* Phone: the day's list, then one person's day behind a back button (the Phone · Days boards). */
+@media (max-width:899px){
+  .days--detail .days__header,.days--detail .days__left{display:none}
+  .days:not(.days--detail) .day-detail,.days:not(.days--detail) .days__none{display:none}
+  .day-back{display:inline-flex}
+}
+/* Narrow rows: hours over the chip on the right, so the in/out line keeps the width it needs. */
+@media (max-width:620px){
+  .days-row{grid-template-columns:auto minmax(0,1fr) auto;grid-template-areas:"av who paid" "av who stamp";align-items:center}
+  .days-row > .tc-avatar{grid-area:av}
+  .days-row__who{grid-area:who}
+  .days-row__paid{grid-area:paid}
+  .days-row__stamp{grid-area:stamp;justify-self:end}
+}
+
+/* Phone · A person's day: In and Out side by side at full width, the paid time on its own line beneath. */
+@media (max-width:620px){
+  .day-detail{padding:var(--space-3)}
+  .sess__body{grid-template-columns:minmax(0,1fr) minmax(0,1fr)}
+  .sess__body .tc-photo--lg{width:100%;height:auto;aspect-ratio:4/3}
+  .sess__body .mid{grid-column:1 / -1;order:3;flex-direction:row-reverse;align-items:baseline;justify-content:space-between;padding:var(--space-2) 0 0;border-top:1px solid var(--line);min-width:0}
+  .end--r{align-items:flex-start;text-align:left}
+}

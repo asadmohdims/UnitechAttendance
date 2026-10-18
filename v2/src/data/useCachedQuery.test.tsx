@@ -63,3 +63,17 @@ describe('offline cold boot', () => {
     expect(calls).toBe(2)
   })
 })
+
+describe('refresh after the sign-in is renewed', () => {
+  it('re-reads what is on screen when asked, and shows the newer answer', async () => {
+    const { requestRefresh } = await import('./invalidate')
+    let answer = ['Faizan']
+    const cache = new QueryCache(memoryKv())
+    render(<Roster cache={cache} fetcher={async () => answer} />)
+    await act(async () => {})
+    expect(screen.getAllByRole('listitem').map((li) => li.textContent)).toEqual(['Faizan'])
+    answer = ['Faizan', 'Imran'] // changed while the tablet could not read
+    await act(async () => { requestRefresh() })
+    expect(screen.getAllByRole('listitem').map((li) => li.textContent)).toEqual(['Faizan', 'Imran'])
+  })
+})

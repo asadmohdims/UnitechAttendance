@@ -1,4 +1,4 @@
-import { act, fireEvent, render as rtlRender, screen, within } from '@testing-library/react'
+import { act, fireEvent, render as rtlRender, screen, waitFor, within } from '@testing-library/react'
 import type { ReactElement } from 'react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { queryCache } from '../../data/queryCache'
@@ -65,9 +65,19 @@ describe('Days', () => {
   it('puts the missing clock-out above the person with nothing wrong', async () => {
     boot([...faizan, ...shakib])
     await open()
-    const list = screen.getAllByRole('list')
-    const needsLook = list.find((l) => within(l).queryByText('Shakib'))!
-    expect(within(needsLook).getAllByRole('listitem')[0]).toHaveTextContent('Shakib')
+    const needsLook = screen.getByText('Needs a look').nextElementSibling as HTMLElement
+    expect(needsLook.querySelector('.days-row')).toHaveTextContent('Shakib')
+    const everyoneElse = screen.getByText('Everyone else').nextElementSibling as HTMLElement
+    expect(everyoneElse).toHaveTextContent('Faizan')
+    expect(everyoneElse).not.toHaveTextContent('Shakib')
+  })
+
+  it("shows the day's people above the month's Needs attention queue", async () => {
+    boot([...faizan, ...shakib])
+    await open()
+    const day = screen.getByText('Needs a look')
+    const queue = screen.getByRole('heading', { name: 'Needs attention' })
+    expect(day.compareDocumentPosition(queue) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
   })
 
   it('counts the people, the ones to look at and the edits in one line', async () => {
@@ -190,5 +200,85 @@ describe('Days', () => {
     render(<DaysScreen onNotice={() => {}} initialDate="2026-10-14" nowOverride={now} />)
     await act(async () => {})
     expect(screen.getByRole('button', { name: 'Next day' })).toBeDisabled()
+  })
+})
+
+describe('Days · payment mismatches in the queue', () => {
+  const owner = { id: 'p1', emp_id: 'a', amount: 1500, occurred_on: '2026-10-10', entered_by: 'owner' as const }
+  const theirs = { id: 'p2', emp_id: 'a', amount: 1200, occurred_on: '2026-10-10', entered_by: 'employee' as const }
+
+  it('lists a mismatch with both amounts, as the board does, and opens that person on that day', async () => {
+    boot([...faizan])
+    vi.spyOn(store, 'listPaymentsForRange').mockResolvedValue([owner, theirs])
+    vi.spyOn(store, 'listPaymentResolutions').mockResolvedValue([])
+    await open()
+    const item = screen.getByText('Sat 10 Oct · you ₹1,500, Faizan ₹1,200').closest('button') as HTMLElement
+    expect(within(item).getByText('Mismatch')).toBeInTheDocument()
+    fireEvent.click(item)
+    expect(window.location.hash).toBe('#/admin/days/2026-10-10')
+  })
+
+  it('drops it once the owner has marked it resolved', async () => {
+    boot([...faizan])
+    vi.spyOn(store, 'listPaymentsForRange').mockResolvedValue([owner, theirs])
+    vi.spyOn(store, 'listPaymentResolutions').mockResolvedValue([{ emp_id: 'a', date: '2026-10-10', resolved: true }])
+    await open()
+    expect(screen.queryByText(/you ₹1,500/)).toBeNull()
+  })
+
+  it('shows no payment items when payments cannot be read, rather than failing the queue', async () => {
+    boot([...faizan])
+    vi.spyOn(store, 'listPaymentsForRange').mockRejectedValue(new Error('offline'))
+    await open()
+    expect(screen.queryByText(/Mismatch/)).toBeNull()
+  })
+})
+
+describe('Days · queue judges days in clock-in order', () => {
+  it('does not flag a normal two-session day just because the month query returned it afternoon-first', async () => {
+    const day = '2026-10-07'
+    const morning = rec({ id: 'm', emp_id: 'a', date: day, clock_in: at(day, 9, 13), clock_out: at(day, 13) })
+    const afternoon = rec({ id: 'n', emp_id: 'a', date: day, clock_in: at(day, 13, 59), clock_out: at(day, 18, 1) })
+    const { buildAttentionQueue } = await import('../dayEntries')
+    // The database gives no order for a range read; the queue must not depend on it.
+    expect(buildAttentionQueue(staff, [afternoon, morning], [], now)).toEqual([])
+    expect(buildAttentionQueue(staff, [morning, afternoon], [], now)).toEqual([])
+  })
+})
+
+describe('Days · the list says who is in and when', () => {
+  // Its own day and rows: the in-memory read cache is shared by every test in this file, and a read still in
+  // flight from an earlier test would answer for this one.
+  const E = '2026-10-09'
+  const openOn = async () => {
+    render(<DaysScreen onNotice={vi.fn()} initialDate={E} nowOverride={now} />)
+    await act(async () => {})
+  }
+  const fresh = () => [
+    rec({ id: 'x1', emp_id: 'a', date: E, clock_in: at(E, 9), clock_out: at(E, 13) }),
+    rec({ id: 'x2', emp_id: 'a', date: E, clock_in: at(E, 14), clock_out: at(E, 18) }),
+    rec({ id: 'x3', emp_id: 'b', date: E, clock_in: at(E, 9, 3), clock_out: at(E, 13, 5) }),
+    rec({ id: 'x4', emp_id: 'b', date: E, clock_in: at(E, 14, 2), clock_out: new Date(2026, 9, 10, 0, 0).toISOString(), out_photo: null }),
+  ]
+
+  it('shows first in to last out under each name', async () => {
+    boot(fresh())
+    await openOn()
+    const rowOf = (name: string) => [...document.querySelectorAll<HTMLElement>('.days-row')].find((r) => r.textContent?.includes(name))!
+    // Earlier tests leave their own records in the in-memory cache until this test's read lands.
+    await waitFor(() => expect(within(rowOf('Faizan')).getByText('9:00 AM – 6:00 PM')).toBeInTheDocument())
+    await waitFor(() => expect(within(rowOf('Shakib')).getByText('9:03 AM – no clock-out')).toBeInTheDocument())
+  })
+
+  it('on a phone a tap opens that person, and Back returns to the list', async () => {
+    boot(fresh())
+    await openOn()
+    const root = document.querySelector('.days') as HTMLElement
+    expect(root).not.toHaveClass('days--detail')
+    fireEvent.click([...document.querySelectorAll<HTMLElement>('.days-row')].find((r) => r.textContent?.includes('Faizan'))!)
+    expect(root).toHaveClass('days--detail')
+    expect(screen.getByRole('region', { name: /Faizan/ })).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: '‹ Days' }))
+    expect(root).not.toHaveClass('days--detail')
   })
 })

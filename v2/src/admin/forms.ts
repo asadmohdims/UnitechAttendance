@@ -1,6 +1,6 @@
 import { buildEntryTimes, CLOCK_OUT_BEFORE_IN } from '@legacy/timeEntry.js'
 import { isAutoClosedSession } from '@legacy/autoClosed.js'
-import type { RecordRow } from '../data/types'
+import type { Employee, Payment, RecordRow } from '../data/types'
 import { fmtTime } from '../format'
 import type { PromptConfig } from '../ui/Sheets'
 import { fmtDateTime, fmtDayShort } from './dayText'
@@ -83,6 +83,36 @@ export function confirmDeleteForm(name: string): PromptConfig {
     danger: true,
     fields: [],
   }
+}
+
+/** Month · Pay and the People page both change a rate, so they share this one dialog. */
+export function rateForm(name: string, currentMonthly: number | null, today: string): PromptConfig {
+  return {
+    title: `Change salary for ${name}`,
+    submitLabel: 'Save rate',
+    fields: [
+      { name: 'amount', label: 'Monthly salary (₹)', type: 'number', value: currentMonthly ? String(currentMonthly) : '', placeholder: 'e.g. 18000' },
+      { name: 'effectiveFrom', label: 'Effective from', type: 'date', value: today, help: 'Past months keep their old rate.' },
+    ],
+    validate: (v) => (Number(v.amount) > 0 ? null : { field: 'amount', message: 'Enter a valid amount.' }),
+  }
+}
+
+/** Owner logs a payment (pick the person) or edits one already logged (`existing`, person fixed). */
+export function paymentForm(existing: Payment | null, people: Employee[], today: string, name?: string): PromptConfig {
+  return {
+    title: existing ? `Edit payment for ${name ?? 'this employee'}` : 'Log a payment',
+    fields: [
+      ...(existing ? [] : [{ name: 'empId', label: 'Employee', type: 'select' as const, options: people.map((e) => ({ value: e.id, label: e.name })) }]),
+      { name: 'amount', label: 'Amount (₹)', type: 'number' as const, value: existing ? String(existing.amount) : '', placeholder: 'e.g. 1500' },
+      { name: 'occurredOn', label: 'Date', type: 'date' as const, value: existing ? existing.occurred_on : today },
+    ],
+    validate: (v) => (Number(v.amount) > 0 ? null : { field: 'amount', message: 'Enter a valid amount.' }),
+  }
+}
+
+export function confirmPaymentDeleteForm(name: string): PromptConfig {
+  return { title: `Delete this payment entry for ${name}?`, submitLabel: 'Delete', danger: true, fields: [] }
 }
 
 export function overtimeForm(name: string, existing: number): PromptConfig {

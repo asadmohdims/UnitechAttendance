@@ -13,3 +13,8 @@ export function refreshKioskData(now: Date = new Date()): Promise<void[]> {
     queryCache.revalidate(`records:${today}`, () => store.listRecordsForDate(today)),
   ])
 }
+
+export const REFRESH_EVENT = 'tc2:refresh'
+
+/** Ask every screen to re-read what it shows, e.g. when the tablet's sign-in has just been renewed. */
+export const requestRefresh = () => window.dispatchEvent(new Event(REFRESH_EVENT))

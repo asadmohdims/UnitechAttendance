@@ -7,11 +7,14 @@ interface Props {
   emp: Employee
   open: RecordRow | undefined
   onTap: (emp: Employee, photoUrl: string | null) => void
+  /** Payments mode: the same grid, but no clock state; every tile reads "Tap to log a payment". */
+  paymentsMode?: boolean
 }
 
 // Kiosk · home board: photo (80px, a deliberate step down from the 96px large avatar so seven
 // tiles fit in three rows on an 820px tablet), name, and a state band at the bottom.
-export function EmployeeTile({ emp, open, onTap }: Props) {
+export function EmployeeTile({ emp, open: openSession, onTap, paymentsMode }: Props) {
+  const open = paymentsMode ? undefined : openSession
   const photoUrl = usePhotoUrl(emp.avatar)
   // A photo that will not load (a bundled demo path, a corrupt save) falls back to initials.
   const [broken, setBroken] = useState<string | null>(null)
@@ -29,7 +32,7 @@ export function EmployeeTile({ emp, open, onTap }: Props) {
           <span style={{ fontSize: 14 }}>Tap to clock out</span>
         </span>
       ) : (
-        <span className="tc-tile__state kiosk-tile__state kiosk-tile__state--out">Tap to clock in</span>
+        <span className="tc-tile__state kiosk-tile__state kiosk-tile__state--out">{paymentsMode ? 'Tap to log a payment' : 'Tap to clock in'}</span>
       )}
     </button>
   )

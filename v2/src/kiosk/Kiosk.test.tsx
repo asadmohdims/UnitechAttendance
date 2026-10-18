@@ -104,6 +104,40 @@ describe('Kiosk · punch flow', () => {
     expect(screen.getByRole('button', { name: 'Take photo' })).toBeEnabled()
   })
 
+  it('records one punch when the shutter is tapped twice in the same instant', async () => {
+    bootWithImran()
+    const clockIn = vi.spyOn(store, 'clockIn').mockImplementation(async (empId) => {
+      await new Promise((r) => setTimeout(r, 20)) // a slow save: the second tap lands while the first is still working
+      return rec({ id: 'new', emp_id: empId })
+    })
+    render(<Kiosk mediaDevices={camera} capture={goodPhoto} />)
+    await act(async () => {})
+    fireEvent.click(screen.getByRole('button', { name: /Imran/ }))
+    await act(async () => { fireEvent.loadedData(document.querySelector('video')!) })
+    const shutter = screen.getByRole('button', { name: 'Take photo' })
+    await act(async () => {
+      fireEvent.click(shutter)
+      fireEvent.click(shutter) // an employee hammering the button
+      fireEvent.click(shutter)
+    })
+    await act(async () => { await new Promise((r) => setTimeout(r, 60)) })
+    expect(clockIn).toHaveBeenCalledTimes(1)
+  })
+
+  it('taps on a tile before the camera has a frame cannot record anything', async () => {
+    bootWithImran()
+    const clockIn = vi.spyOn(store, 'clockIn')
+    render(<Kiosk mediaDevices={camera} capture={goodPhoto} />)
+    await act(async () => {})
+    fireEvent.click(screen.getByRole('button', { name: /Imran/ }))
+    const shutter = screen.getByRole('button', { name: 'Take photo' })
+    expect(shutter).toBeDisabled() // no frame has decoded yet
+    fireEvent.click(shutter)
+    fireEvent.click(shutter)
+    await act(async () => {})
+    expect(clockIn).not.toHaveBeenCalled()
+  })
+
   it('refuses a photo that did not come out and writes no punch', async () => {
     bootWithImran()
     const clockIn = vi.spyOn(store, 'clockIn')
@@ -127,6 +161,10 @@ describe('Kiosk · punch flow', () => {
   })
 
   it('closes a clock-out with the worked time', async () => {
+    // Pinned to mid-afternoon: with the real clock, a session "4 hours ago" began yesterday between midnight and 4 AM,
+    // and the kiosk's stale-session rule (rightly) closes it before the test can tap it.
+    vi.useFakeTimers({ toFake: ['Date'] })
+    vi.setSystemTime(new Date(2026, 9, 13, 15, 0, 0))
     seed('employees', emps)
     const started = new Date(Date.now() - (4 * 60 + 2) * 60000).toISOString()
     const open = rec({ id: 'r9', emp_id: 'e2', clock_in: started })
@@ -149,14 +187,6 @@ describe('Kiosk · punch flow', () => {
 })
 
 describe('Kiosk · side panel', () => {
-  it('says what is not built yet instead of looking dead', async () => {
-    seed('employees', emps)
-    neverAnswering()
-    render(<Kiosk mediaDevices={camera} capture={goodPhoto} />)
-    fireEvent.click(screen.getByRole('button', { name: 'Payments' }))
-    expect(screen.getByText("Payments isn't built in 2.0 yet.")).toBeInTheDocument()
-  })
-
   it('shows the sync state in the design wording', async () => {
     seed('employees', emps)
     neverAnswering()

@@ -2,6 +2,7 @@
 import path from 'node:path'
 import { defineConfig, type Plugin } from 'vite'
 import react from '@vitejs/plugin-react'
+import { VitePWA } from 'vite-plugin-pwa'
 
 const legacyJs = path.resolve(__dirname, '../js')
 
@@ -28,8 +29,43 @@ function legacyConfig(): Plugin {
   }
 }
 
-export default defineConfig({
-  plugins: [legacyConfig(), react()],
+/**
+ * The offline half of the kiosk: a service worker that downloads every file the app needs the first time
+ * it runs, then serves them without the network. A dev server never gets one (it must always serve fresh files). `registerType: 'prompt' so the app, not the browser, decides when to switch to a new version:
+ * src/pwa.ts waits until nobody is mid-punch. Supabase is another origin and never touched here.
+ */
+const pwa = () =>
+  VitePWA({
+    registerType: 'prompt',
+    injectRegister: false,
+    manifest: {
+      name: 'Unitech Attendance 2',
+      short_name: 'Unitech 2',
+      start_url: './',
+      scope: './',
+      display: 'standalone',
+      background_color: '#0b1220',
+      theme_color: '#0b1220',
+      icons: [
+        { src: 'icons/icon-192.png', sizes: '192x192', type: 'image/png', purpose: 'any' },
+        { src: 'icons/icon-512.png', sizes: '512x512', type: 'image/png', purpose: 'any' },
+        { src: 'icons/icon-512-maskable.png', sizes: '512x512', type: 'image/png', purpose: 'maskable' },
+      ],
+    },
+    workbox: {
+      globPatterns: ['**/*.{js,css,html,woff2,ttf,png,svg}'],
+      navigateFallback: 'index.html',
+      cleanupOutdatedCaches: true,
+      maximumFileSizeToCacheInBytes: 4 * 1024 * 1024, // the Excel exporter and the PDF library are large and must work offline too
+    },
+  })
+
+// `VITE_BASE` is the folder v2 is served from: '/' in development, '/UnitechAttendance/v2/' on GitHub Pages.
+export default defineConfig(() => ({
+  base: process.env.VITE_BASE ?? '/',
+  // The plugin is loaded in every mode so `virtual:pwa-register` resolves; in development and in tests it is a no-op
+  // (no worker is generated or registered), and src/pwa.ts also returns early on `import.meta.env.DEV`.
+  plugins: [legacyConfig(), react(), pwa()],
   resolve: { alias: { '@': path.resolve(__dirname, 'src'), '@legacy': legacyJs } },
   server: { fs: { allow: ['..'] } },
   test: {
@@ -38,4 +74,4 @@ export default defineConfig({
     setupFiles: ['./src/test/setup.ts'],
     css: false,
   },
-})
+}))

@@ -191,8 +191,7 @@ Design notes that had leaked into screens were removed from the canvas; the word
 Tile grid with state band, side panel (roster line, clock, Payments, Admin access, version, sync), camera dialog
 (shutter off until a frame decodes, refuses a photo that did not come out, retry-safe), confirmations (in, out,
 already clocked), the 2-minute duplicate window in both directions, the midnight auto-close (only on data fetched
-this session), the sync indicator, and offline-first reads. Not built: Payments mode and its PIN flow, Admin access.
-Both say "isn't built in 2.0 yet" when tapped. Tests: `src/kiosk/*.test.*`, `src/data/*.test.*`.
+this session), the sync indicator, and offline-first reads. Payments mode and Admin access were built later (see the sections below). Tests: `src/kiosk/*.test.*`, `src/data/*.test.*`.
 
 Not drawn on the canvas, decided here and open for your call: the empty-roster message (live wording kept),
 the very first load with nothing saved yet (grid simply empty until the first fetch lands), the camera
@@ -210,8 +209,8 @@ footnote, photo viewer. Callout wording is ported from `calloutText()` and cover
 
 Works for real: lunch "Pay as work" / "Undo", holiday "Mark unpaid" / "Restore as paid", "Split for lunch",
 Enter clock-out time / Edit (typed times validated by the live `buildEntryTimes`; an unchanged save writes nothing),
-Delete session with confirm, Add missed punch, Add / Edit / Remove overtime. Month and People tabs say
-"isn't built in 2.0 yet". The queue has no payment-mismatch items (Payments is deferred).
+Delete session with confirm, Add missed punch, Add / Edit / Remove overtime. The queue gained its payment-mismatch items
+with the ledger (see below).
 Wording from the Dialogs board where it differs from live: the clock-out error reads "Clock out must be after the
 2:02 PM clock in." (live: "Clock-out must be later than clock-in on the same day. Check AM/PM."), the title is
 "Edit Shakib" (live: "Edit — Shakib"), the overtime hint is "Paid at the normal hourly rate." Time fields are the
@@ -219,3 +218,153 @@ browser's own time input, not the text field the board draws, so AM/PM and 24-ho
 Deliberate differences from live: rows inside a group are ordered by chip importance (missing
 clock-out before absent), the screen opens on the queue's first item for that day, and the Needs attention queue
 is new (M3).
+
+## Built in v2: Month Attendance, Pay and Excel (2026-10-14)
+
+`v2/src/admin/month/`. Rules are a typed port of `monthData`/`pillInfo` (`monthModel.ts`), tested against the
+live behaviour: day classification, half-day and absent counting, docked Fridays, Friday-before-hire, overtime in
+paid hours only, open "!" / "In", and the calendar-day pay maths (`buildPayLines`). Tests: `monthModel.test.ts`,
+`MonthScreen.test.tsx`.
+
+Where it differs from the live app or from the board, and why:
+
+- **Day cells** carry the legend's four markers as dots (needs a look, earlier session closed with no photo, no
+  lunch punch ring, holiday marked unpaid). The board only drew one flag; the legend names four, so all four are on the cells.
+- **Future weekly holidays** show as a violet "F" (the board draws them so); the live Report leaves them blank.
+- **Open day**: "!" on a past day (attention tint), "In" on today (green), as the board draws today.
+- **Strip colours**: half day and still-open share the attention colour (the board's four-colour legend has no
+  fifth); a day closed without a photo keeps the worked colour because its hours are known.
+- **"Needs attention"** is the Days queue (missing clock-out + check punches), as on the Days board; the callout above
+  it is the live Report's review list (missing clock-out, closed without a photo). The two can differ, as on the board.
+- **Edit actions** on a day hand off to Days (M7 choice). Absent days offer Add missed punch, holidays Mark unpaid /
+  Restore as paid, here as well as in Days. "Open in Days" now opens that person (`#/admin/days/DATE/EMP`).
+- **"See the exact dates"** is a list of the absent and half days; picking one opens it in Days (the live app showed
+  a read-only dialog).
+- **Excel** is the live sheet: exact punch hours, "IN (no out)", totals **without** overtime. This disagrees with the
+  month's "Hours recorded" figure, which includes overtime, exactly as live. Say if the sheet should include it.
+- **Already paid out** (Pay) is the sum of **owner-entered** payments for the month; the board draws the figure but
+  does not say which side. Shows "—" if the payments read fails. Confirm or change.
+- **Change rate** replaces Amend (board wording); same two fields and the same toast.
+- **Payments** section: built later, see "Built in v2: People, Payments, sign-in".
+- Not verified on a device: the phone layout was only measured (375px: no horizontal scroll, two-column stats).
+
+## Built in v2: People, Payments (admin and kiosk), sign-in (2026-10-18)
+
+The seven open choices above were confirmed at their defaults (K3 neutral tile, K4 roster line keeps "haven't
+shown up", K5 no greeting, M3 "Review entries" link, M5 no row labels, M7 edit hands off to Days, E6 person page).
+
+**People** (`v2/src/admin/people/`): list with PIN and inactive marks, person page (month numbers come from the same
+`useMonthData` as Month, so they cannot disagree), Retake/Add photo, Rename, Set/Reset PIN (text field, so a
+leading zero works; hashed with the live `js/pin.js`), Change rate (one dialog shared with Month · Pay),
+Deactivate/Activate, Add a person then the camera, Lock admin, Sign out with its confirm.
+**Payments, admin** (`v2/src/admin/month/Payments.tsx`, maths in `paymentsModel.ts` on the unchanged
+`js/paymentsMath.js`): alert, four totals, people → days → side-by-side cards, Edit, Delete (with confirm), Mark
+resolved / undo, Log a payment. Mismatches also appear in the Days "Needs attention" queue as the Days board draws
+them ("you ₹1,500, Raju ₹1,200").
+**Payments, kiosk** (`v2/src/kiosk/payments/`): mode toggle with the board's banner and tile wording, PIN pad
+(3 tries, then locked; "no PIN" and "can't check offline" are not tries), the employee's own month (never the
+owner's amount or the match status), amount keypad (7 digits, Indian grouping), retry-safe save, the confirmation,
+and the automatic return to Attendance.
+**Sign-in** (`v2/src/admin/SignIn.tsx`): v2 had no sign-in screen, so Sign out would have locked a tablet out. Added
+from the Dialogs board; shown only when the device has no saved sign-in.
+
+Not drawn on the canvas, decided here (say if you want any changed):
+- Activate button and its copy for an inactive person; "No people yet. Add the first person."; the loading text.
+- Avatar capture screen: the camera dialog titled "Take {name}'s photo", the live help text, "Skip for now".
+- Sign-in failure "Wrong email or password." (the board draws only the offline message). Not dismissible.
+- Ledger: no chevron on expandable rows (the board draws none); unresolved mismatch days are tinted even when
+  collapsed; "nothing to reconcile" under a zero Mismatches total; "Couldn't load payments. Check the Wi-Fi." when
+  the read fails; the resolved state reuses the live wording ("Marked resolved, tap to undo").
+- Where the board differs on purpose: the **Edit payment** dialog is Save / Cancel; the board adds a Delete there,
+  but Delete is already on the card with its own confirm, so a second route to the same destructive action is left out.
+  The kiosk date field is the browser's date input (the board draws formatted text), with no upper limit, as live.
+- People is not auto-selected on a wide screen; the board shows one open. Active people sort first, then inactive.
+
+Fixed on the way: the punch and payment confirmations never dismissed themselves, because the kiosk redraws every
+second and each redraw restarted the 1.8 s timer. Now covered by `confirmTimer.test.tsx` (fails on the old code).
+
+Not verified: the camera for avatar capture (the Browser pane blocks it; tested with an injected camera only); sign-in
+and sign-out against a real Supabase session (tested with injected functions; the real calls are the live app's);
+haptics on a real Android tablet (and the punch confirmation has none yet); phone layouts were measured at 390 px
+(no horizontal scroll, People list hides under the person with a Back button, ledger cards stack), not seen.
+
+## Days layout change at the owner's request (2026-10-18)
+
+On the Days left column the chosen day (its date, the people count and the Needs a look / Everyone else lists) now
+sits **above** the month's "Needs attention" queue. The Admin · Days board draws the queue first; the canvas has not
+been updated. Reason: the queue is a month-wide list, and put first it pulled focus from the day being looked at.
+
+## Phone layouts and the day list (2026-10-18), built from the updated canvas
+
+The canvas gained **Phone · Kiosk home**, **Phone · Kiosk payments mode** and **Phone · Days · option A**; Admin · Days
+and Kiosk · home were revised (option B, columns, was drawn and not chosen). Built to those boards:
+
+- **Kiosk on a phone** (≤ 760px, `kiosk.css`): the side panel becomes a header (roster and sync left, clock and
+  "Tue 13 Oct" right, the Payments / Attendance button beneath), tiles two across, Admin access and the version in a
+  bar pinned to the bottom. The tablet layout is unchanged. Before this v2 had no phone kiosk: the 360px panel left
+  30px for the tiles.
+- **Clock**: 64px on the tablet (the 72px token was 26px wider than its panel for an 8-character time such as
+  "11:08 AM"), 36px on a phone.
+- **Days list**: each row says who is in and when, under the name (`rowTimes()` in `dayText.ts`): "9:13 AM – 6:01 PM",
+  "In since 9:30 AM" in green, "9:03 AM – no clock-out" when the kiosk closed the day at midnight, "Not in yet",
+  "No punches", "Holiday"; three or more sessions add "· 3 sessions". On a narrow row the hours sit over the chip.
+- **Days on a phone**: the list, then one person's day behind a "‹ Days" back button (it used to be one long page with
+  the person 870px down). The person's session cards show In and Out side by side with the paid time on its own line,
+  as the Phone · A person's day board draws them. The queue sits below the day's list at every width.
+- Deliberate differences: the Days header still puts "Kiosk" on its own line above the title on a phone (the board has
+  them on one row); the phone Days stat reads "Needs a look" for the day, where the old board said "Needs attention".
+  Nothing on the Days list marks the pencil on the in/out line: the hours column already carries it.
+
+## v1 safeguards carried into v2 (2026-10-18)
+
+Added after the v1-incident review: **pinch-zoom lock** on the kiosk only (`kiosk/zoomLock.ts`), **re-read of every
+screen after a sign-in renewal** (`onSignInRestored` → `requestRefresh()`; the store still re-sends queued punches by
+itself), and a **buzz on a recorded punch**. New tests: three rapid shutter taps record one punch (fails with 3 punches
+if the guard is removed), a tap before the camera has a frame records nothing, the zoom lock, the refresh.
+Still to build: the service worker (offline cold start) and the auto-update reload when idle. Both wait on where v2 is
+deployed (same GitHub Pages site under `/v2/`, which needs a one-line change to v1's `sw.js`, or a separate host).
+Not verifiable here: iOS Safari ignores `user-scalable=no`, so the lock holds on Android Chrome only (as in v1).
+
+## Offline start and side-by-side deployment (2026-10-18)
+
+Service worker (`vite-plugin-pwa` 1.3.0, build only): precaches 18 files (about 1.5 MB), serves them with no network, and
+updates itself when idle (`src/pwa.ts`). Checked in the Browser pane against a stand-in for Pages with v1 and v2 side by
+side: with v1 installed first, `/v2/` still opened v2 (not v1), v2 registered its own worker at `/v2/`, and with the server
+stopped a reload showed the kiosk with its tiles and clock. v1's `sw.js` gained one rule so it leaves `/v2/` alone (4 new
+tests, 2 of which fail on the old file). `deploy.yml` builds and publishes v2 under `/v2/`; v2 failing never blocks v1.
+Not verified: the real GitHub Actions run (it only runs on `main`), a real tablet, and the update flow across two real
+deploys (the worker's update check and idle switch are unit-tested for the idle rule only). The manifest does not lock
+orientation (v1's does, to landscape); say if the kiosk install should.
+
+## Monthly reports as PDFs (2026-10-19), built from the Report boards
+
+Month's header now has one **Download** button (a popover from 900px, a bottom sheet on a phone) in place of "Download Excel":
+- **Attendance report**: A4 landscape, everyone by day (P, H, A, F), Days / Absent / Hours per person, four totals. Hours only.
+  More than about a dozen people continue on a second page with the header row repeated. Offered through the share sheet on a
+  touch device and as a download on a desktop.
+- **Employee statements**: A4 portrait, one page per person (calendar, days, absent, half days, hours worked, "how your hours are
+  counted", signature lines). **No money anywhere**: a test fails if a rupee sign, "salary", "payment", "balance" or "rate" appears
+  in either document. "All in one PDF" for printing, or each person on their own (Share on a touch device, Save elsewhere).
+- **Data for a spreadsheet**: the existing Excel export, renamed.
+- **Payroll summary**: drawn, **not built** (the menu says so on use). So is the owner-only "changes and checks" page: it was taken
+  out of the shared pack because a printed list of owner edits invites questions; the board is kept, titled "later".
+
+The numbers are Month's own: hours come from `buildMonthModel`, and a test holds every person's printed hours and the statement's
+"hours counted" equal to Month · Pay's `punchedHours` / `paidHours`.
+
+How: pdfmake 0.3.11 (lazy, its own 359 KB gzipped chunk) drawing on the device, offline once cached. Fonts are trimmed static TTFs of
+Figtree and IBM Plex Mono, with the ₹ checked (`src/assets/pdf-fonts/README.md`; the published Plex Mono TTFs crash the library, the
+trimmed ones do not). Checked: real PDFs render in node for 5 and 14 people, 28/30/31-day months and an empty month; in the Browser
+pane the Download menu produced a valid `%PDF` file for the report (about 1.1 s the first time) and for the statements (0.3 s).
+Rendered pages were compared by eye with the boards.
+
+Deliberate differences from the boards: an absent day is a solid tint with its letter, not hatching (the library has no pattern
+fill); "Log a payment" is now a secondary button on the Payments tab, because Download is the one primary; the legend lists "?" only
+when a day is still open.
+Confirmed by the owner: the shop name printed is "Unitech Machineries" (`src/reports/shop.ts`); the statement carries no promise or deadline, only how a punch is counted (`STATEMENT_NOTE`); Latin names only.
+Not verified: the share sheet on a real Android or iOS device; printing on paper; a name in another script would print as blanks (the embedded fonts hold Latin only; the owner does not need other scripts, and
+`src/assets/pdf-fonts/README.md` says how to add one).
+
+Also fixed on the way: the dev server went blank when `virtual:pwa-register` was imported without the plugin loaded (the plugin now
+loads in every mode and does nothing outside a build); a kiosk test that failed between midnight and 4 AM because it assumed the real
+clock was mid-day.

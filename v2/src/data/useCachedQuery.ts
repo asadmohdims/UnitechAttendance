@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useSyncExternalStore } from 'react'
+import { REFRESH_EVENT } from './invalidate'
 import { queryCache, type QueryCache, type QuerySnapshot } from './queryCache'
 
 export interface CachedQuery<T> extends QuerySnapshot<T> {
@@ -29,9 +30,11 @@ export function useCachedQuery<T>(key: string, fetcher: () => Promise<T>, cache:
     const onOnline = () => void refetch()
     document.addEventListener('visibilitychange', onVisible)
     window.addEventListener('online', onOnline)
+    window.addEventListener(REFRESH_EVENT, onOnline)
     return () => {
       document.removeEventListener('visibilitychange', onVisible)
       window.removeEventListener('online', onOnline)
+      window.removeEventListener(REFRESH_EVENT, onOnline)
     }
   }, [refetch])
 

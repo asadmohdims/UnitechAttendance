@@ -3,12 +3,17 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useRef, use
 export interface FieldDef {
   name: string
   label: string
-  type?: 'time' | 'number' | 'text'
+  type?: 'time' | 'number' | 'text' | 'date' | 'select'
+  /** For a select: the choices. The first is chosen unless `value` names another. */
+  options?: { value: string; label: string }[]
   value?: string
   placeholder?: string
   help?: string
   /** Defaults to true. An optional clock-out passes false. */
   required?: boolean
+  /** A PIN is text, but the on-screen keyboard should be the number pad. */
+  inputMode?: 'numeric' | 'decimal' | 'text'
+  maxLength?: number
 }
 
 /** A message for the whole form, or one pinned under a field. */
@@ -95,7 +100,7 @@ function useModal() {
 
 function PromptSheet({ config, onClose }: { config: PromptConfig; onClose: (v: Values | null) => void }) {
   const ref = useModal()
-  const [values, setValues] = useState<Values>(() => Object.fromEntries(config.fields.map((f) => [f.name, f.value ?? ''])))
+  const [values, setValues] = useState<Values>(() => Object.fromEntries(config.fields.map((f) => [f.name, f.value ?? f.options?.[0]?.value ?? ''])))
   const [problem, setProblem] = useState<{ field: string | null; message: string } | null>(null)
   const first = config.fields[0]?.name
 
@@ -124,18 +129,31 @@ function PromptSheet({ config, onClose }: { config: PromptConfig; onClose: (v: V
           return (
             <div key={f.name} className="tc-field">
               <label className="tc-field__label" htmlFor={`sheet-${f.name}`}>{f.label}</label>
-              <input
-                id={`sheet-${f.name}`}
-                className="tc-field__input tc-field__input--time"
-                type={f.type ?? 'text'}
-                inputMode={f.type === 'number' ? 'decimal' : undefined}
-                step={f.type === 'number' ? 'any' : undefined}
-                placeholder={f.placeholder}
-                autoFocus={f.name === first}
-                value={values[f.name]}
-                aria-invalid={bad ? true : undefined}
-                onChange={(e) => setValues((v) => ({ ...v, [f.name]: e.target.value }))}
-              />
+              {f.type === 'select' ? (
+                <select
+                  id={`sheet-${f.name}`}
+                  className="tc-field__input"
+                  autoFocus={f.name === first}
+                  value={values[f.name]}
+                  onChange={(e) => setValues((v) => ({ ...v, [f.name]: e.target.value }))}
+                >
+                  {f.options?.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+                </select>
+              ) : (
+                <input
+                  id={`sheet-${f.name}`}
+                  className="tc-field__input tc-field__input--time"
+                  type={f.type ?? 'text'}
+                  inputMode={f.inputMode ?? (f.type === 'number' ? 'decimal' : undefined)}
+                  maxLength={f.maxLength}
+                  step={f.type === 'number' ? 'any' : undefined}
+                  placeholder={f.placeholder}
+                  autoFocus={f.name === first}
+                  value={values[f.name]}
+                  aria-invalid={bad ? true : undefined}
+                  onChange={(e) => setValues((v) => ({ ...v, [f.name]: e.target.value }))}
+                />
+              )}
               {bad ? <span className="tc-field__error" role="alert">{problem!.message}</span> : f.help ? <span className="tc-field__help">{f.help}</span> : null}
             </div>
           )

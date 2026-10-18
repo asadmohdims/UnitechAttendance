@@ -60,14 +60,33 @@ export interface Store {
 
 type LegacyMethods = Record<string, (...args: unknown[]) => unknown>
 
+/**
+ * Every method that changes data. In read-only mode (`npm run dev:live`) these refuse before reaching
+ * the store, so v2 can be pointed at the real database to look at real data without being able to change it.
+ * That includes the kiosk's own automatic writes, such as closing a session left open from a previous day.
+ */
+export const WRITE_METHODS = [
+  'addEmployee', 'renameEmployee', 'setEmployeeActive', 'setEmployeeAvatar', 'setEmployeePin',
+  'clockIn', 'clockOut', 'addManualRecord', 'updateRecordTimes', 'setLunchPaid', 'splitSessionForLunch', 'deleteRecord',
+  'uploadPhoto', 'setSalaryRate', 'setDayOverride', 'setOvertimeHours', 'deleteOvertimeHours',
+  'addPayment', 'updatePayment', 'deletePayment', 'setPaymentResolution',
+] as const
+
+export const READ_ONLY_MESSAGE = 'Read-only mode: nothing was saved.'
+
 /** Wraps every method of `source` so it always returns a promise (and never throws synchronously). */
-export function promisifyStore(source: LegacyMethods): Store {
+export function promisifyStore(source: LegacyMethods, opts: { readOnly?: boolean } = {}): Store {
+  const writes = new Set<string>(WRITE_METHODS)
   const wrapped: Record<string, (...args: unknown[]) => Promise<unknown>> = {}
   for (const [name, fn] of Object.entries(source)) {
     if (typeof fn !== 'function') continue
-    wrapped[name] = async (...args) => fn.apply(source, args)
+    wrapped[name] = opts.readOnly && writes.has(name)
+      ? async () => { throw new Error(READ_ONLY_MESSAGE) }
+      : async (...args) => fn.apply(source, args)
   }
   return wrapped as unknown as Store
 }
 
-export const store: Store = promisifyStore(legacyStore as unknown as LegacyMethods)
+export const READ_ONLY = import.meta.env.VITE_READ_ONLY === 'true'
+
+export const store: Store = promisifyStore(legacyStore as unknown as LegacyMethods, { readOnly: READ_ONLY })

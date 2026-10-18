@@ -16,7 +16,8 @@ export const captureFrame: CapturePhoto = async (video) => {
 
 interface Props {
   name: string
-  action: 'in' | 'out'
+  /** A punch, or an admin taking someone's profile photo (own wording, "Skip for now"). */
+  action: 'in' | 'out' | 'avatar'
   /** Does the store work for the photo. A throw keeps the dialog open with the error shown. */
   onCapture: (photo: Blob) => Promise<void>
   onCancel: () => void
@@ -111,8 +112,8 @@ export function CameraDialog({ name, action, onCapture, onCancel, mediaDevices, 
     <dialog ref={dialogRef} className="kiosk-camera" aria-labelledby="camera-title" onCancel={(e) => { e.preventDefault(); onCancel() }}>
       <div className="kiosk-camera__card">
         <div>
-          <h2 id="camera-title" className="title-2">{action === 'in' ? `Clock in, ${name}?` : `Clock out, ${name}?`}</h2>
-          <p className="body kiosk-muted">Look at the camera, then take your photo.</p>
+          <h2 id="camera-title" className="title-2">{action === 'avatar' ? `Take ${name}'s photo` : action === 'in' ? `Clock in, ${name}?` : `Clock out, ${name}?`}</h2>
+          <p className="body kiosk-muted">{action === 'avatar' ? 'Look at the camera, then take a clear photo for their profile.' : 'Look at the camera, then take your photo.'}</p>
         </div>
         <div className="kiosk-camera__view">
           <video ref={videoRef} autoPlay playsInline muted onLoadedData={() => { setReady(true); setMessage('') }} />
@@ -121,7 +122,7 @@ export function CameraDialog({ name, action, onCapture, onCancel, mediaDevices, 
         <div className="caption kiosk-camera__msg" role="status">{message}</div>
         <div className="kiosk-camera__actions">
           <button type="button" className="tc-btn tc-btn--primary tc-btn--kiosk" disabled={shutterDisabled} onClick={takePhoto}>Take photo</button>
-          <button type="button" className="tc-btn tc-btn--secondary tc-btn--kiosk" onClick={onCancel}>Cancel</button>
+          <button type="button" className="tc-btn tc-btn--secondary tc-btn--kiosk" onClick={onCancel}>{action === 'avatar' ? 'Skip for now' : 'Cancel'}</button>
         </div>
       </div>
     </dialog>

@@ -35,11 +35,11 @@ narrative iteration history here, just the resulting design and any non-obvious 
   testing — serve it (`python3 -m http.server 8743` from the project root) and open
   `http://localhost:8743`.
 
-## 2.0 rebuild (in progress, branch `v2-react`; the live app below is unchanged)
+## 2.0 rebuild (merged to `main` 2026-10-19 and published at `/v2/` beside the live app; v1 is still the kiosk)
 
-The no-build rule above applies to the **live app**. The owner has asked for a 2.0 UI rebuild in `v2/`
-(Vite + React 19 + TypeScript, our own Timecard CSS, no Tailwind/shadcn), built beside the live app and
-deployed only at an explicit cutover. `v2/` reuses `js/store/*` and the pure `js/*.js` modules unchanged
+The no-build rule above applies to the **live app**. The owner asked for a 2.0 UI rebuild in `v2/`
+(Vite + React 19 + TypeScript, our own Timecard CSS, no Tailwind/shadcn), published beside the live app and
+adopted tablet by tablet only when the owner says so (v1 stays the kiosk until then). `v2/` reuses `js/store/*` and the pure `js/*.js` modules unchanged
 (a Vite plugin rewrites only the `DEMO_MODE` line of `js/config.js`; the vendored supabase-js global is
 provided from npm). Do not edit those shared modules for v2's sake; the live app still runs them.
 
@@ -48,12 +48,14 @@ provided from npm). Do not edit those shared modules for v2's sake; the live app
   after a failure or 3s, so v2 never awaits it for a first draw: `useCachedQuery` renders the last good value
   at once and refetches behind it, and photos are saved on the device (`photoCache.ts`). Every store call goes
   through `store.ts`, which makes each method return a promise (demoStore returns plain values). v1 is untouched.
-- Status (2026-10-18): every screen on the canvas is built and tested in v2 (`npm test` in `v2/`, 145 tests): the
-  offline-first data layer, kiosk home and punch flow, kiosk Payments (PIN, own month, add, confirmation), the admin
-  shell with unlock, Days (all its edit actions), Month (Attendance, Pay, Excel, the Payments ledger), People
-  (including photo, PIN, rate, deactivate) and the sign-in dialog. Not built: the service worker (plan step 6) and the
-  cutover work below. Run it: `npm --prefix v2 run dev` (demo mode, port 5173). Month, People and the Days queue read
-  through one hook (`v2/src/admin/month/useMonthData.ts`) so a number cannot differ between screens.
+- Status (2026-10-19): every screen on the canvas is built, tested (`npm test` in `v2/`, 186 tests) and deployed: the
+  offline-first data layer, kiosk home and punch flow, kiosk Payments (PIN, own month, add, confirmation), phone layouts,
+  the admin shell with unlock, Days (all its edit actions), Month (Attendance, Pay, Excel, the Payments ledger, PDF
+  reports), People (including photo, PIN, rate, deactivate), the sign-in dialog, and the service worker. Not built: the
+  payroll summary PDF and the owner-only "changes and checks" page (both drawn on the canvas). Run it:
+  `npm --prefix v2 run dev` (demo mode, port 5173) or `npm --prefix v2 run dev:live` (the real project, every write
+  refused, port 5174). Month, People and the Days queue read through one hook (`v2/src/admin/month/useMonthData.ts`) so
+  a number cannot differ between screens. The demo sandbox's records end 14 Oct 2026, so later days read as absent there.
 - Month's **Download** menu builds PDFs on the device (`v2/src/reports/`, pdfmake, fonts in `src/assets/pdf-fonts/`): an attendance report (A4 landscape),
   per-person statements (A4 portrait). Both are hours only, by design and by test, since they get printed and pinned up. Payroll summary is drawn, not built.
 - Parity checklist (what the live app does vs the design): `v2/PARITY.md`. Update it as screens are built.
@@ -63,7 +65,7 @@ provided from npm). Do not edit those shared modules for v2's sake; the live app
 - Deployment: v2 is published **beside** the live app on the same GitHub Pages site, under `/UnitechAttendance/v2/`
   (`.github/workflows/deploy.yml` runs v2's tests, builds it with `VITE_BASE`, `VITE_DEMO_MODE=false` and the git SHA as
   `VITE_APP_VERSION`, and copies `v2/dist` into `_site/v2`). If v2's tests or build fail, v2 is skipped and the live
-  app still deploys. It goes live only when `v2-react` is merged to `main`. v1 and v2 share one browser origin: one
+  app still deploys. It deploys with every push to `main`. v1 and v2 share one browser origin: one
   sign-in, and one queue of unsynced punches (the same IndexedDB), on a device that runs both.
 - **v1's `sw.js` now leaves `/v2/` alone** (`V2_PATH`, tested by `js/swScope.test.mjs` against the real file). Its scope
   covers that folder and it answers every navigation with v1's index.html, so a device with v1 installed would open v1

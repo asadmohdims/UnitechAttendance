@@ -1,0 +1,85 @@
+/* Admin shell and the Days screen. Layout numbers come from the Admin · Days board (1440 wide). */
+.app-muted{color:var(--ink-muted)}
+.app-error{font:600 14px/20px var(--font-sans);color:var(--alert-ink)}
+.app-toast{position:fixed;left:50%;bottom:var(--space-6);transform:translateX(-50%);z-index:40}
+.lab{font:600 12px/16px var(--font-mono);letter-spacing:.06em;text-transform:uppercase;color:var(--ink-muted)}
+
+.sheet-dialog{border:0;padding:0;background:transparent;max-width:min(420px,92vw);width:100%}
+.sheet-dialog::backdrop{background:rgba(8,12,22,.6)}
+
+.admin{display:flex;flex-wrap:wrap;gap:var(--space-5);padding:var(--space-5);min-height:100vh;box-sizing:border-box;background:var(--bg);color:var(--ink)}
+.admin-rail{align-self:flex-start}
+.admin-content{flex:999 1 560px;min-width:0;max-width:var(--content-max);display:flex;flex-direction:column;gap:var(--space-5)}
+.admin-tabbar,.admin-phone-exit{display:none}
+@media (max-width:899px){
+  .admin{padding:var(--space-4);padding-bottom:calc(88px + var(--space-4))}
+  .admin-rail{display:none}
+  .admin-phone-exit{display:flex;justify-content:flex-end}
+  .admin-tabbar{display:flex;position:fixed;left:0;right:0;bottom:0;margin:0;border-radius:0;border-width:1.5px 0 0;z-index:10}
+}
+
+.days{display:flex;flex-direction:column;gap:var(--space-5)}
+.days__header{display:flex;flex-wrap:wrap;align-items:flex-end;gap:var(--space-6)}
+.days__cols{display:flex;flex-wrap:wrap;gap:var(--space-5);align-items:flex-start}
+.days__left{flex:1 1 380px;min-width:0;display:flex;flex-direction:column;gap:var(--space-5)}
+.days__block{display:flex;flex-direction:column;gap:var(--space-3)}
+.days__blockhead{display:flex;align-items:baseline;justify-content:space-between}
+.days__empty{margin:0;padding:var(--space-4);border:1.5px dashed var(--line);border-radius:var(--radius-sm);text-align:center}
+.days__none{flex:1.5 1 500px;padding:var(--space-6);border:1.5px dashed var(--line);border-radius:var(--radius-md);text-align:center}
+
+.period-label{border:0;background:transparent;color:var(--ink);cursor:pointer}
+.period-input{position:absolute;width:0;height:0;opacity:0;pointer-events:none}
+.tc-period{position:relative}
+
+.tc-queue > button.tc-queue__row{width:100%;background:transparent;border:0;border-top:1px solid var(--line);text-align:left;font:inherit;color:inherit}
+.tc-queue > button.tc-queue__row:first-child{border-top:0}
+.tc-queue > button.tc-queue__row[aria-pressed="true"]{background:var(--brand-tint)}
+.days-queue{grid-template-columns:auto 1fr}
+.days-row{min-height:64px}
+.days-row__who{min-width:0;display:flex;flex-direction:column}
+.days-row__times{font:500 13px/18px var(--font-mono);color:var(--ink-muted)}
+.days-row__times--in{color:var(--in-ink)}
+.days-row__times--attention{color:var(--attention-ink)}
+.day-back{display:none;align-self:flex-start;padding:0 var(--space-2)}
+.days-row__paid{min-width:64px;text-align:right}
+
+.day-detail{flex:1.5 1 500px;min-width:0;display:flex;flex-direction:column;gap:var(--space-4);padding:var(--space-5);background:var(--surface);border:1.5px solid var(--line);border-radius:var(--radius-md);box-shadow:var(--shadow-1)}
+.day-detail__head{display:flex;align-items:center;gap:var(--space-3)}
+.day-detail__strip{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:var(--space-3)}
+.day-detail__sessions,.day-detail__block{display:flex;flex-direction:column;gap:var(--space-3)}
+.day-detail__overtime{display:flex;align-items:center;justify-content:space-between;gap:var(--space-3);padding:var(--space-3);background:var(--sunken);border-radius:var(--radius-sm)}
+.sess{padding:var(--space-4);background:var(--surface);border:1.5px solid var(--line);border-radius:var(--radius-md)}
+.sess--edited{border-color:var(--brand)}
+.sess__head{display:flex;align-items:center;gap:var(--space-2);margin-bottom:var(--space-3)}
+.sess__body{display:grid;grid-template-columns:auto 1fr auto;gap:var(--space-3);align-items:start}
+.end{display:flex;flex-direction:column;gap:6px;min-width:0}
+.end--r{align-items:flex-end;text-align:right}
+.mid{display:flex;flex-direction:column;align-items:center;justify-content:center;padding-top:20px;min-width:72px;text-align:center}
+.gap{display:flex;align-items:center;justify-content:space-between;gap:var(--space-3);padding:var(--space-1) var(--space-3);background:var(--sunken);border-radius:var(--radius-xs)}
+.gap--warn{background:var(--attention-wash);color:var(--attention-ink)}
+.photo-btn{border:0;cursor:zoom-in;font:inherit}
+.photo-viewer{position:fixed;inset:0;z-index:50;border-radius:0;gap:var(--space-4)}
+
+/* Phone: the day's list, then one person's day behind a back button (the Phone · Days boards). */
+@media (max-width:899px){
+  .days--detail .days__header,.days--detail .days__left{display:none}
+  .days:not(.days--detail) .day-detail,.days:not(.days--detail) .days__none{display:none}
+  .day-back{display:inline-flex}
+}
+/* Narrow rows: hours over the chip on the right, so the in/out line keeps the width it needs. */
+@media (max-width:620px){
+  .days-row{grid-template-columns:auto minmax(0,1fr) auto;grid-template-areas:"av who paid" "av who stamp";align-items:center}
+  .days-row > .tc-avatar{grid-area:av}
+  .days-row__who{grid-area:who}
+  .days-row__paid{grid-area:paid}
+  .days-row__stamp{grid-area:stamp;justify-self:end}
+}
+
+/* Phone · A person's day: In and Out side by side at full width, the paid time on its own line beneath. */
+@media (max-width:620px){
+  .day-detail{padding:var(--space-3)}
+  .sess__body{grid-template-columns:minmax(0,1fr) minmax(0,1fr)}
+  .sess__body .tc-photo--lg{width:100%;height:auto;aspect-ratio:4/3}
+  .sess__body .mid{grid-column:1 / -1;order:3;flex-direction:row-reverse;align-items:baseline;justify-content:space-between;padding:var(--space-2) 0 0;border-top:1px solid var(--line);min-width:0}
+  .end--r{align-items:flex-start;text-align:left}
+}

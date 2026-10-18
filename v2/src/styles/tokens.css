@@ -1,0 +1,41 @@
+/* Timecard v1.2 — generated from tokens.json */
+:root, [data-theme="light"] {
+  --bg:#f3f5f9; --surface:#ffffff; --sunken:#e9edf4; --line:#d7dde8; --line-strong:#7c879c; --ink:#0f1a30; --ink-muted:#4a5772;
+  --brand:#1d3fd1; --brand-hover:#1630a6; --brand-tint:#e4eafb; --brand-ink:#162e8f; --on-brand:#ffffff; --focus:var(--brand);
+  --in:#0e7c4a; --in-tint:#e3f5ea; --in-ink:#0a5c37;
+  --attention:#c46a00; --attention-tint:#fdebc8; --attention-ink:#7a3b00; --attention-wash:#fff4dc;
+  --alert:#b83a00; --alert-tint:#f7c4ae; --alert-ink:#7a2400; --alert-wash:#fdece4;
+  --holiday:#6b46c1; --holiday-tint:#ece5fb; --holiday-ink:#4e2f9e;
+  --shadow-1:0 1px 2px rgba(15,26,48,0.08), 0 4px 12px rgba(15,26,48,0.06);
+  --shadow-2:0 12px 40px rgba(15,26,48,0.18);
+}
+[data-theme="dark"] {
+  --bg:#0b101b; --surface:#141c2b; --sunken:#0f1522; --line:#26324a; --line-strong:#5f6c88; --ink:#edf1f9; --ink-muted:#a3aec5;
+  --brand:#8da4ff; --brand-hover:#a8baff; --brand-tint:#1b2650; --brand-ink:#b9c8ff; --on-brand:#0a1236; --focus:var(--brand);
+  --in:#46cf8a; --in-tint:#123324; --in-ink:#7be3ab;
+  --attention:#f0ae48; --attention-tint:#3a2a0c; --attention-ink:#f7c879; --attention-wash:#3a2a0c;
+  --alert:#ff8f66; --alert-tint:#4a1e10; --alert-ink:#ffb398; --alert-wash:#4a1e10;
+  --holiday:#b8a1ff; --holiday-tint:#271d4a; --holiday-ink:#cdbdff;
+  --shadow-1:0 1px 2px rgba(0,0,0,0.5), 0 4px 12px rgba(0,0,0,0.35);
+  --shadow-2:0 12px 40px rgba(0,0,0,0.6);
+}
+:root {
+  --space-1:4px; --space-2:8px; --space-3:12px; --space-4:16px; --space-5:24px; --space-6:32px; --space-7:48px; --space-8:64px;
+  --radius-xs:4px; --radius-sm:8px; --radius-md:14px; --radius-lg:24px;
+  --tap-min:44px; --tap-kiosk:64px; --rail-width:88px; --content-max:1120px;
+  --font-display:"Figtree",system-ui,-apple-system,"Segoe UI",sans-serif;
+  --font-sans:"Figtree",system-ui,-apple-system,"Segoe UI",sans-serif;
+  --font-mono:"IBM Plex Mono",ui-monospace,"SF Mono",Menlo,monospace;
+}
+.clock{font-family:var(--font-display);font-size:72px;line-height:72px;font-weight:700;letter-spacing:-0.01em;font-variant-numeric:tabular-nums}
+.title-1{font-family:var(--font-display);font-size:32px;line-height:38px;font-weight:700;letter-spacing:-0.01em}
+.title-2{font-family:var(--font-display);font-size:22px;line-height:28px;font-weight:700}
+.stat{font-family:var(--font-display);font-size:30px;line-height:34px;font-weight:700;font-variant-numeric:tabular-nums}
+.heading{font-family:var(--font-sans);font-size:17px;line-height:24px;font-weight:600}
+.body{font-family:var(--font-sans);font-size:15px;line-height:22px;font-weight:400}
+.body-strong{font-family:var(--font-sans);font-size:15px;line-height:22px;font-weight:600}
+.label{font-family:var(--font-sans);font-size:13px;line-height:18px;font-weight:600;letter-spacing:0.01em}
+.caption{font-family:var(--font-sans);font-size:12px;line-height:16px;font-weight:500}
+.time{font-family:var(--font-mono);font-size:15px;line-height:20px;font-weight:500;font-variant-numeric:tabular-nums}
+.time-large{font-family:var(--font-mono);font-size:28px;line-height:32px;font-weight:500;font-variant-numeric:tabular-nums}
+.stamp{font-family:var(--font-mono);font-size:12px;line-height:16px;font-weight:500;letter-spacing:0.06em}

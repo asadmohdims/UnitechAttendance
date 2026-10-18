@@ -1,0 +1,37 @@
+{
+  "name": "unitech-attendance-v2",
+  "private": true,
+  "version": "2.0.0-dev",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "dev:live": "VITE_DEMO_MODE=false VITE_READ_ONLY=true vite --port 5174 --host 127.0.0.1"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "2.117.0",
+    "pdfmake": "0.3.11",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0"
+  },
+  "devDependencies": {
+    "@testing-library/jest-dom": "^6.6.0",
+    "@testing-library/react": "^16.1.0",
+    "@types/node": "^22.0.0",
+    "@types/pdfmake": "0.3.3",
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
+    "@vitejs/plugin-react": "^5.0.0",
+    "jsdom": "^26.0.0",
+    "typescript": "^5.7.0",
+    "vite": "^7.0.0",
+    "vite-plugin-pwa": "1.3.0",
+    "vitest": "^3.0.0",
+    "workbox-build": "7.4.1",
+    "workbox-window": "7.4.1"
+  }
+}

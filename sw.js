@@ -15,6 +15,12 @@ const VERSION = 'dev';
 const CACHE_PREFIX = 'unitech-shell-';
 const CACHE_NAME = CACHE_PREFIX + VERSION;
 
+// The 2.0 rebuild is served from a folder inside this same site (.../v2/) and has its own worker.
+// This worker's scope covers that folder too, and it answers every navigation with THIS app's
+// index.html, so without this a device that has v1 installed would open v1 when asked for v2.
+// Anything under the folder is left alone: the network, or v2's own worker, answers it.
+const V2_PATH = new URL('v2/', self.registration.scope).pathname;
+
 // Everything the app needs to boot and run offline. js/swPrecache.test.mjs fails if a module
 // under js/, or a file index.html/styles.css references, is missing from this list.
 const APP_SHELL = [
@@ -97,6 +103,7 @@ self.addEventListener('fetch', (event) => {
   const url = new URL(req.url);
   if (url.origin !== self.location.origin) return; // Supabase: network only, never cached here
   if (url.pathname.endsWith('/version.json')) return; // the freshness signal must always be live
+  if (url.pathname.startsWith(V2_PATH)) return; // v2 has its own worker and its own files
 
   event.respondWith(VERSION === 'dev' ? networkFirst(req) : cacheFirst(req));
 });

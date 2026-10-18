@@ -1,0 +1,83 @@
+/* Kiosk · home and punch flow. Sizes come from the board (1180 x 820 tablet landscape). */
+.kiosk{display:flex;min-height:100vh;background:var(--bg);color:var(--ink);font-family:var(--font-sans)}
+.kiosk-muted{color:var(--ink-muted)}
+.kiosk-side{width:360px;flex:0 0 360px;box-sizing:border-box;display:flex;flex-direction:column;justify-content:space-between;padding:var(--space-7) var(--space-6);background:var(--surface);border-right:1.5px solid var(--line)}
+.kiosk-side__top{display:flex;flex-direction:column;gap:var(--space-7)}
+.kiosk-side__id{display:flex;flex-direction:column;gap:var(--space-2)}
+.kiosk-roster{display:flex;align-items:center;gap:var(--space-2);color:var(--ink-muted)}
+.kiosk-roster__dot{width:10px;height:10px;border-radius:50%;background:var(--in)}
+.kiosk-clock{display:flex;flex-direction:column;gap:var(--space-2)}
+.kiosk-clock .clock{white-space:nowrap}
+/* 72px (the token) is 26px wider than this panel for "11:05 PM"; the board only drew a 7-character time like "9:41 AM". */
+.kiosk-clock .clock{font-size:64px;line-height:72px}
+.kiosk-side__bottom{display:flex;flex-direction:column;gap:var(--space-3)}
+.kiosk-side__meta{display:flex;align-items:center;justify-content:space-between;margin-top:var(--space-3)}
+.kiosk-version{font-family:var(--font-mono);color:var(--ink-muted)}
+.kiosk-main{flex:1;min-width:0;box-sizing:border-box;padding:var(--space-6);display:flex;flex-direction:column;gap:var(--space-4);overflow:auto;max-height:100vh}
+.kiosk-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:var(--space-4)}
+.kiosk-tile{width:auto;font-family:inherit}
+.kiosk-tile__avatar{overflow:hidden;padding:0;width:80px;height:80px}
+.kiosk-tile__avatar img{width:100%;height:100%;object-fit:cover}
+.kiosk-tile__state{margin-top:auto}
+.kiosk-tile__state--out{min-height:68px;box-sizing:border-box;display:grid;place-items:center}
+.kiosk-empty{color:var(--ink-muted)}
+
+.kiosk-camera{border:0;padding:0;background:transparent;max-width:min(520px,92vw);width:100%}
+.kiosk-camera::backdrop{background:rgba(8,12,22,.6)}
+.kiosk-camera__card{display:flex;flex-direction:column;gap:var(--space-4);padding:var(--space-5);background:var(--surface);color:var(--ink);border:1.5px solid var(--line);border-radius:var(--radius-lg);box-shadow:var(--shadow-2)}
+.kiosk-camera__card p{margin:0}
+.kiosk-camera__view{position:relative;aspect-ratio:4/3;background:var(--sunken);border-radius:var(--radius-md);overflow:hidden}
+.kiosk-camera__view video{width:100%;height:100%;object-fit:cover;transform:scaleX(-1)}
+.kiosk-camera__flash{position:absolute;inset:0;background:#fff;opacity:0;animation:kiosk-flash .25s ease-out}
+@keyframes kiosk-flash{0%{opacity:.85}100%{opacity:0}}
+.kiosk-camera__msg{color:var(--alert-ink);min-height:16px}
+.kiosk-camera__actions{display:flex;gap:var(--space-3)}
+.kiosk-camera__actions .tc-btn--primary{flex:1}
+
+.kiosk-confirm{position:fixed;inset:0;display:grid;place-items:center;background:rgba(8,12,22,.45);z-index:20;animation:kiosk-fade .15s ease-out}
+@keyframes kiosk-fade{from{opacity:0}to{opacity:1}}
+.kiosk-toast{position:fixed;left:50%;bottom:var(--space-6);transform:translateX(-50%);z-index:30}
+@media (prefers-reduced-motion:reduce){.kiosk-camera__flash,.kiosk-confirm{animation:none}}
+
+/* Payments mode and its flow. Sizes come from the Kiosk payments flow / states boards. */
+.kiosk-banner{display:flex;align-items:center;gap:var(--space-2);padding:var(--space-3);border-radius:var(--radius-sm);background:var(--brand-tint);color:var(--brand-ink)}
+.kiosk-pay{max-width:min(440px,92vw)}
+.kiosk-pay__card{min-height:min(640px,86vh);box-sizing:border-box}
+.kiosk-pay__screen{flex:1;display:flex;flex-direction:column;gap:var(--space-4)}
+.kiosk-pay__screen--center{align-items:center}
+.kiosk-pay__avatar .tc-avatar{width:72px;height:72px;border-radius:var(--radius-sm)}
+.kiosk-pay__avatar--sm .tc-avatar{width:48px;height:48px}
+.kiosk-pay__who{display:flex;align-items:center;gap:var(--space-3)}
+.kiosk-pay__list{display:flex;flex-direction:column}
+.kiosk-pay__row{display:flex;flex-direction:column;justify-content:center;min-height:56px;border-top:1px solid var(--line)}
+.kiosk-pay__err{font:600 14px/20px var(--font-sans);color:var(--alert-ink)}
+.kiosk-pin--error .tc-pin__dot{border-color:var(--alert);background:var(--alert);animation:kiosk-shake .3s}
+@keyframes kiosk-shake{25%{transform:translateX(-4px)}75%{transform:translateX(4px)}}
+@media (prefers-reduced-motion:reduce){.kiosk-pin--error .tc-pin__dot{animation:none}}
+
+.kiosk-date--short{display:none}
+
+/* Phone (the Phone · Kiosk boards). The side panel becomes a header, the tiles run two across,
+   and Admin access sits in a bar pinned to the bottom. The tablet layout above is unchanged. */
+@media (max-width:760px){
+  .kiosk{flex-direction:column}
+  .kiosk-side{width:auto;flex:0 0 auto;display:grid;grid-template-columns:minmax(0,1fr) auto;grid-template-areas:"id clock" "sync clock" "mode mode";gap:var(--space-1) var(--space-3);padding:var(--space-4);border-right:0;border-bottom:1.5px solid var(--line)}
+  .kiosk-side__top,.kiosk-side__bottom{display:contents}
+  .kiosk-side__id{grid-area:id}
+  .kiosk-side__id .title-2{font:600 17px/24px var(--font-display)}
+  .kiosk-roster{font-size:12px;line-height:16px}
+  .kiosk-clock{grid-area:clock;align-items:flex-end;gap:0}
+  .kiosk-clock .clock{font-size:36px;line-height:40px}
+  .kiosk-date--long{display:none}
+  .kiosk-date--short{display:block}
+  .kiosk-sync{grid-area:sync;font-size:12px;line-height:16px}
+  .kiosk-mode-btn{grid-area:mode;margin-top:var(--space-2);min-height:var(--tap-min);font-size:15px;padding:0 18px}
+  .kiosk-side__meta{position:fixed;left:0;right:0;bottom:0;z-index:5;margin:0;min-height:56px;box-sizing:border-box;padding:0 var(--space-4) env(safe-area-inset-bottom,0px);background:var(--surface);border-top:1.5px solid var(--line)}
+  .kiosk-main{max-height:none;overflow:visible;padding:var(--space-4);padding-bottom:calc(56px + var(--space-4) + env(safe-area-inset-bottom,0px));gap:var(--space-3)}
+  .kiosk-grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:var(--space-3)}
+  .kiosk-tile{padding:14px 12px 0;gap:var(--space-2)}
+  .kiosk-tile .tc-tile__name{font-size:17px;line-height:22px}
+  .kiosk-tile__avatar{width:56px;height:56px}
+  .kiosk-tile .tc-tile__state{margin-left:-12px;margin-right:-12px;padding:8px;font-size:14px;line-height:18px}
+  .kiosk-tile__state--out{min-height:52px}
+}

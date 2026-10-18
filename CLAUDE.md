@@ -48,17 +48,30 @@ provided from npm). Do not edit those shared modules for v2's sake; the live app
   after a failure or 3s, so v2 never awaits it for a first draw: `useCachedQuery` renders the last good value
   at once and refetches behind it, and photos are saved on the device (`photoCache.ts`). Every store call goes
   through `store.ts`, which makes each method return a promise (demoStore returns plain values). v1 is untouched.
-- Status (2026-10-14): built and tested in v2 (`npm test` in `v2/`): the offline-first data layer, the kiosk home and
-  punch flow, the admin shell with unlock, and the Days screen including edit, delete, add missed punch, split for
-  lunch, lunch paid and overtime. Not built: Payments (kiosk flow and Month tab, deliberately deferred), Month
-  Attendance/Pay, People, the service worker (plan step 6). Run it: `npm --prefix v2 run dev` (demo mode, port 5173).
+- Status (2026-10-18): every screen on the canvas is built and tested in v2 (`npm test` in `v2/`, 145 tests): the
+  offline-first data layer, kiosk home and punch flow, kiosk Payments (PIN, own month, add, confirmation), the admin
+  shell with unlock, Days (all its edit actions), Month (Attendance, Pay, Excel, the Payments ledger), People
+  (including photo, PIN, rate, deactivate) and the sign-in dialog. Not built: the service worker (plan step 6) and the
+  cutover work below. Run it: `npm --prefix v2 run dev` (demo mode, port 5173). Month, People and the Days queue read
+  through one hook (`v2/src/admin/month/useMonthData.ts`) so a number cannot differ between screens.
+- Month's **Download** menu builds PDFs on the device (`v2/src/reports/`, pdfmake, fonts in `src/assets/pdf-fonts/`): an attendance report (A4 landscape),
+  per-person statements (A4 portrait). Both are hours only, by design and by test, since they get printed and pinned up. Payroll summary is drawn, not built.
 - Parity checklist (what the live app does vs the design): `v2/PARITY.md`. Update it as screens are built.
 - Design: Timecard design system `https://claude.ai/artifact/KzxKqSUN3rihzLhvpjz4Z9` and screens canvas
   `https://claude.ai/artifact/GNPVhdUoyDmES5x2cok6qs`. Admin is Days / Month / People; the kiosk grid never
   reorders; status colours are palette v1.2; fonts are Figtree + IBM Plex Mono (Figtree has the rupee sign).
-- Before any cutover: the service worker moves to `vite-plugin-pwa` and CLAUDE.md "Known gaps" item 2 (the
-  real-tablet offline checklist) must be re-verified on the v2 build. `.github/workflows/deploy.yml` already
-  excludes `v2/` from the staged site; remove that exclusion only at cutover.
+- Deployment: v2 is published **beside** the live app on the same GitHub Pages site, under `/UnitechAttendance/v2/`
+  (`.github/workflows/deploy.yml` runs v2's tests, builds it with `VITE_BASE`, `VITE_DEMO_MODE=false` and the git SHA as
+  `VITE_APP_VERSION`, and copies `v2/dist` into `_site/v2`). If v2's tests or build fail, v2 is skipped and the live
+  app still deploys. It goes live only when `v2-react` is merged to `main`. v1 and v2 share one browser origin: one
+  sign-in, and one queue of unsynced punches (the same IndexedDB), on a device that runs both.
+- **v1's `sw.js` now leaves `/v2/` alone** (`V2_PATH`, tested by `js/swScope.test.mjs` against the real file). Its scope
+  covers that folder and it answers every navigation with v1's index.html, so a device with v1 installed would open v1
+  when asked for v2. A tablet that already has v1 must load v1 once after that deploy so it picks the change up, then v2.
+- v2's own worker (`vite-plugin-pwa` 1.3.0, `src/pwa.ts`) precaches the whole app on first run, so it starts with no
+  network (checked: with the server stopped, a reload showed the kiosk). It asks for a new version every 5 minutes and
+  switches only when nothing is open (`isIdle`: no dialog, confirmation or photo viewer). It exists only in a build.
+- Still before cutover: CLAUDE.md "Known gaps" item 2 (the real-tablet offline checklist) re-verified on the v2 build.
 
 ## Architecture
 

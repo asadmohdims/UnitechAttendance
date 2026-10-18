@@ -31,6 +31,36 @@ jobs:
           mkdir _site
           rsync -a --exclude='archive' --exclude='v2' --exclude='.git' --exclude='_site' ./ _site/
 
+      # The 2.0 rebuild (v2/) is built here and published beside the live app, under /v2/. It is built
+      # apart from the live app and may fail on its own without blocking it: if v2's tests or build
+      # fail, v2/ is simply not published this time and the live app deploys as usual.
+      # VITE_DEMO_MODE=false is what points the published v2 at the real Supabase project; without it
+      # v2 builds as the local-only demo sandbox. The tests run without it, on purpose.
+      # Every step that exists only for v2 may fail without stopping the live app's deploy.
+      - name: Set up Node
+        continue-on-error: true
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: v2/package-lock.json
+
+      - name: Build v2
+        id: v2
+        continue-on-error: true
+        working-directory: v2
+        run: |
+          npm ci
+          npm test
+          VITE_BASE="/${{ github.event.repository.name }}/v2/" VITE_DEMO_MODE=false VITE_APP_VERSION="$(git rev-parse --short HEAD)" npm run build
+
+      - name: Publish v2 beside the live app
+        if: steps.v2.outcome == 'success'
+        continue-on-error: true
+        run: |
+          mkdir -p _site/v2
+          cp -R v2/dist/. _site/v2/
+
       # Stamps this deploy with a real version string — there's no bundler/build step to inject
       # one, so it's done here instead. Overwrites the repo's committed 'dev' placeholders in
       # three places that must agree: version.json (polled by js/ui/appVersion.js to notice a new

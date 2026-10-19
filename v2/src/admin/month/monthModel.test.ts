@@ -73,6 +73,15 @@ describe('buildMonthModel', () => {
     expect(m.reviewRecords).toHaveLength(0)
   })
 
+  it('counts a confirmed-as-is day as reviewed, not as flagged', () => {
+    const d = '2026-10-07'
+    const confirmed = rec({ id: '1', emp_id: 'a', date: d, clock_in: at(d, 14, 15), clock_out: at(d, 18, 1), out_photo: null, edited_at: at('2026-10-19', 23), orig_clock_in: at(d, 14, 15), orig_clock_out: at(d, 18, 1) })
+    const m = buildMonthModel({ ...base, employees: [emp('a', 'Faizan')], records: [confirmed] })
+    expect(m.people[0].days[6].flagged).toBe(false)
+    expect(m.people[0].days[6].reviewed).toBe(true)
+    expect(m.reviewRecords).toHaveLength(0)
+  })
+
   it('does not mark an ordinary day, or one still waiting for review, as reviewed', () => {
     const m = buildMonthModel({ ...base, employees: [emp('a', 'Faizan')], records: [...fullDay('a', '2026-10-05'), rec({ id: 'o', emp_id: 'a', date: '2026-10-06', clock_in: at('2026-10-06', 9), out_photo: null })] })
     expect(m.people[0].days.some((x) => x.reviewed)).toBe(false)

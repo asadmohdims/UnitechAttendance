@@ -25,6 +25,7 @@ export function calloutStamp(id: string, overtime?: number): string {
     'open-past': 'Missing clock-out',
     'check-punches': 'Check punches',
     'no-photo': 'No clock-out photo',
+    reviewed: 'Reviewed',
     'no-lunch': 'No lunch punch?',
     edited: 'Edited',
     added: 'Added by you',
@@ -74,6 +75,12 @@ export function calloutText(model: DayModel, name: string, date: string): [strin
         `Pay counts both, so ${first.minutes} minutes are paid twice.${more}`,
       ]
     }
+    case 'no-photo': {
+      const soFar = p.paid != null ? ` Pay so far: ${fmtHours(p.paid as number)}${p.countedOut ? `, counted to ${fmtTime(p.countedOut as string)}` : ''}.` : ''
+      return ['No clock-out photo.', `The ${p.part} session ends at ${fmtTime(p.out as string)}, but the kiosk has no photo of it, so it can't be told apart from a time typed in later.${soFar} If the time is right, mark it reviewed.`]
+    }
+    case 'reviewed':
+      return ['You confirmed these times.', `${fmtDateTime(p.editedAt as string)}. Nothing was changed.${p.paid != null ? ` ${fmtHours(p.paid as number)} paid.` : ''}`]
     case 'no-lunch':
       return ['One long session with no lunch punch.', `If ${name} took a lunch break, use Split for lunch.`]
     case 'edited':

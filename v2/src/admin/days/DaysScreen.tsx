@@ -3,7 +3,7 @@ import { queryCache } from '../../data/queryCache'
 import { store } from '../../data/store'
 import { useCachedQuery } from '../../data/useCachedQuery'
 import type { DayPayOverride, Employee, OvertimeRow, RecordRow } from '../../data/types'
-import { dateKey, fmtHours } from '../../format'
+import { dateKey, fmtHours, fmtTime } from '../../format'
 import { Avatar } from '../../ui/Avatar'
 import { refreshKioskData } from '../../data/invalidate'
 import { useSheets } from '../../ui/Sheets'
@@ -11,7 +11,7 @@ import { useNow } from '../../kiosk/useNow'
 import { buildAttentionQueue, buildDayEntries } from '../dayEntries'
 import { buildLedger, paymentQueueItems } from '../month/paymentsModel'
 import { revalidateMonthAttendance, usePaymentsMonth } from '../month/useMonthData'
-import { sessionEditForm, missedPunchForm, overtimeForm, confirmDeleteForm } from '../forms'
+import { sessionEditForm, missedPunchForm, overtimeForm, confirmDeleteForm, markReviewedForm } from '../forms'
 import { calloutStamp, chipText, fmtDayShort, rowTimes } from '../dayText'
 import { defaultLunchWindow, MIN_SPLITTABLE_MS } from '../lunchSplit'
 import type { CalloutAction, DayEntry, SessionView, Tone } from '../types'
@@ -116,6 +116,15 @@ export function DaysScreen({ onNotice, initialDate, initialEmp, nowOverride }: P
     await attempt(() => store.updateRecordTimes(session.record.id, times.inIso, times.outIso))
   }
 
+  /** Confirms the times as they are: writes the edit marker without moving a punch. */
+  const markReviewed = async (session: SessionView, entry: DayEntry) => {
+    const { clock_in, clock_out, id } = session.record
+    if (!clock_out) return
+    const v = await sheets.prompt(markReviewedForm(entry.emp.name, fmtDayShort(date), fmtTime(clock_out)))
+    if (!v) return
+    await attempt(() => store.updateRecordTimes(id, clock_in, clock_out))
+  }
+
   const addMissedPunch = async (entry: DayEntry) => {
     const form = missedPunchForm(date, entry.emp.name)
     const v = await sheets.prompt(form.config)
@@ -157,6 +166,7 @@ export function DaysScreen({ onNotice, initialDate, initialEmp, nowOverride }: P
       if (a.id === 'split' && session) return splitSession(session)
       if (a.id === 'delete-session' && session) return void deleteSession(session, entry)
       if (a.id === 'add-punch') return void addMissedPunch(entry)
+      if (a.id === 'mark-reviewed' && session) return void markReviewed(session, entry)
       if (session) return void editSession(session, entry)
     },
     addOvertime: (entry) => void setOvertime(entry),

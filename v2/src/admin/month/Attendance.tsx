@@ -4,6 +4,7 @@ import type { RecordRow } from '../../data/types'
 import { dateKey, fmtHours, fmtTime } from '../../format'
 import { Avatar } from '../../ui/Avatar'
 import { buildAttentionQueue, type QueueItem } from '../dayEntries'
+import { withReview } from '../review'
 import { calloutStamp, calloutText, fmtDayShort } from '../dayText'
 import type { DayModel } from '../types'
 import { dayBase, dayText } from './dayCell'
@@ -31,6 +32,7 @@ export interface AttendanceActions {
   addMissedPunch: (p: PersonMonth, date: string) => void
   toggleHoliday: (p: PersonMonth, date: string, docked: boolean) => void
   listDates: (p: PersonMonth) => void
+  markReviewed: (p: PersonMonth, day: MonthDay) => void
 }
 
 interface Props {
@@ -256,11 +258,11 @@ export function Attendance({ model, records, overtime, now, currentYm, actions }
 function DayCard({ person, day, today, now, actions }: { person: PersonMonth; day: MonthDay; today: string; now: Date; actions: AttendanceActions }) {
   const { emp } = person
   const since = emp.created_at ? dateKey(new Date(emp.created_at)) : undefined
-  const model = (
+  const model = withReview((
     day.sessions.length
       ? dayModel({ sessions: day.sessions, date: day.date, today, now, overtimeHours: day.overtime })
       : emptyDayModel({ date: day.date, today, weekday: new Date(`${day.date}T12:00:00`).getDay(), employeeSince: since, now, docked: day.docked })
-  ) as unknown as DayModel | null
+  ) as unknown as DayModel | null, day.sessions)
   if (!model) return null
   const c = model.callout
   const [lead, rest] = c ? calloutText(model, emp.name, day.date) : ['', '']
@@ -290,6 +292,7 @@ function DayCard({ person, day, today, now, actions }: { person: PersonMonth; da
         <div className="month-sess" style={{ alignSelf: 'stretch' }}><span>Overtime</span><span className="time app-muted">{fmtHours(day.overtime)} paid</span></div>
       )}
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 'var(--space-2)' }}>
+        {c?.id === 'no-photo' && <button type="button" className="tc-btn tc-btn--primary" onClick={() => actions.markReviewed(person, day)}>Mark as reviewed</button>}
         {day.kind === 'absent' && <button type="button" className="tc-btn tc-btn--primary" onClick={() => actions.addMissedPunch(person, day.date)}>Add missed punch</button>}
         {day.kind === 'holiday' && <button type="button" className="tc-btn tc-btn--secondary" onClick={() => actions.toggleHoliday(person, day.date, day.docked)}>{day.docked ? 'Restore as paid' : 'Mark unpaid'}</button>}
         {(day.sessions.length > 0 || day.kind === 'holiday') && <button type="button" className="tc-btn tc-btn--secondary" onClick={() => actions.openInDays(day.date, emp.id)}>Open in Days</button>}

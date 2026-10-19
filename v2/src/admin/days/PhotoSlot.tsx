@@ -7,11 +7,13 @@ interface Props {
   path: string | null
   side: 'in' | 'out'
   clockOut: string | null
+  /** The owner confirmed this punch as it was (no time moved): the slot says so instead of "Entered by you". */
+  confirmed?: boolean
   onOpen: (url: string) => void
 }
 
 /** Every empty photo slot says why it is empty, so "no photo" is never a mystery. */
-export function PhotoSlot({ type, path, side, clockOut, onOpen }: Props) {
+export function PhotoSlot({ type, path, side, clockOut, confirmed, onOpen }: Props) {
   const url = usePhotoUrl(type === 'photo' ? path : null)
   const label = side === 'in' ? 'Clock-in photo' : 'Clock-out photo'
   if (type === 'photo') {
@@ -27,7 +29,7 @@ export function PhotoSlot({ type, path, side, clockOut, onOpen }: Props) {
     uploading: 'Uploading…',
     'not-yet': 'Not yet',
     auto: `Closed automatically ${clockOut ? fmtTime(clockOut) : ''}`.trim(),
-    owner: 'Entered by you',
+    owner: confirmed ? 'Confirmed by you' : 'Entered by you',
     missing: 'No photo',
   }[type]
   const cls = {

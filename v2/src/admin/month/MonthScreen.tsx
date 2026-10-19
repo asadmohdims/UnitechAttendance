@@ -1,11 +1,11 @@
 import { useCallback, useMemo, useState } from 'react'
 import { store } from '../../data/store'
 import { refreshKioskData } from '../../data/invalidate'
-import { dateKey } from '../../format'
+import { dateKey, fmtTime } from '../../format'
 import { useNow } from '../../kiosk/useNow'
 import { useSheets } from '../../ui/Sheets'
 import type { Employee, Payment } from '../../data/types'
-import { confirmPaymentDeleteForm, missedPunchForm, paymentForm, rateForm } from '../forms'
+import { confirmPaymentDeleteForm, markReviewedForm, missedPunchForm, paymentForm, rateForm } from '../forms'
 import { fmtDayShort } from '../dayText'
 import { Attendance, type AttendanceActions } from './Attendance'
 import { downloadMonthXlsx } from './exportXlsx'
@@ -67,6 +67,13 @@ export function MonthScreen({ onNotice, onOpenDay, nowOverride }: Props) {
       const times = form.resolve(v)
       if (!times) return
       await attempt(() => store.addManualRecord(p.emp.id, date, times.inIso, times.outIso).then(() => undefined))
+    },
+    markReviewed: async (p, day) => {
+      const last = day.sessions[day.sessions.length - 1]
+      if (!last?.clock_out) return
+      const v = await sheets.prompt(markReviewedForm(p.emp.name, fmtDayShort(day.date), fmtTime(last.clock_out)))
+      if (!v) return
+      await attempt(() => store.updateRecordTimes(last.id, last.clock_in, last.clock_out))
     },
     toggleHoliday: (p, date, docked) => void attempt(() => store.setDayOverride(p.emp.id, date, docked)), // flip: paid = currently docked
     listDates: async (p) => {

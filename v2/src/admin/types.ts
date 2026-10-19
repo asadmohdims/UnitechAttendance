@@ -17,7 +17,7 @@ export interface Problem {
 }
 
 export interface CalloutAction {
-  id: 'edit-session' | 'delete-session' | 'split' | 'add-punch' | 'toggle-holiday'
+  id: 'edit-session' | 'delete-session' | 'split' | 'add-punch' | 'toggle-holiday' | 'mark-reviewed'
   label: string
   primary?: boolean
   index?: number

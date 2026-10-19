@@ -5,6 +5,7 @@ import { usePhotoUrl } from '../../data/usePhotoUrl'
 import { fmtHours, fmtTime, initials } from '../../format'
 import { calloutStamp, calloutText, fmtDayShort, fmtDateTime, fmtGap, ownerLine } from '../dayText'
 import type { CalloutAction, DayEntry, SessionView } from '../types'
+import { isConfirmedOnly } from '../review'
 import { PhotoSlot } from './PhotoSlot'
 import { Timeline } from './Timeline'
 
@@ -162,7 +163,7 @@ export function PersonDay({ entry, date, now, actions, onOpenPhoto, onBack }: Pr
                       </div>
                       <div className="end end--r">
                         <span className="lab">Clocked out</span>
-                        <PhotoSlot type={s.slots.out} path={s.record.out_photo} side="out" clockOut={s.record.clock_out} onOpen={(u) => onOpenPhoto(u, `Clocked out ${s.record.clock_out ? fmtTime(s.record.clock_out) : ''}`)} />
+                        <PhotoSlot type={s.slots.out} path={s.record.out_photo} side="out" clockOut={s.record.clock_out} confirmed={isConfirmedOnly(s.record)} onOpen={(u) => onOpenPhoto(u, `Clocked out ${s.record.clock_out ? fmtTime(s.record.clock_out) : ''}`)} />
                         <EndCaption view={s} side="out" />
                       </div>
                     </div>

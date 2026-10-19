@@ -48,7 +48,7 @@ provided from npm). Do not edit those shared modules for v2's sake; the live app
   after a failure or 3s, so v2 never awaits it for a first draw: `useCachedQuery` renders the last good value
   at once and refetches behind it, and photos are saved on the device (`photoCache.ts`). Every store call goes
   through `store.ts`, which makes each method return a promise (demoStore returns plain values). v1 is untouched.
-- Status (2026-10-19): every screen on the canvas is built, tested (`npm test` in `v2/`, 193 tests) and deployed: the
+- Status (2026-10-19): every screen on the canvas is built, tested (`npm test` in `v2/`, 207 tests) and deployed: the
   offline-first data layer, kiosk home and punch flow, kiosk Payments (PIN, own month, add, confirmation), phone layouts,
   the admin shell with unlock, Days (all its edit actions), Month (Attendance, Pay, Excel, the Payments ledger, PDF
   reports), People (including photo, PIN, rate, deactivate), the sign-in dialog, and the service worker. Not built: the
@@ -60,7 +60,9 @@ provided from npm). Do not edit those shared modules for v2's sake; the live app
   one-person view). Tiles follow the view (`statsFor`); a day the owner set shows ✓ "Reviewed", and a fix made in Days re-reads Month
   (`revalidateMonthAttendance`) so the review count falls at once. The banner count, the "Needs attention" tile, the "!" marks and the
   Days queue are **one list** (`buildAttentionQueue`: missing clock-out, a day closed with no clock-out photo, punches to check;
-  someone simply clocked in today is not on it), because two rules disagreed in both directions.
+  someone simply clocked in today is not on it), because two rules disagreed in both directions. A flagged no-photo day offers
+  **Mark as reviewed** (`v2/src/admin/review.ts`): it re-saves the same times through `updateRecordTimes`, so only the edit marker is
+  written (`orig_*` = the times as confirmed, not a claim about the kiosk) and the day reads "Reviewed", not "You changed the times".
 - Month's **Download** menu builds PDFs on the device (`v2/src/reports/`, pdfmake, fonts in `src/assets/pdf-fonts/`): an attendance report (A4 landscape),
   per-person statements (A4 portrait). Both are hours only, by design and by test, since they get printed and pinned up. Payroll summary is drawn, not built.
 - Parity checklist (what the live app does vs the design): `v2/PARITY.md`. Update it as screens are built.

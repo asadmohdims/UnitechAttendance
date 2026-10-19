@@ -1,4 +1,5 @@
 import { ownerPunches } from '@legacy/dayStatus.js'
+import { isConfirmedOnly } from '../review'
 import { buildDayHours, dayOffStatus, groupByEmployeeDay, isHalfDay, isPossibleMissedLunch, needsReview } from '@legacy/reportMath.js'
 import { recHoursRounded } from '@legacy/rounding.js'
 import { STANDARD_DAY_HOURS } from '@legacy/config.js'
@@ -133,7 +134,7 @@ export function buildMonthModel({ ym, employees, records, overrides, overtime, t
       // Overtime is paid time on a day that already has hours; a day with no punches keeps its letter.
       const paidHours = payHours[emp.id][d] === null ? null : (payHours[emp.id][d] as number) + ot
       const flagged = reviewDays.has(`${emp.id}:${d}`) && !open
-      const reviewed = !flagged && !open && sessions.some((x) => { const o = ownerPunches(x) as { in: boolean; out: boolean; added: boolean }; return o.in || o.out || o.added })
+      const reviewed = !flagged && !open && sessions.some((x) => { const o = ownerPunches(x) as { in: boolean; out: boolean; added: boolean }; return o.in || o.out || o.added || isConfirmedOnly(x) })
       const autoInfo = !flagged && sessions.some((s) => s.clock_out && !s.out_photo)
       const gap = !open && !hasHours
         ? (dayOffStatus({ date, weekday: new Date(y, m - 1, d).getDay(), employeeSince: since, today }) as 'holiday' | 'off' | null)

@@ -1,4 +1,4 @@
-import { act, fireEvent, render as rtlRender, screen, within } from '@testing-library/react'
+import { act, fireEvent, render as rtlRender, screen, waitFor, within } from '@testing-library/react'
 import type { ReactElement } from 'react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { queryCache } from '../../data/queryCache'
@@ -128,6 +128,20 @@ describe('Month · Attendance', () => {
     await act(async () => { await revalidateMonthAttendance('2026-10') })
     expect(screen.queryByText('1 entry needs review')).toBeNull()
     expect(screen.getByText('All reviewed')).toBeInTheDocument()
+  })
+
+  it('offers Mark as reviewed on a day closed with no photo, asks once, then writes the times back unchanged', async () => {
+    boot()
+    const noPhoto = rec({ id: 'np', emp_id: 'a', date: '2026-10-08', clock_in: at('2026-10-08', 9), clock_out: at('2026-10-08', 17), out_photo: null })
+    vi.spyOn(store, 'listRecordsForRange').mockResolvedValue([...records, noPhoto])
+    const update = vi.spyOn(store, 'updateRecordTimes').mockResolvedValue()
+    await open()
+    const grid = screen.getByRole('table', { name: /Attendance by person and day/ })
+    fireEvent.click(within(grid).getByRole('button', { name: /^Faizan, Thu 8 Oct.*needs review$/ }))
+    fireEvent.click(screen.getByRole('button', { name: 'Mark as reviewed' }))
+    expect(update).not.toHaveBeenCalled()
+    fireEvent.click(screen.getAllByRole('button', { name: 'Mark as reviewed' }).pop() as HTMLElement)
+    await waitFor(() => expect(update).toHaveBeenCalledWith('np', noPhoto.clock_in, noPhoto.clock_out))
   })
 
   it('offers Add missed punch on an absent day', async () => {

@@ -47,6 +47,49 @@ const open = async (notify = vi.fn()) => {
   return notify
 }
 
+describe('Days · mark as reviewed', () => {
+  // A day closed at 6:01 PM with no clock-out photo and no owner marker, as on 7 Oct.
+  const noPhoto = [
+    rec({ id: 'n1', emp_id: 'b', clock_in: at(D, 9, 42), clock_out: at(D, 13, 1) }),
+    rec({ id: 'n2', emp_id: 'b', clock_in: at(D, 14, 15), clock_out: at(D, 18, 1), out_photo: null }),
+  ]
+
+  it('shows the callout, asks once, and writes the same times back so only the marker is added', async () => {
+    boot([...noPhoto, ...faizan])
+    const update = vi.spyOn(store, 'updateRecordTimes').mockResolvedValue()
+    await open()
+    const detail = screen.getByRole('region', { name: /Shakib/ })
+    expect(within(detail).getByText('No clock-out photo', { selector: '.tc-stamp' })).toBeInTheDocument()
+    fireEvent.click(within(detail).getByRole('button', { name: 'Mark as reviewed' }))
+    expect(update).not.toHaveBeenCalled() // it asks first
+    expect(screen.getByText('Mark this day as reviewed?')).toBeInTheDocument()
+    expect(screen.getByText(/The times stay exactly as they are \(clock-out 6:01 PM\)/)).toBeInTheDocument()
+    fireEvent.click(screen.getAllByRole('button', { name: 'Mark as reviewed' }).pop() as HTMLElement)
+    await waitFor(() => expect(update).toHaveBeenCalledWith('n2', noPhoto[1].clock_in, noPhoto[1].clock_out))
+  })
+
+  it('writes nothing when the owner cancels', async () => {
+    boot([...noPhoto, ...faizan])
+    const update = vi.spyOn(store, 'updateRecordTimes').mockResolvedValue()
+    await open()
+    fireEvent.click(within(screen.getByRole('region', { name: /Shakib/ })).getByRole('button', { name: 'Mark as reviewed' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }))
+    await act(async () => {})
+    expect(update).not.toHaveBeenCalled()
+  })
+
+  it('after the confirm, says Reviewed and "Confirmed by you", and the item is gone from the queue', async () => {
+    const confirmed = [noPhoto[0], { ...noPhoto[1], edited_at: at(D, 23, 2), orig_clock_in: noPhoto[1].clock_in, orig_clock_out: noPhoto[1].clock_out }]
+    boot([...confirmed, ...faizan])
+    await open()
+    const detail = screen.getByRole('region', { name: /Shakib/ })
+    expect(within(detail).getByText('Reviewed', { selector: '.tc-stamp' })).toBeInTheDocument()
+    expect(within(detail).getByText('You confirmed these times.')).toBeInTheDocument()
+    expect(within(detail).getByText('Confirmed by you')).toBeInTheDocument()
+    expect(within(detail).queryByText('No clock-out photo')).toBeNull()
+  })
+})
+
 describe('Days', () => {
   it('opens on the queued person and shows the owner-edit marks the live app shows', async () => {
     boot([...shakib, ...faizan])

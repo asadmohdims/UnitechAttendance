@@ -85,6 +85,16 @@ export function confirmDeleteForm(name: string): PromptConfig {
   }
 }
 
+/** Confirms a day's times as they are. Writes the edit marker without moving a punch, so it asks once. */
+export function markReviewedForm(name: string, dayLabel: string, clockOut: string): PromptConfig {
+  return {
+    title: 'Mark this day as reviewed?',
+    note: [`${name}, ${dayLabel}. The times stay exactly as they are (clock-out ${clockOut}). The day leaves your Needs attention list and shows as Reviewed. You can still edit the times afterwards.`],
+    submitLabel: 'Mark as reviewed',
+    fields: [],
+  }
+}
+
 /** Month · Pay and the People page both change a rate, so they share this one dialog. */
 export function rateForm(name: string, currentMonthly: number | null, today: string): PromptConfig {
   return {

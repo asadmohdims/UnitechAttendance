@@ -1,7 +1,7 @@
 import { CHIP_RANK, dayModel, emptyDayModel } from '@legacy/dayStatus.js'
-import { needsReview } from '@legacy/reportMath.js'
 import type { DayPayOverride, Employee, OvertimeRow, RecordRow } from '../data/types'
 import { dateKey } from '../format'
+import { withReview } from './review'
 import type { DayEntry, DayModel } from './types'
 
 interface Args {
@@ -35,11 +35,11 @@ export function buildDayEntries({ employees, records, overtime, overrides, date,
     const sessions = byEmp.get(emp.id)
     const overtimeHours = overtimeByEmp.get(emp.id) ?? 0
     const since = emp.created_at ? dateKey(new Date(emp.created_at)) : undefined
-    const model = (
+    const model = withReview((
       sessions
         ? dayModel({ sessions, date, today, now, overtimeHours })
         : emptyDayModel({ date, today, weekday, employeeSince: since, now, docked: docked.has(emp.id) })
-    ) as unknown as DayModel | null
+    ) as unknown as DayModel | null, sessions ?? [])
     if (model) entries.push({ emp, model, overtimeHours })
   }
   // Needs-a-look first, and within each group the most important chip first (a missing clock-out
@@ -79,11 +79,7 @@ export function buildAttentionQueue(employees: Employee[], records: RecordRow[],
         items.push({ emp: e.emp, date, chipId: id, text: e.model.chip!.text, sub: '' })
         continue
       }
-      // A day closed with no clock-out photo (and no owner fix) has no chip of its own, but Month has always
-      // flagged it, so it belongs here: one list, so the banner, the tile and the marks cannot disagree.
-      // Someone who is simply at work today (still in, or syncing) is not an entry to review.
-      if (id === 'still-in' || id === 'syncing') continue
-      if (needsReview(rows.filter((r) => r.emp_id === e.emp.id))) items.push({ emp: e.emp, date, chipId: 'no-photo', text: 'No clock-out photo', sub: '' })
+      if (id === 'no-photo') items.push({ emp: e.emp, date, chipId: 'no-photo', text: e.model.chip!.text, sub: '' })
     }
   }
   return items.sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : a.emp.name.localeCompare(b.emp.name)))

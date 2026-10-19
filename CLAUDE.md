@@ -711,9 +711,9 @@ unlocked on every admin tab.
 
 ## Known gaps — what's left before go-live
 
-0. **Run the edit-marker migration** (last block of `supabase-setup.sql`: three `add column if not
-   exists` statements) in the Supabase SQL editor, *before* deploying the version that writes
-   them. Until then edits still save but record no marker.
+0. ~~Run the edit-marker migration~~ **Done**: `edited_at`, `orig_clock_in` and `orig_clock_out` all exist on the live
+   project (selected in the SQL editor, 19 Oct 2026). Left here so a fresh project knows to run the last block of
+   `supabase-setup.sql` before deploying; without it edits save but record no marker.
 
 1. **Three placeholder constants in `js/config.js`** still need the shop owner's real numbers:
    `LUNCH_CUTOFF_HOUR`, `MISSED_CLOCKIN_HOUR`, `WEEKLY_HOLIDAY_DAY`. These are the shop's own

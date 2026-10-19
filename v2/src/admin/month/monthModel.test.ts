@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { Employee, RecordRow } from '../../data/types'
-import { buildMonthModel, buildPayLines } from './monthModel'
+import { buildMonthModel, buildPayLines, statsFor } from './monthModel'
 
 // October 2026: the 1st is a Thursday; Fridays are 2, 9, 16, 23, 30. "Today" is Wed 14 Oct.
 const today = '2026-10-14'
@@ -61,6 +61,32 @@ describe('buildMonthModel', () => {
     expect(day.kind).toBe('worked')
     expect(day.text).toBe('8:00') // 9-1 (4:00) + 2 PM counted to the 6 PM closing (4:00), not to the midnight stamp
     expect(m.reviewRecords).toHaveLength(1)
+  })
+
+  it('marks a day reviewed once the owner has set its clock-out, and stops flagging it', () => {
+    const d = '2026-10-12'
+    const fixed = rec({ id: '1', emp_id: 'a', date: d, clock_in: at(d, 9), clock_out: at(d, 17), out_photo: null, edited_at: at('2026-10-14', 9), orig_clock_in: at(d, 9), orig_clock_out: null })
+    const m = buildMonthModel({ ...base, employees: [emp('a', 'Faizan')], records: [fixed] })
+    const day = m.people[0].days[11]
+    expect(day.flagged).toBe(false)
+    expect(day.reviewed).toBe(true)
+    expect(m.reviewRecords).toHaveLength(0)
+  })
+
+  it('does not mark an ordinary day, or one still waiting for review, as reviewed', () => {
+    const m = buildMonthModel({ ...base, employees: [emp('a', 'Faizan')], records: [...fullDay('a', '2026-10-05'), rec({ id: 'o', emp_id: 'a', date: '2026-10-06', clock_in: at('2026-10-06', 9), out_photo: null })] })
+    expect(m.people[0].days.some((x) => x.reviewed)).toBe(false)
+  })
+
+  it('gives the team figures for no person and one person\'s for a chosen one', () => {
+    const records = [...fullDay('a', '2026-10-05'), ...fullDay('a', '2026-10-06'), ...fullDay('b', '2026-10-05')]
+    const m = buildMonthModel({ ...base, employees: [emp('a', 'Faizan'), emp('b', 'Shakib')], records })
+    expect(statsFor(m, null)).toEqual({ hours: 24, daysWorked: 3, expectedDays: m.totals.expectedDays, absences: m.totals.absences, halfDays: 0 })
+    const one = statsFor(m, m.people[0])
+    expect(one.hours).toBe(16)
+    expect(one.daysWorked).toBe(2)
+    expect(one.expectedDays).toBe(m.people[0].days.filter((x) => ['worked', 'half', 'open', 'absent'].includes(x.kind)).length)
+    expect(one.expectedDays).toBeLessThan(m.totals.expectedDays)
   })
 
   it('docks a Friday only when the day really is a paid holiday', () => {

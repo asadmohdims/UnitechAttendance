@@ -1,3 +1,4 @@
+import { ownerPunches } from '@legacy/dayStatus.js'
 import { buildDayHours, dayOffStatus, groupByEmployeeDay, isHalfDay, isPossibleMissedLunch, needsReview } from '@legacy/reportMath.js'
 import { recHoursRounded } from '@legacy/rounding.js'
 import { STANDARD_DAY_HOURS } from '@legacy/config.js'
@@ -32,6 +33,8 @@ export interface MonthDay {
   sessions: RecordRow[]
   /** Closed with no clock-out photo and not yet resolved by the owner: hours known, needs a look. */
   flagged: boolean
+  /** The owner set a punch on this day and it no longer needs review: shown with a tick. */
+  reviewed: boolean
   /** An earlier session was closed with no photo and a later punch followed. */
   autoInfo: boolean
   /** One closed session of a full day's length: a lunch punch may be missing. */
@@ -49,6 +52,8 @@ export interface PersonMonth {
   paidTotal: number
   overtimeTotal: number
   daysWorked: number
+  /** Days that count toward "of N so far": worked, half, still open, or absent. Paid holidays are not in it. */
+  expectedDays: number
   daysOff: number
   halfDays: number
   /** Full absences plus half a day per half day. */
@@ -116,7 +121,7 @@ export function buildMonthModel({ ym, employees, records, overrides, overtime, t
   const result: PersonMonth[] = people.map((emp) => {
     const since = emp.created_at ? dateKey(new Date(emp.created_at)) : undefined
     const days: MonthDay[] = []
-    let exact = 0, paid = 0, worked = 0, off = 0, half = 0, holidays = 0, dockedCount = 0, otTotal = 0, anyReview = false
+    let exact = 0, paid = 0, worked = 0, expectedPerson = 0, off = 0, half = 0, holidays = 0, dockedCount = 0, otTotal = 0, anyReview = false
 
     for (let d = 1; d <= daysInMonth; d++) {
       const date = `${ym}-${pad(d)}`
@@ -128,6 +133,7 @@ export function buildMonthModel({ ym, employees, records, overrides, overtime, t
       // Overtime is paid time on a day that already has hours; a day with no punches keeps its letter.
       const paidHours = payHours[emp.id][d] === null ? null : (payHours[emp.id][d] as number) + ot
       const flagged = reviewDays.has(`${emp.id}:${d}`) && !open
+      const reviewed = !flagged && !open && sessions.some((x) => { const o = ownerPunches(x) as { in: boolean; out: boolean; added: boolean }; return o.in || o.out || o.added })
       const autoInfo = !flagged && sessions.some((s) => s.clock_out && !s.out_photo)
       const gap = !open && !hasHours
         ? (dayOffStatus({ date, weekday: new Date(y, m - 1, d).getDay(), employeeSince: since, today }) as 'holiday' | 'off' | null)
@@ -146,9 +152,9 @@ export function buildMonthModel({ ym, employees, records, overrides, overtime, t
       if (isHalf) half++
       if (gap === 'holiday') { holidays++; if (docked) dockedCount++ }
       if (flagged || open) anyReview = true
-      if (kind === 'worked' || kind === 'half' || kind === 'open' || kind === 'absent') expected++
+      if (kind === 'worked' || kind === 'half' || kind === 'open' || kind === 'absent') { expected++; expectedPerson++ }
 
-      days.push({ day: d, date, kind, isToday, isFuture: date > today, text, exactHours, paidHours, overtime: ot, sessions, flagged, autoInfo, unbroken, docked })
+      days.push({ day: d, date, kind, isToday, isFuture: date > today, text, exactHours, paidHours, overtime: ot, sessions, flagged, reviewed, autoInfo, unbroken, docked })
     }
 
     const exactTotal = exact + otTotal
@@ -157,7 +163,7 @@ export function buildMonthModel({ ym, employees, records, overrides, overtime, t
     absences += off
     halfAll += half
     return {
-      emp, days, exactTotal, paidTotal: paid, overtimeTotal: otTotal, daysWorked: worked, daysOff: off, halfDays: half,
+      emp, days, exactTotal, paidTotal: paid, overtimeTotal: otTotal, daysWorked: worked, expectedDays: expectedPerson, daysOff: off, halfDays: half,
       absentEq: off + half * 0.5, needsReview: anyReview, holidays, docked: dockedCount,
     }
   })
@@ -218,4 +224,18 @@ export function buildPayLines(model: MonthModel, ratesByEmp: Record<string, Rate
       pay: calc ? calc.amount : null,
     }
   })
+}
+
+export interface MonthStats {
+  hours: number
+  daysWorked: number
+  expectedDays: number
+  absences: number
+  halfDays: number
+}
+
+/** The four Attendance tiles' figures: the whole team, or one person's. The team's are exactly what the model already totals. */
+export function statsFor(model: MonthModel, person: PersonMonth | null): MonthStats {
+  if (!person) return { hours: model.totals.hours, daysWorked: model.totals.daysWorked, expectedDays: model.totals.expectedDays, absences: model.totals.absences, halfDays: model.totals.halfDays }
+  return { hours: person.exactTotal, daysWorked: person.daysWorked, expectedDays: person.expectedDays, absences: person.daysOff, halfDays: person.halfDays }
 }

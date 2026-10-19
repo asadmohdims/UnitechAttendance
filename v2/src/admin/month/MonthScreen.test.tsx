@@ -8,6 +8,7 @@ import { SheetsProvider } from '../../ui/Sheets'
 import { buildExportSheet } from './exportXlsx'
 import { buildMonthModel } from './monthModel'
 import { MonthScreen } from './MonthScreen'
+import { revalidateMonthAttendance } from './useMonthData'
 
 const now = new Date(2026, 9, 14, 11, 0) // Wed 14 Oct 2026
 const render = (ui: ReactElement) => rtlRender(<SheetsProvider>{ui}</SheetsProvider>)
@@ -61,14 +62,78 @@ describe('Month · Attendance', () => {
   it('opens on the person who needs a look, with that day already showing', async () => {
     boot()
     await open()
+    fireEvent.click(screen.getByRole('button', { name: 'One person' }))
     const detail = screen.getByRole('region', { name: /Shakib/ })
     expect(within(detail).getByText('Mon 12 Oct')).toBeInTheDocument()
     expect(within(detail).getByRole('button', { name: 'Open in Days' })).toBeInTheDocument()
   })
 
+  it('opens on the whole team: one row per person, and a tap on a day opens that person on that day', async () => {
+    boot()
+    await open()
+    const grid = screen.getByRole('table', { name: /Attendance by person and day/ })
+    expect(within(grid).getAllByRole('row')).toHaveLength(3) // header + two people
+    fireEvent.click(within(grid).getByRole('button', { name: /^Shakib, Mon 12 Oct/ }))
+    const detail = screen.getByRole('region', { name: /Shakib/ })
+    expect(within(detail).getByText('Mon 12 Oct')).toBeInTheDocument()
+  })
+
+  it('shows the team\'s figures for the whole team and one person\'s once chosen', async () => {
+    boot()
+    await open()
+    const tile = (label: string) => screen.getByText(label).closest('.tc-stat') as HTMLElement
+    expect(within(tile('Days worked')).getByText('4')).toBeInTheDocument() // Faizan 3 + Shakib 1
+    expect(screen.getByText('Whole team', { selector: '.tc-stamp' })).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'One person' }))
+    fireEvent.click(screen.getByText('Faizan').closest('button') as HTMLElement)
+    expect(within(tile('Days worked')).getByText('3')).toBeInTheDocument()
+    expect(screen.getByText('Faizan', { selector: '.tc-stamp' })).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: /Back to whole team/ }))
+    expect(within(tile('Days worked')).getByText('4')).toBeInTheDocument()
+  })
+
+  it('marks a day the owner fixed as reviewed, and says so once nothing is left', async () => {
+    boot()
+    const fixed = [...records.filter((r) => r.id !== 'open'),
+      rec({ id: 'fixed', emp_id: 'b', date: '2026-10-12', clock_in: at('2026-10-12', 9), clock_out: at('2026-10-12', 17), out_photo: null, edited_at: at('2026-10-14', 9), orig_clock_in: at('2026-10-12', 9), orig_clock_out: null })]
+    vi.spyOn(store, 'listRecordsForRange').mockResolvedValue(fixed)
+    await open()
+    expect(screen.queryByText(/need review|needs review/)).toBeNull()
+    expect(screen.getByText('All reviewed')).toBeInTheDocument()
+    const grid = screen.getByRole('table', { name: /Attendance by person and day/ })
+    expect(within(grid).getByRole('button', { name: /^Shakib, Mon 12 Oct.*reviewed$/ })).toBeInTheDocument()
+  })
+
+  it('counts the same days in the banner, the tile and the marks, including a day closed with no photo', async () => {
+    boot()
+    const noPhoto = rec({ id: 'np', emp_id: 'a', date: '2026-10-08', clock_in: at('2026-10-08', 9), clock_out: at('2026-10-08', 17), out_photo: null })
+    vi.spyOn(store, 'listRecordsForRange').mockResolvedValue([...records, noPhoto])
+    const { onOpenDay } = await open()
+    expect(screen.getByText('2 entries need review')).toBeInTheDocument()
+    const tile = screen.getByText('Needs attention').closest('.tc-stat') as HTMLElement
+    expect(within(tile).getByText('2')).toBeInTheDocument()
+    const grid = screen.getByRole('table', { name: /Attendance by person and day/ })
+    expect(within(grid).getAllByRole('button', { name: /needs review$/ })).toHaveLength(2)
+    fireEvent.click(screen.getByRole('button', { name: 'Review entries' }))
+    expect(onOpenDay).toHaveBeenCalledWith('2026-10-12', 'b') // the newest item, top of the Days list
+  })
+
+  it('drops the review count when a fix made on another screen is re-read, with no reload', async () => {
+    boot()
+    await open()
+    expect(screen.getByText('1 entry needs review')).toBeInTheDocument()
+    const fixed = [...records.filter((r) => r.id !== 'open'),
+      rec({ id: 'open', emp_id: 'b', date: '2026-10-12', clock_in: at('2026-10-12', 9), clock_out: at('2026-10-12', 17), out_photo: null, edited_at: at('2026-10-14', 9), orig_clock_in: at('2026-10-12', 9), orig_clock_out: null })]
+    vi.spyOn(store, 'listRecordsForRange').mockResolvedValue(fixed)
+    await act(async () => { await revalidateMonthAttendance('2026-10') })
+    expect(screen.queryByText('1 entry needs review')).toBeNull()
+    expect(screen.getByText('All reviewed')).toBeInTheDocument()
+  })
+
   it('offers Add missed punch on an absent day', async () => {
     boot()
     await open()
+    fireEvent.click(screen.getByRole('button', { name: 'One person' }))
     fireEvent.click(screen.getByText('Faizan').closest('button') as HTMLElement)
     const detail = screen.getByRole('region', { name: /Faizan/ })
     fireEvent.click(within(detail).getByRole('button', { name: /^Tue 13 Oct/ }))

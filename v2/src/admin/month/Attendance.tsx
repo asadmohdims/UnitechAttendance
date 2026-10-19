@@ -1,13 +1,14 @@
-import { useMemo, useState } from 'react'
-import { WEEKLY_HOLIDAY_DAY } from '@legacy/config.js'
+import { useEffect, useMemo, useState } from 'react'
 import { dayModel, emptyDayModel } from '@legacy/dayStatus.js'
 import type { RecordRow } from '../../data/types'
 import { dateKey, fmtHours, fmtTime } from '../../format'
 import { Avatar } from '../../ui/Avatar'
-import { buildAttentionQueue } from '../dayEntries'
+import { buildAttentionQueue, type QueueItem } from '../dayEntries'
 import { calloutStamp, calloutText, fmtDayShort } from '../dayText'
 import type { DayModel } from '../types'
-import type { MonthDay, MonthModel, PersonMonth } from './monthModel'
+import { dayBase, dayText } from './dayCell'
+import { statsFor, type MonthDay, type MonthModel, type PersonMonth } from './monthModel'
+import { TeamGrid } from './TeamGrid'
 
 const STAMP = { amber: 'attention', green: 'in', pink: 'neutral', blue: 'owner', yellow: 'neutral', grey: 'neutral', red: 'alert', violet: 'holiday' } as const
 const CALLOUT = { amber: 'attention', red: 'alert', blue: 'owner', green: 'in', violet: 'holiday', pink: '', yellow: '', grey: '' } as const
@@ -21,12 +22,8 @@ function strip(p: PersonMonth): string {
   return `linear-gradient(to right,${p.days.map((d, i) => `${stripColor(d)} ${(i * w).toFixed(2)}% ${((i + 1) * w).toFixed(2)}%`).join(',')})`
 }
 
-/** Design shows a future weekly holiday as a paid "F" too, since the weekday alone says so. */
-const isFutureHoliday = (d: MonthDay) => d.kind === 'none' && d.isFuture && new Date(`${d.date}T12:00:00`).getDay() === WEEKLY_HOLIDAY_DAY
-
 function cellClass(d: MonthDay): string {
-  const base = d.kind === 'worked' ? 'full' : d.kind === 'half' ? 'half' : d.kind === 'absent' ? 'absent' : d.kind === 'holiday' || isFutureHoliday(d) ? 'holiday' : d.kind === 'open' ? (d.isToday ? 'full' : 'half') : 'future'
-  return ['tc-day', `tc-day--${base}`, d.isToday ? 'tc-day--today' : ''].filter(Boolean).join(' ')
+  return ['tc-day', `tc-day--${dayBase(d)}`, d.isToday ? 'tc-day--today' : ''].filter(Boolean).join(' ')
 }
 
 export interface AttendanceActions {
@@ -45,53 +42,134 @@ interface Props {
   actions: AttendanceActions
 }
 
+type View = 'team' | 'person'
+
+/** The team grid needs width; below this the one-person view is the only one (as v1's phone view was). */
+const GRID_MIN_WIDTH = 900
+function useWide(): boolean {
+  const query = `(min-width:${GRID_MIN_WIDTH}px)`
+  const [wide, setWide] = useState(() => window.matchMedia?.(query).matches ?? true)
+  useEffect(() => {
+    const mq = window.matchMedia?.(query)
+    if (!mq) return
+    const on = () => setWide(mq.matches)
+    mq.addEventListener('change', on)
+    return () => mq.removeEventListener('change', on)
+  }, [query])
+  return wide
+}
+
 export function Attendance({ model, records, overtime, now, currentYm, actions }: Props) {
   const today = dateKey(now)
+  const wide = useWide()
+  const [viewChoice, setView] = useState<View>('team')
+  const view: View = wide ? viewChoice : 'person'
   const [pickedEmp, setPickedEmp] = useState<string | null>(null)
   const [pickedDay, setPickedDay] = useState<{ emp: string; day: number } | null>(null)
 
-  const person = model.people.find((p) => p.emp.id === pickedEmp) ?? model.people.find((p) => p.needsReview) ?? model.people[0]
-  // Open on the first day of that person that needs a look, so the callout is already there.
-  const defaultDay = person?.days.find((d) => d.kind === 'open' || d.flagged)
-  const day = pickedDay && person && pickedDay.emp === person.emp.id ? person.days[pickedDay.day - 1] : defaultDay
+  const queue = useMemo(() => buildAttentionQueue(model.people.map((p) => p.emp), records, overtime, now), [model.people, records, overtime, now])
+  // The one list: the banner, the tile and the marks on every calendar all read it.
+  const attentionKeys = useMemo(() => new Set(queue.map((q) => `${q.emp.id}:${q.date}`)), [queue])
+  const needsLook = (p: PersonMonth, d: MonthDay) => attentionKeys.has(`${p.emp.id}:${d.date}`)
 
-  const queueCount = useMemo(() => buildAttentionQueue(model.people.map((p) => p.emp), records, overtime, now).length, [model.people, records, overtime, now])
+  const person = model.people.find((p) => p.emp.id === pickedEmp) ?? model.people.find((p) => p.emp.id === queue[0]?.emp.id) ?? model.people[0]
+  // Open on the first day of that person that needs a look, so the callout is already there.
+  const defaultDay = person?.days.find((d) => needsLook(person, d) || d.kind === 'open')
+  const day = pickedDay && person && pickedDay.emp === person.emp.id ? person.days[pickedDay.day - 1] : defaultDay
 
   if (!model.hasData) return <p className="days__empty body app-muted">No completed attendance for this month.</p>
 
-  const names = (rs: RecordRow[]) => [...new Set(rs.map((r) => model.people.find((p) => p.emp.id === r.emp_id)?.emp.name ?? 'An employee'))]
-  const notOut = names(model.reviewRecords.filter((r) => !r.clock_out))
-  const noPhoto = names(model.reviewRecords.filter((r) => r.clock_out))
+  const scoped = view === 'person' && person ? person : null
+  const stats = statsFor(model, scoped)
+
+  // The banner follows the view: one person's entries, with the rest of the team counted quietly.
+  const reviewRows = scoped ? queue.filter((q) => q.emp.id === scoped.emp.id) : queue
+  const othersCount = queue.length - reviewRows.length
+  const names = (id: QueueItem['chipId']) => [...new Set(reviewRows.filter((q) => q.chipId === id).map((q) => q.emp.name))]
+  const notOut = names('needs-clock-out')
+  const noPhoto = names('no-photo')
+  const check = names('check-punches')
   const verb = (n: string[], one: string, many: string) => (n.length === 1 ? one : many)
   const parts = [
     notOut.length ? `${notOut.join(', ')} ${verb(notOut, 'has', 'have')} not clocked out yet` : '',
     noPhoto.length ? `${noPhoto.join(', ')} ${verb(noPhoto, 'has', 'have')} a day closed without a clock-out photo` : '',
+    check.length ? `${check.join(', ')} ${verb(check, 'has', 'have')} punches to check` : '',
   ].filter(Boolean)
-  const reviewCount = model.reviewRecords.length
-  const first = model.reviewRecords[0]
+  const reviewCount = reviewRows.length
+  const attention = reviewCount
+  const first = reviewRows[0]
+  const anyReviewed = model.people.some((p) => p.days.some((d) => d.reviewed))
 
   const isCurrent = model.ym === currentYm
-  const t = model.totals
+  const pick = (empId: string, dayNumber: number | null) => {
+    setPickedEmp(empId)
+    setPickedDay(dayNumber === null ? null : { emp: empId, day: dayNumber })
+    setView('person')
+  }
+  const scopeName = scoped ? scoped.emp.name : 'Whole team'
 
   return (
     <>
-      {reviewCount > 0 && (
-        <div className="tc-callout tc-callout--attention month-callout">
-          <div style={{ minWidth: 240, flex: 1 }}>
-            <span className="tc-stamp tc-stamp--attention">{reviewCount} {reviewCount === 1 ? 'entry needs' : 'entries need'} review</span>
-            <p style={{ marginTop: 8 }}>{parts.join('. ')}.</p>
+      {wide && (
+        <div className="month-viewbar">
+          <span className="caption app-muted">View</span>
+          <div className="month-seg" role="group" aria-label="Attendance view">
+            <button type="button" className="tc-btn tc-btn--quiet" aria-pressed={view === 'team'} onClick={() => setView('team')}>Whole team</button>
+            <button type="button" className="tc-btn tc-btn--quiet" aria-pressed={view === 'person'} onClick={() => setView('person')}>One person</button>
           </div>
-          <button type="button" className="tc-btn tc-btn--primary" onClick={() => actions.openInDays(first.date, first.emp_id)}>Review entries</button>
         </div>
       )}
 
+      {reviewCount > 0 ? (
+        <div className="tc-callout tc-callout--attention month-callout">
+          <div style={{ minWidth: 240, flex: 1 }}>
+            <span className="tc-stamp tc-stamp--attention">{reviewCount} {reviewCount === 1 ? 'entry needs' : 'entries need'} review</span>
+            <p style={{ marginTop: 8 }}>
+              {parts.join('. ')}.
+              {othersCount > 0 && <span className="app-muted"> {othersCount} more {othersCount === 1 ? 'entry needs' : 'entries need'} review for other people.</span>}
+            </p>
+          </div>
+          <button type="button" className="tc-btn tc-btn--primary" onClick={() => actions.openInDays(first.date, first.emp.id)}>Review entries</button>
+        </div>
+      ) : (
+        anyReviewed && (
+          <div className="tc-callout tc-callout--in month-callout" style={{ alignItems: 'center', justifyContent: 'flex-start', gap: 'var(--space-3)' }}>
+            <span className="tc-stamp tc-stamp--in">All reviewed</span>
+            <p>{scoped ? `Nothing left to review for ${scoped.emp.name}.` : `Nothing left to review in ${new Date(`${model.ym}-01T12:00:00`).toLocaleDateString('en-IN', { month: 'long' })}.`}</p>
+          </div>
+        )
+      )}
+
+      <div className="month-scope">
+        <span className={`tc-stamp ${scoped ? 'tc-stamp--owner' : 'tc-stamp--neutral'}`}>{scopeName}</span>
+        <span className="caption app-muted">{new Date(`${model.ym}-01T12:00:00`).toLocaleDateString('en-IN', { month: 'long', year: 'numeric' })}</span>
+        {scoped && wide && <button type="button" className="tc-btn tc-btn--quiet month-scope__back" onClick={() => setView('team')}>‹ Back to whole team</button>}
+      </div>
       <div className="month-stats">
-        <div className="tc-stat"><span className="tc-stat__label">Hours recorded</span><span className="stat">{fmtHours(t.hours)}</span><span className="tc-stat__sub">{model.people.length} {model.people.length === 1 ? 'person' : 'people'}, {model.daysElapsed} days</span></div>
-        <div className="tc-stat"><span className="tc-stat__label">Days worked</span><span className="stat">{t.daysWorked}</span><span className="tc-stat__sub">of {t.expectedDays}{isCurrent ? ' so far' : ''}</span></div>
-        <div className="tc-stat"><span className="tc-stat__label">Absences</span><span className="stat" style={{ color: t.absences ? 'var(--alert-ink)' : undefined }}>{t.absences}</span><span className="tc-stat__sub">plus {t.halfDays} half {t.halfDays === 1 ? 'day' : 'days'}</span></div>
-        <div className="tc-stat"><span className="tc-stat__label">Needs attention</span><span className="stat" style={{ color: queueCount ? 'var(--attention-ink)' : undefined }}>{queueCount}</span><span className="tc-stat__sub">open in Days</span></div>
+        <div className="tc-stat"><span className="tc-stat__label">Hours recorded</span><span className="stat">{fmtHours(stats.hours)}</span><span className="tc-stat__sub">{scoped ? `${model.daysElapsed} days` : `${model.people.length} ${model.people.length === 1 ? 'person' : 'people'}, ${model.daysElapsed} days`}</span></div>
+        <div className="tc-stat"><span className="tc-stat__label">Days worked</span><span className="stat">{stats.daysWorked}</span><span className="tc-stat__sub">of {stats.expectedDays}{isCurrent ? ' so far' : ''}</span></div>
+        <div className="tc-stat"><span className="tc-stat__label">Absences</span><span className="stat" style={{ color: stats.absences ? 'var(--alert-ink)' : undefined }}>{stats.absences}</span><span className="tc-stat__sub">plus {stats.halfDays} half {stats.halfDays === 1 ? 'day' : 'days'}</span></div>
+        <div className="tc-stat"><span className="tc-stat__label">Needs attention</span><span className="stat" style={{ color: attention ? 'var(--attention-ink)' : undefined }}>{attention}</span><span className="tc-stat__sub">open in Days</span></div>
       </div>
 
+      {view === 'team' ? (
+        <section className="month-team" aria-label="Whole team">
+          <div className="month-team__head">
+            <h2 className="heading" style={{ margin: 0 }}>Everyone, every day</h2>
+            <span className="caption app-muted">Tap a name or a day to open that person. Scrolls sideways; names and totals stay put.</span>
+          </div>
+          <TeamGrid model={model} attention={attentionKeys} onPick={pick} />
+          <div className="month-legend caption">
+            <span><i className="month-dot" style={{ background: 'var(--in-tint)' }} />Full day</span>
+            <span><i className="month-dot" style={{ background: 'var(--attention-tint)' }} />Half day</span>
+            <span><i className="month-dot" style={{ background: 'var(--alert-wash)', border: '1.5px solid var(--alert)', boxSizing: 'border-box' }} />Absent</span>
+            <span><i className="month-dot" style={{ background: 'var(--holiday-tint)' }} />Paid holiday</span>
+            <span><b className="tg__mark tg__mark--look tg__mark--legend">!</b>Needs review</span>
+            <span><b className="tg__mark tg__mark--done tg__mark--legend">✓</b>Reviewed (you set it)</span>
+            <span><b className="time">In</b>Still clocked in</span>
+          </div>
+        </section>
+      ) : (
       <div className="month-cols">
         <section className="month-people">
           <h2 className="heading" style={{ margin: 0 }}>People</h2>
@@ -137,10 +215,11 @@ export function Attendance({ model, records, overtime, now, currentYm, actions }
                 const inner = (
                   <>
                     <span className="tc-day__n">{d.day}</span>
-                    <span className="tc-day__v">{d.text || (isFutureHoliday(d) ? 'F' : '')}</span>
-                    {(d.flagged || d.autoInfo || d.unbroken || d.docked) && (
+                    <span className="tc-day__v">{dayText(d)}</span>
+                    {d.reviewed && !needsLook(person, d) && <b className="tg__mark tg__mark--done tg__mark--cal" aria-hidden="true">✓</b>}
+                    {(needsLook(person, d) || d.autoInfo || d.unbroken || d.docked) && (
                       <span className="mday-dots" aria-hidden="true">
-                        {d.flagged && <i className="m-look" />}
+                        {needsLook(person, d) && <i className="m-look" />}
                         {d.autoInfo && <i className="m-auto" />}
                         {d.unbroken && <i className="m-ring" />}
                         {d.docked && <i className="m-docked" />}
@@ -161,6 +240,7 @@ export function Attendance({ model, records, overtime, now, currentYm, actions }
               <span><i className="month-dot" style={{ background: 'var(--brand)' }} />Earlier session closed with no photo</span>
               <span><i className="month-dot month-dot--ring" />One session, no lunch punch</span>
               <span><i className="month-dot" style={{ background: 'var(--alert)' }} />Holiday marked unpaid</span>
+              <span><b className="tg__mark tg__mark--done tg__mark--legend">✓</b>Reviewed (you set it)</span>
               <span><b className="time">!</b>Still open</span>
             </div>
 
@@ -168,6 +248,7 @@ export function Attendance({ model, records, overtime, now, currentYm, actions }
           </section>
         )}
       </div>
+      )}
     </>
   )
 }
@@ -185,8 +266,8 @@ function DayCard({ person, day, today, now, actions }: { person: PersonMonth; da
   const [lead, rest] = c ? calloutText(model, emp.name, day.date) : ['', '']
   const tone = c?.tone
   const calloutClass = tone && CALLOUT[tone] ? ` tc-callout--${CALLOUT[tone]}` : ''
-  const stampText = c ? calloutStamp(c.id) : model.chip ? model.chip.text : null
-  const stampTone = c?.tone ?? model.chip?.tone
+  const stampText = c ? calloutStamp(c.id) : day.reviewed ? 'Reviewed' : model.chip ? model.chip.text : null
+  const stampTone = c?.tone ?? (day.reviewed ? 'blue' : model.chip?.tone)
 
   return (
     <div className={`tc-callout${calloutClass}`} style={tone === 'violet' ? { background: 'var(--holiday-tint)' } : undefined}>

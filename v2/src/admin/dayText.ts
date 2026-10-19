@@ -24,6 +24,7 @@ export function calloutStamp(id: string, overtime?: number): string {
     'needs-clock-out': 'Missing clock-out',
     'open-past': 'Missing clock-out',
     'check-punches': 'Check punches',
+    'no-photo': 'No clock-out photo',
     'no-lunch': 'No lunch punch?',
     edited: 'Edited',
     added: 'Added by you',

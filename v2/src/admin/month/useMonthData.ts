@@ -1,8 +1,31 @@
 import { useCallback, useMemo } from 'react'
 import { store } from '../../data/store'
+import { queryCache } from '../../data/queryCache'
 import { useCachedQuery } from '../../data/useCachedQuery'
 import type { DayPayOverride, Employee, OvertimeRow, Payment, PaymentResolution, RecordRow } from '../../data/types'
 import { buildMonthModel, buildPayLines, type RateRow } from './monthModel'
+
+/** First and last day of a month, as the date strings the store takes. */
+export function monthRange(ym: string) {
+  const last = new Date(Number(ym.slice(0, 4)), Number(ym.slice(5, 7)), 0).getDate()
+  return { start: `${ym}-01`, end: `${ym}-${String(last).padStart(2, '0')}` }
+}
+
+const recordsKey = (ym: string) => `month-records:${ym}`
+const overtimeKey = (ym: string) => `month-overtime:${ym}`
+
+/**
+ * Re-read what Month shows after a write made on another screen. Days keeps its own, shorter-range
+ * copy of the month, so without this a fix made in Days leaves Month's review count stale until
+ * Month next refetches on its own.
+ */
+export function revalidateMonthAttendance(ym: string): Promise<void[]> {
+  const { start, end } = monthRange(ym)
+  return Promise.all([
+    queryCache.revalidate(recordsKey(ym), () => store.listRecordsForRange(start, end)),
+    queryCache.revalidate(overtimeKey(ym), () => store.listOvertimeForRange(start, end).catch(() => [])),
+  ])
+}
 
 /** The month's payments and the owner's "resolved" marks, shared by Month, People and the Days queue. */
 export function usePaymentsMonth(ym: string) {
@@ -24,8 +47,8 @@ export function useMonthData(ym: string, today: string) {
   const end = `${ym}-${String(new Date(Number(ym.slice(0, 4)), Number(ym.slice(5, 7)), 0).getDate()).padStart(2, '0')}`
 
   const employeesQ = useCachedQuery<Employee[]>('employees', () => store.listEmployees())
-  const recordsQ = useCachedQuery<RecordRow[]>(`month-records:${ym}`, () => store.listRecordsForRange(start, end))
-  const overtimeQ = useCachedQuery<OvertimeRow[]>(`month-overtime:${ym}`, () => store.listOvertimeForRange(start, end).catch(() => []))
+  const recordsQ = useCachedQuery<RecordRow[]>(recordsKey(ym), () => store.listRecordsForRange(start, end))
+  const overtimeQ = useCachedQuery<OvertimeRow[]>(overtimeKey(ym), () => store.listOvertimeForRange(start, end).catch(() => []))
   const overridesQ = useCachedQuery<DayPayOverride[]>(`month-overrides:${ym}`, () => store.listDayPayOverrides(start, end).catch(() => []))
 
   const employees = employeesQ.data

@@ -41,6 +41,23 @@ describe('buildDayEntries', () => {
   })
 })
 
+describe('buildAttentionQueue: one list for Month and Days', () => {
+  it('lists a day closed without a clock-out photo, which has no chip of its own', () => {
+    const records = [rec({ id: '1', emp_id: 'a', date: '2026-10-07', clock_in: at('2026-10-07', 9), clock_out: at('2026-10-07', 17), out_photo: null })]
+    expect(buildAttentionQueue(staff, records, [], now).map((q) => [q.emp.name, q.chipId])).toEqual([['Faizan', 'no-photo']])
+  })
+
+  it('drops it once the owner has set the clock-out', () => {
+    const records = [rec({ id: '1', emp_id: 'a', date: '2026-10-07', clock_in: at('2026-10-07', 9), clock_out: at('2026-10-07', 17), out_photo: null, edited_at: at('2026-10-14', 9), orig_clock_in: at('2026-10-07', 9), orig_clock_out: null })]
+    expect(buildAttentionQueue(staff, records, [], now)).toEqual([])
+  })
+
+  it('does not list someone who is simply clocked in today', () => {
+    const records = [rec({ id: '1', emp_id: 'a', date: '2026-10-14', clock_in: at('2026-10-14', 9), out_photo: null })]
+    expect(buildAttentionQueue(staff, records, [], now)).toEqual([])
+  })
+})
+
 describe('buildAttentionQueue', () => {
   it('lists missing clock-outs and punches to check, newest first, and nothing else', () => {
     const records = [

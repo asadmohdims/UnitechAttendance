@@ -1,4 +1,5 @@
 import { CHIP_RANK, dayModel, emptyDayModel } from '@legacy/dayStatus.js'
+import { needsReview } from '@legacy/reportMath.js'
 import type { DayPayOverride, Employee, OvertimeRow, RecordRow } from '../data/types'
 import { dateKey } from '../format'
 import type { DayEntry, DayModel } from './types'
@@ -50,13 +51,13 @@ export function buildDayEntries({ employees, records, overtime, overrides, date,
 export interface QueueItem {
   emp: Employee
   date: string
-  chipId: 'needs-clock-out' | 'check-punches' | 'payment-mismatch'
+  chipId: 'needs-clock-out' | 'check-punches' | 'no-photo' | 'payment-mismatch'
   text: string
   sub: string
 }
 
 /**
- * "Needs attention": every day in the range with a missing clock-out or punches to check, newest
+ * "Needs attention": every day in the range with a missing clock-out, a day closed with no clock-out photo, or punches to check, newest
  * first. Days are judged exactly as the Days list judges them (the same model), so the queue and
  * the list can never disagree about a day.
  */
@@ -74,8 +75,15 @@ export function buildAttentionQueue(employees: Employee[], records: RecordRow[],
     const dayOvertime = overtime.filter((o) => o.date === date)
     for (const e of buildDayEntries({ employees, records: rows, overtime: dayOvertime, overrides: [], date, now })) {
       const id = e.model.chip?.id
-      if (id !== 'needs-clock-out' && id !== 'check-punches') continue
-      items.push({ emp: e.emp, date, chipId: id, text: e.model.chip!.text, sub: '' })
+      if (id === 'needs-clock-out' || id === 'check-punches') {
+        items.push({ emp: e.emp, date, chipId: id, text: e.model.chip!.text, sub: '' })
+        continue
+      }
+      // A day closed with no clock-out photo (and no owner fix) has no chip of its own, but Month has always
+      // flagged it, so it belongs here: one list, so the banner, the tile and the marks cannot disagree.
+      // Someone who is simply at work today (still in, or syncing) is not an entry to review.
+      if (id === 'still-in' || id === 'syncing') continue
+      if (needsReview(rows.filter((r) => r.emp_id === e.emp.id))) items.push({ emp: e.emp, date, chipId: 'no-photo', text: 'No clock-out photo', sub: '' })
     }
   }
   return items.sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : a.emp.name.localeCompare(b.emp.name)))

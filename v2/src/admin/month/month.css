@@ -86,3 +86,48 @@
   .dl__backdrop{background:rgba(8,12,22,.5)}
   .dl__panel{position:fixed;left:0;right:0;top:auto;bottom:0;width:auto;max-height:80vh;border-radius:var(--radius-lg) var(--radius-lg) 0 0;border-width:1.5px 0 0;padding-bottom:env(safe-area-inset-bottom,0px)}
 }
+
+/* Team grid. Layout numbers come from the Proposal · Month · Whole team board. */
+.tg{overflow-x:auto;padding:var(--space-3) 0;background:var(--surface);border:1.5px solid var(--line);border-radius:var(--radius-md)}
+.tg__table{border-collapse:separate;border-spacing:0;width:max-content}
+.tg__caption{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)}
+.tg__head{padding:0 0 4px;font:600 11px/14px var(--font-mono);color:var(--ink-muted);letter-spacing:.04em;text-transform:uppercase;vertical-align:bottom;background:var(--surface)}
+.tg__dayhead{min-width:46px;padding-left:2px;padding-right:2px;text-align:center}
+.tg__n{display:block;font:500 12px/14px var(--font-mono);color:var(--ink);text-transform:none;letter-spacing:0}
+.tg__n--holiday{color:var(--holiday-ink)}
+.tg__n--today{font-weight:700;border-bottom:2px solid var(--ink)}
+.tg__dow{display:block;font:500 10px/12px var(--font-mono);color:var(--ink-muted)}
+.tg__name{position:sticky;left:0;z-index:2;min-width:222px;padding:0 8px 0 12px;box-sizing:border-box;background:var(--surface);text-align:left;font-weight:inherit}
+.tg__head.tg__name{text-align:left}
+.tg__who{display:flex;align-items:center;gap:10px;width:100%;min-height:46px;padding:0;border:0;background:transparent;color:inherit;font:inherit;text-align:left;cursor:pointer}
+.tg__who .tc-avatar{width:32px;height:32px;font-size:13px}
+.tg__who-text{display:flex;flex-direction:column;min-width:0}
+.tg__who-name{font:600 15px/18px var(--font-sans);color:var(--ink)}
+.tg__who-sub{font:500 12px/16px var(--font-sans);color:var(--ink-muted)}
+.tg__who-sub--look{color:var(--attention-ink)}
+.tg__who-sub--done{color:var(--brand-ink)}
+.tg__slot{padding:2px}
+.tg__cell{position:relative;box-sizing:border-box;display:flex;align-items:center;justify-content:center;width:42px;height:46px;padding:0;border:1.5px solid transparent;border-radius:var(--radius-xs);background:var(--sunken);color:var(--ink);font:600 11px/14px var(--font-mono)}
+button.tg__cell{cursor:pointer}
+.tg__cell--future{background:transparent;border-color:var(--line)}
+.tg__cell--full{background:var(--in-tint);color:var(--in-ink)}
+.tg__cell--half{background:var(--attention-tint);color:var(--attention-ink)}
+.tg__cell--absent{background:var(--alert-wash);border-color:var(--alert);color:var(--alert-ink)}
+.tg__cell--holiday{background:var(--holiday-tint);color:var(--holiday-ink)}
+.tg__cell--today{outline:2px solid var(--ink);outline-offset:-2px}
+.tg__mark{position:absolute;top:-4px;right:-4px;display:grid;place-items:center;width:16px;height:16px;border-radius:4px;font:600 11px/1 var(--font-mono)}
+.tg__mark--look{background:var(--attention);color:var(--surface)}
+.tg__mark--done{background:var(--brand);color:var(--on-brand)}
+.tg__tot{position:sticky;z-index:2;background:var(--surface);text-align:center;font:600 14px/18px var(--font-mono);height:50px;padding:0 2px}
+.tg__tot--days{right:152px;min-width:64px}
+.tg__tot--abs{right:88px;min-width:64px}
+.tg__tot--hrs{right:0;min-width:88px;padding-right:12px}
+.tg__tot--alert{color:var(--alert-ink)}
+th.tg__tot{font:600 11px/14px var(--font-mono)}
+.month-viewbar{display:flex;align-items:center;gap:var(--space-2);align-self:flex-end}
+.month-scope{display:flex;flex-wrap:wrap;align-items:center;gap:var(--space-2)}
+.month-scope__back{min-height:32px;padding:0 10px}
+.month-team{display:flex;flex-direction:column;gap:var(--space-3)}
+.month-team__head{display:flex;flex-wrap:wrap;align-items:baseline;justify-content:space-between;gap:var(--space-2)}
+.tg__mark--legend{position:static;display:inline-grid;width:16px;height:16px}
+.tc-day .tg__mark--cal{top:5px;right:6px;width:18px;height:18px;font-size:12px}

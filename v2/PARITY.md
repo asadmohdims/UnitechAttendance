@@ -93,11 +93,13 @@ Nothing here changes functionality. Every MISSING row is a function the live app
 |---|---|---|---|
 | M1 | Month picker, prev/next | PeriodControl, one shared period | OK |
 | M2 | Download Excel (loads the library on first tap; "Could not load the Excel exporter — check Wi-Fi.") | Button; failure not drawn | PART · failure toast generic only |
-| M3 | Review alert "N attendance entries need review — X have not clocked out yet; Y has a day closed without a clock-out photo" + **Review entries** jumps to the first flagged day | Replaced by the Needs attention queue; no jump from Month | OK · "Review entries" link added (default) |
+| M3 | Review alert "N attendance entries need review — X have not clocked out yet; Y has a day closed without a clock-out photo" + **Review entries** jumps to the first flagged day | Replaced by the Needs attention queue; no jump from Month | OK · "Review entries" link added (default). The banner, tile, marks and Days queue are one list (also holds a day closed with no photo; today's clocked-in people are not on it, unlike v1's alert) |
 | M4 | Day states: full, half, absent A, holiday F, docked (marked unpaid), open "!", flagged, auto-info (blue dot: earlier session closed with no photo), unbroken (pink dot: possible missed lunch) | Full, half, A, F, flag "!", today; **docked, auto-info, unbroken, open-vs-flagged** missing | PART · legend drawn; markers not on the cells |
-| M5 | Row sub-labels "● N days off", "● Review required" | Strip only | CHOICE |
+| M5 | Row sub-labels "● N days off", "● Review required" | Team grid names carry "N days off · ● N to review / ✓ reviewed"; the one-person list keeps the strip | OK · Proposal · Month boards |
 | M6 | Days · **Absent (full + 0.5 per half day)** · Total hrs; click Absent opens the exact dates (full absent days and half days) | Stat cards; absent-dates detail missing | OK · Month + Dialogs |
 | M7 | Click a day: inline sessions with In/Out and "→ 9:15 paid", **Edit, Delete, Split, Pay this/Undo, overtime add/edit/remove**, Worked and Paid totals, "Open in Daily records" | Day callout + Open in Days; the editing actions are handed off to Days | **CHOICE** (one place to edit) |
+| M11 | One calendar for everyone (v1's Report grid), Days / Absent / Total hrs pinned right | **Whole team** view: names and totals pinned, scrolls to today; a tap opens that person. Below 900px only the one-person view (as v1's phone view) | OK · Proposal · Month · Whole team |
+| M12 | Tiles follow the selection; "reviewed" marks | Tiles show the whole team or the chosen person (`statsFor`); a day the owner set is ticked ✓ and the banner says "All reviewed" at 0. Any owner edit shows ✓ | OK · Proposal · Month boards |
 | M8 | Absent day click: Add missed punch · holiday click: Mark unpaid / Restore as paid | Callout shows Add missed punch; holiday not drawn | PART · holiday action on Days, not on Month |
 | M9 | Metrics: Recorded hours, Attendance days, Needs review, Absences, Half days | Four cards; Half days folded into a sub-line | OK |
 | M10 | Legend | Stamps row | OK |

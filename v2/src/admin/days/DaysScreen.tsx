@@ -10,7 +10,7 @@ import { useSheets } from '../../ui/Sheets'
 import { useNow } from '../../kiosk/useNow'
 import { buildAttentionQueue, buildDayEntries } from '../dayEntries'
 import { buildLedger, paymentQueueItems } from '../month/paymentsModel'
-import { usePaymentsMonth } from '../month/useMonthData'
+import { revalidateMonthAttendance, usePaymentsMonth } from '../month/useMonthData'
 import { sessionEditForm, missedPunchForm, overtimeForm, confirmDeleteForm } from '../forms'
 import { calloutStamp, chipText, fmtDayShort, rowTimes } from '../dayText'
 import { defaultLunchWindow, MIN_SPLITTABLE_MS } from '../lunchSplit'
@@ -91,8 +91,8 @@ export function DaysScreen({ onNotice, initialDate, initialEmp, nowOverride }: P
 
   // Re-read the day after a write; the legacy store merges what this tablet has not synced yet.
   const reload = useCallback(async () => {
-    await Promise.all([recordsQ.refetch(), overridesQ.refetch(), overtimeQ.refetch(), monthQ.refetch()])
-  }, [recordsQ, overridesQ, overtimeQ, monthQ])
+    await Promise.all([recordsQ.refetch(), overridesQ.refetch(), overtimeQ.refetch(), monthQ.refetch(), revalidateMonthAttendance(month.ym)])
+  }, [recordsQ, overridesQ, overtimeQ, monthQ, month.ym])
 
   const attempt = useCallback(
     async (fn: () => Promise<void>) => {

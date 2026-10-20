@@ -146,7 +146,7 @@ export function MonthScreen({ onNotice, onOpenDay, nowOverride }: Props) {
         <div className="month__header-actions">
           <MonthPeriod ym={ym} currentYm={currentYm} onChange={setYm} />
           {section === 'payments' && <button type="button" className="tc-btn tc-btn--secondary" onClick={() => void logPayment()}>Log a payment</button>}
-          <DownloadMenu model={model} lines={lines} payments={payments ?? null} ledger={ledger} checkDates={checkDates} now={now} onNotice={onNotice} />
+          <DownloadMenu model={model} lines={lines} now={now} onNotice={onNotice} />
         </div>
       </header>
 

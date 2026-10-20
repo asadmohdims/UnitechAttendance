@@ -5,13 +5,14 @@ import { SHOP_NAME } from './shop'
 
 /**
  * What the printed reports say, worked out from the same month model the Month screen uses, so a number on
- * paper is the number on screen. Hours only: these documents get printed and pinned up, so nothing here may
- * carry a salary, a pay figure or a payment (a test checks the finished PDFs for the rupee sign).
+ * paper is the number on screen. The attendance report and the statements are hours only: they get printed and
+ * pinned up, so nothing in them may carry a salary, a pay figure or a payment (a test checks the finished PDFs for
+ * the rupee sign). The owner copy of the attendance report is the one document that prices the hours.
  *
- * P present, H half day, A absent, F weekly holiday (paid), O a session with no clock-out yet, '' nothing to show
+ * P present, H half day, A absent, F weekly holiday (paid), D weekly holiday the owner docked (not paid), O a session with no clock-out yet, '' nothing to show
  * (a day that has not happened, or before the person joined).
  */
-export type DayCode = 'P' | 'H' | 'A' | 'F' | 'O' | ''
+export type DayCode = 'P' | 'H' | 'A' | 'F' | 'D' | 'O' | ''
 
 export interface ReportCell {
   day: number
@@ -20,7 +21,6 @@ export interface ReportCell {
   hours: number | null
 }
 
-const WEEKDAY = ['S', 'M', 'T', 'W', 'T', 'F', 'S']
 const MONTH_NAME = (ym: string) => new Date(Number(ym.slice(0, 4)), Number(ym.slice(5, 7)) - 1, 1).toLocaleDateString('en-GB', { month: 'long', year: 'numeric' })
 const weekdayOf = (ym: string, day: number) => new Date(Number(ym.slice(0, 4)), Number(ym.slice(5, 7)) - 1, day).getDay()
 
@@ -29,7 +29,7 @@ const CODE: Record<string, DayCode> = { worked: 'P', half: 'H', absent: 'A', hol
 function cellsOf(p: PersonMonth): ReportCell[] {
   return p.days.map((d) => ({
     day: d.day,
-    code: CODE[d.kind] ?? '',
+    code: d.kind === 'holiday' && d.docked ? 'D' : (CODE[d.kind] ?? ''),
     // paidHours folds overtime in; the printed day is the worked time alone, the same split Month · Pay uses.
     hours: d.kind === 'worked' || d.kind === 'half' ? (d.paidHours ?? 0) - d.overtime : null,
   }))
@@ -38,33 +38,83 @@ function cellsOf(p: PersonMonth): ReportCell[] {
 /** The hours a person worked from their punches: Month · Pay's "Hours worked". */
 const workedHours = (p: PersonMonth) => p.paidTotal - p.overtimeTotal
 
-export interface AttendanceReport {
+/** What the owner-copy cards add to a person's hours: the same hours, priced at their own hourly rate. */
+export interface PayFigures {
+  monthly: number | null
+  perHour: number | null
+  /** Worked, Fridays, Overtime: each part at the hourly rate, to the rupee, adding up to `salary`. */
+  parts: [number, number, number] | null
+  /** Month · Pay's figure for this person, to the rupee. null when no rate is in force. */
+  salary: number | null
+}
+
+export interface PersonCard {
+  name: string
+  initials: string
+  cells: ReportCell[]
+  hours: { worked: number; fridays: number; overtime: number; total: number }
+  /** Only on the owner copy. The shareable report is built without it, so a rupee cannot reach it by accident. */
+  pay: PayFigures | null
+}
+
+export interface CardReport {
   shop: string
   monthLabel: string
   daysInMonth: number
-  heads: { n: number; weekday: string; friday: boolean }[]
-  rows: { name: string; cells: ReportCell[]; daysWorked: number; absent: number; hours: number }[]
-  totals: { hours: number; daysWorked: number; absent: number; halfDays: number }
-  /** True when any day is still open, so the legend can explain the "?" cell. */
+  /** Monday-first: blanks before the 1st. */
+  leadBlanks: number
+  people: PersonCard[]
+  totals: { hours: PersonCard['hours']; pay: { parts: [number, number, number]; salary: number; unrated: number } | null }
   hasOpen: boolean
+  ownerCopy: boolean
   preparedAt: Date
 }
 
-export function buildAttendanceReport(model: MonthModel, now: Date): AttendanceReport {
-  const rows = model.people.map((p) => ({ name: p.emp.name, cells: cellsOf(p), daysWorked: p.daysWorked, absent: p.daysOff, hours: workedHours(p) }))
+/**
+ * Each part at the hourly rate, rounded to the rupee, with the odd rupee that rounding leaves put on the largest part so
+ * the three always add up to Month · Pay's own figure (the pay is rounded once, from the total hours).
+ */
+export function payFigures(line: PayLine): PayFigures {
+  const monthly = line.rate?.monthly ?? null
+  if (line.hourly === null || line.pay === null) return { monthly, perHour: null, parts: null, salary: null }
+  const salary = Math.round(line.pay)
+  const parts = [line.punchedHours, line.creditedHours, line.overtime].map((h) => Math.round((line.hourly as number) * h)) as [number, number, number]
+  parts[parts.indexOf(Math.max(...parts))] += salary - parts.reduce((a, b) => a + b, 0)
+  return { monthly, perHour: line.hourly, parts, salary }
+}
+
+export function buildCardReport(model: MonthModel, lines: PayLine[], now: Date, opts: { ownerCopy: boolean }): CardReport {
+  const people: PersonCard[] = model.people.map((p) => {
+    const line = lines.find((l) => l.emp.id === p.emp.id) as PayLine
+    return {
+      name: p.emp.name,
+      initials: initials(p.emp.name),
+      cells: cellsOf(p),
+      // Exactly Month · Pay's hours lines: what the paid hours are made of.
+      hours: { worked: line.punchedHours, fridays: line.creditedHours, overtime: line.overtime, total: line.paidHours },
+      pay: opts.ownerCopy ? payFigures(line) : null,
+    }
+  })
+  const sum = (f: (c: PersonCard) => number) => people.reduce((s, c) => s + f(c), 0)
+  const priced = people.filter((c) => c.pay?.parts)
   return {
     shop: SHOP_NAME,
     monthLabel: MONTH_NAME(model.ym),
     daysInMonth: model.daysInMonth,
-    heads: Array.from({ length: model.daysInMonth }, (_, i) => ({ n: i + 1, weekday: WEEKDAY[weekdayOf(model.ym, i + 1)], friday: weekdayOf(model.ym, i + 1) === 5 })),
-    rows,
+    leadBlanks: (weekdayOf(model.ym, 1) + 6) % 7,
+    people,
     totals: {
-      hours: model.people.reduce((s, p) => s + workedHours(p), 0),
-      daysWorked: model.people.reduce((s, p) => s + p.daysWorked, 0),
-      absent: model.people.reduce((s, p) => s + p.daysOff, 0),
-      halfDays: model.people.reduce((s, p) => s + p.halfDays, 0),
+      hours: { worked: sum((c) => c.hours.worked), fridays: sum((c) => c.hours.fridays), overtime: sum((c) => c.hours.overtime), total: sum((c) => c.hours.total) },
+      pay: opts.ownerCopy
+        ? {
+            parts: [0, 1, 2].map((i) => priced.reduce((s, c) => s + (c.pay?.parts?.[i] ?? 0), 0)) as [number, number, number],
+            salary: priced.reduce((s, c) => s + (c.pay?.salary ?? 0), 0),
+            unrated: people.length - priced.length,
+          }
+        : null,
     },
     hasOpen: model.people.some((p) => p.days.some((d) => d.kind === 'open')),
+    ownerCopy: opts.ownerCopy,
     preparedAt: now,
   }
 }

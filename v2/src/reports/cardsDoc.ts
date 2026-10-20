@@ -1,0 +1,201 @@
+import type { Content, TDocumentDefinitions } from 'pdfmake/interfaces'
+import { fmtCurrency, fmtRate } from '@legacy/salary.js'
+import { C, MONO, TONE } from './reportDocs'
+import { fmtHours, fmtPrepared, type CardReport, type DayCode, type PersonCard, type ReportCell } from './reportModel'
+
+/**
+ * The attendance report: A4 portrait, two cards across, one calendar card per person (their month, the hours worked each
+ * day, and below it the sum of their hours), laid out as the "Report · Attendance" cards boards on the canvas.
+ * The shareable version is hours only. The owner copy adds a pay row under the hours, priced at each person's own hourly
+ * rate, ending in their salary.
+ * Differences from the boards, deliberate: an absent day is a solid tint with its letter rather than hatching, and a
+ * docked Friday is a pale red with a struck-through F rather than an outlined cell (the PDF library has no pattern fill
+ * and no per-cell outline), so the letters and tints are the whole legend and a black-and-white print still reads.
+ */
+const PAGE = { w: 595.28, margin: [28, 26, 28, 34] as [number, number, number, number] }
+const GAP = 9
+const CARD_W = (PAGE.w - PAGE.margin[0] - PAGE.margin[2] - GAP) / 2
+const INNER_W = CARD_W - 2 * 7 - 2 // card padding and its 1pt border
+// pdfmake rewrites a table's widths array in place, so every table gets its own copy of this one.
+const EQ_WIDTHS = [0.2, 0.04, 0.2, 0.04, 0.2, 0.04, 0.28].map((f) => Math.floor(f * INNER_W * 10) / 10)
+const WHITE = '#ffffff'
+/** pdfmake's own types are a closed union that rejects spreads and extra keys, so layout pieces are plain objects, cast once at the document. */
+type N = Record<string, any> // eslint-disable-line @typescript-eslint/no-explicit-any
+
+const tiny = (text: string, extra: object = {}): N => ({ text: text.toUpperCase(), font: MONO, fontSize: 5.6, characterSpacing: 0.4, color: C.muted, ...extra })
+const noBorders = { hLineWidth: () => 0, vLineWidth: () => 0, paddingLeft: () => 0, paddingRight: () => 0, paddingTop: () => 0, paddingBottom: () => 0 }
+const rule = (width: number, lineWidth = 0.5, dash = false, color: string = C.strong): N => ({
+  canvas: [{ type: 'line', x1: 0, y1: 0, x2: width, y2: 0, lineWidth, lineColor: color, ...(dash ? { dash: { length: 2 } } : {}) }],
+})
+const op = (t: string, top = 1): N => ({ text: t, font: MONO, fontSize: 8, color: C.muted, alignment: 'center', margin: [0, top, 0, 0] })
+
+/** Two letters for the avatar chip: first and last name, or the first two letters of a single name. */
+const initials2 = (name: string): string => {
+  const w = name.trim().split(/\s+/)
+  return (w.length > 1 ? w[0][0] + w[w.length - 1][0] : name.trim().slice(0, 2)).toUpperCase()
+}
+
+const dayText = (c: ReportCell): string => (c.code === 'F' || c.code === 'D' ? 'F' : c.code === 'A' ? 'A' : c.code === 'O' ? '?' : c.hours === null ? '' : fmtHours(c.hours))
+
+function dayCell(c: ReportCell): N {
+  if (!c.code) return { text: String(c.day), font: MONO, fontSize: 5.6, color: C.muted, margin: [2, 1, 0, 0] }
+  const t = TONE[c.code]
+  return {
+    fillColor: t.bg,
+    stack: [
+      { text: String(c.day), font: MONO, fontSize: 5.6, color: C.muted, margin: [2, 1, 0, 0] },
+      { text: dayText(c), font: MONO, bold: true, fontSize: 6.8, color: t.ink, alignment: 'right', margin: [0, 0, 2.5, 0], ...(c.code === 'D' ? { decoration: 'lineThrough' } : {}) },
+    ],
+  }
+}
+
+function calendar(cells: ReportCell[], lead: number): N {
+  const flat: N[] = [...Array(lead).fill({ text: '' }), ...cells.map(dayCell)]
+  while (flat.length % 7) flat.push({ text: '' })
+  const weeks: N[][] = []
+  for (let i = 0; i < flat.length; i += 7) weeks.push(flat.slice(i, i + 7))
+  const head = ['M', 'T', 'W', 'T', 'F', 'S', 'S'].map((d, i): N => ({ text: d, font: MONO, bold: true, fontSize: 5.8, color: i === 4 ? TONE.F.ink : C.muted, fillColor: i === 4 ? TONE.F.bg : C.sunken, alignment: 'center', margin: [0, 2, 0, 1] }))
+  return {
+    table: { widths: Array(7).fill('*'), heights: (row: number) => (row === 0 ? 11 : 20), body: [head, ...weeks] },
+    layout: {
+      hLineWidth: (i: number, node: { table: { body: unknown[] } }) => (i === 1 ? 1 : i === 0 || i === node.table.body.length ? 0.5 : 0.5),
+      vLineWidth: () => 0.5,
+      hLineColor: (i: number) => (i === 1 ? C.strong : C.line),
+      vLineColor: () => C.line,
+      paddingLeft: () => 0, paddingRight: () => 0, paddingTop: () => 0, paddingBottom: () => 0,
+    },
+  }
+}
+
+/** Worked + Fridays + Overtime = Total, each figure under its label. */
+function hoursRow(h: PersonCard['hours']): N {
+  const val = (x: number, extra: object = {}): N => ({ text: fmtHours(x), font: MONO, fontSize: 8.5, ...extra })
+  return {
+    table: {
+      widths: [...EQ_WIDTHS],
+      body: [
+        [tiny('Worked'), '', tiny('Fridays'), '', tiny('Overtime'), '', { stack: [rule(EQ_WIDTHS[6] - 2, 1.5, false, C.ink), tiny('Total', { color: C.ink, margin: [0, 1, 0, 0] })] }],
+        [val(h.worked), op('+'), val(h.fridays), op('+'), val(h.overtime, h.overtime ? {} : { color: C.muted }), op('='), val(h.total, { bold: true, fontSize: 10 })],
+      ],
+    },
+    layout: noBorders,
+  }
+}
+
+/** The same columns priced at the person's hourly rate; the dark box at the end is their salary. */
+function payRow(parts: [number, number, number] | null, salary: number | null, salaryLabel = 'Salary'): N {
+  const money = (x: number | null): N => ({ text: x === null ? '—' : fmtCurrency(x), font: MONO, fontSize: 8, margin: [0, 5, 0, 0] })
+  return {
+    stack: [
+      rule(INNER_W, 0.5, true),
+      {
+        margin: [0, 3, 0, 0],
+        table: {
+          widths: [...EQ_WIDTHS],
+          body: [[
+            money(parts?.[0] ?? null), op('+', 5.5), money(parts?.[1] ?? null), op('+', 5.5), money(parts?.[2] ?? null), op('=', 5.5),
+            { fillColor: C.ink, margin: [3, 2, 4, 3], stack: [{ text: salary === null ? 'NO RATE' : salaryLabel.toUpperCase(), font: MONO, fontSize: 4.8, characterSpacing: 0.5, color: WHITE, alignment: 'right' }, { text: salary === null ? 'set' : fmtCurrency(salary), font: MONO, bold: true, fontSize: 10.5, color: WHITE, alignment: 'right' }] },
+          ]],
+        },
+        layout: noBorders,
+      },
+    ],
+  }
+}
+
+// The card's own fill goes on the table layout: a fillColor on its cell is painted over the dark salary box inside it.
+const card = (stack: N[], fill?: string): N => ({
+  table: { widths: ['*'], body: [[{ stack, margin: [7, 6, 7, 6] }]] },
+  layout: { hLineWidth: () => 1, vLineWidth: () => 1, hLineColor: () => C.strong, vLineColor: () => C.strong, ...(fill ? { fillColor: () => fill } : {}) },
+})
+
+function personCard(p: PersonCard, r: CardReport): N {
+  const salary: N | null = p.pay
+    ? p.pay.monthly === null
+      ? { text: 'No salary set', font: MONO, fontSize: 8, color: C.muted }
+      : { text: [{ text: fmtCurrency(p.pay.monthly), bold: true, font: MONO, fontSize: 9 }, { text: ` (${fmtRate(p.pay.perHour)} an hour)`, font: MONO, fontSize: 7, color: C.muted }] }
+    : null
+  return card([
+    {
+      columns: [
+        { width: 20, table: { widths: [20], heights: [20], body: [[{ text: initials2(p.name), font: MONO, bold: true, fontSize: 7, color: C.muted, fillColor: C.sunken, alignment: 'center', margin: [0, 6, 0, 0] }]] }, layout: noBorders },
+        { width: '*', text: p.name, bold: true, fontSize: 11.5, margin: [6, 3, 0, 0] },
+        ...(salary ? [{ width: 'auto', ...salary, alignment: 'right', margin: [0, 4, 0, 0] }] : []),
+      ],
+      margin: [0, 0, 0, 4],
+    },
+    calendar(p.cells, r.leadBlanks),
+    { ...hoursRow(p.hours), margin: [0, 5, 0, 0] },
+    ...(p.pay ? [{ ...payRow(p.pay.parts, p.pay.salary), margin: [0, 5, 0, 0] }] : []),
+  ])
+}
+
+const SWATCH: { code: Exclude<DayCode, ''>; text: string; label: string }[] = [
+  { code: 'P', label: '8:00', text: 'Present: hours worked that day' },
+  { code: 'H', label: '4:00', text: 'Half day' },
+  { code: 'A', label: 'A', text: 'Absent' },
+  { code: 'F', label: 'F', text: 'Friday, the weekly holiday, paid' },
+  { code: 'D', label: 'F', text: 'Friday docked: not paid, not counted' },
+]
+
+function glance(r: CardReport): N {
+  const items = r.totals.pay && r.totals.pay.unrated ? r.totals.pay.unrated : 0
+  const legend: N[][] = [
+    ...SWATCH.map((s): N[] => [
+      { text: s.label, font: MONO, bold: true, fontSize: 6, color: TONE[s.code].ink, fillColor: TONE[s.code].bg, alignment: 'center', margin: [0, 2, 0, 1.5], ...(s.code === 'D' ? { decoration: 'lineThrough' } : {}) },
+      { text: s.text, fontSize: 7.5, color: C.muted, margin: [6, 2, 0, 0] },
+    ]),
+    ...(r.hasOpen ? [[{ text: '?', font: MONO, bold: true, fontSize: 6, color: TONE.O.ink, fillColor: TONE.O.bg, alignment: 'center', margin: [0, 2, 0, 1.5] }, { text: 'No clock-out yet', fontSize: 7.5, color: C.muted, margin: [6, 2, 0, 0] }]] : []),
+  ]
+  const perHourRule = `An hour is the monthly salary ÷ (days in the month × 8 hours), so ${r.monthLabel.split(' ')[0]}, ${r.daysInMonth} days, divides by ${r.daysInMonth * 8}.`
+  return card(
+    [
+      tiny('The month at a glance, everyone', { margin: [0, 0, 0, 5] }),
+      hoursRow(r.totals.hours),
+      ...(r.totals.pay ? [{ ...payRow(r.totals.pay.parts, r.totals.pay.salary, 'Total salary'), margin: [0, 5, 0, 0] }] : []),
+      ...(items ? [{ text: `Left out of the pay row: ${items} ${items === 1 ? 'person has' : 'people have'} no salary set.`, fontSize: 7, color: C.muted, margin: [0, 4, 0, 0] }] : []),
+      tiny('How to read a day', { margin: [0, 9, 0, 4] }),
+      { table: { widths: [26, '*'], body: legend }, layout: { ...noBorders, hLineWidth: () => 0, paddingBottom: () => 3 } },
+      { text: ['Hours are counted to the nearest quarter hour.', ...(r.ownerCopy ? [' ', perHourRule] : [])].join(''), fontSize: 7, color: C.muted, margin: [0, 4, 0, 0], lineHeight: 1.2 },
+    ],
+    C.sunken,
+  )
+}
+
+/** A4 portrait, two cards across. A card is never split between pages; more people continue on the next page. */
+export function cardsDoc(r: CardReport): TDocumentDefinitions {
+  const cells: N[] = [...r.people.map((p) => personCard(p, r)), glance(r)]
+  const rows: N[] = []
+  for (let i = 0; i < cells.length; i += 2) {
+    rows.push({ columns: [cells[i], cells[i + 1] ?? { text: '' }], columnGap: GAP, unbreakable: true, margin: [0, 0, 0, GAP] })
+  }
+  const title = r.ownerCopy ? `Attendance and pay · ${r.monthLabel}` : `Attendance report · ${r.monthLabel}`
+  const right: N[] = [
+    ...(r.ownerCopy ? [{ text: 'OWNER COPY · NOT FOR STAFF', font: MONO, bold: true, fontSize: 6.5, characterSpacing: 0.5, color: '#7a2400', background: '#f7c4ae', alignment: 'right' }] : []),
+    { text: `${r.people.length} ${r.people.length === 1 ? 'person' : 'people'} · ${r.daysInMonth} days · Prepared ${fmtPrepared(r.preparedAt)}`, fontSize: 7.5, color: C.muted, alignment: 'right', margin: [0, r.ownerCopy ? 4 : 10, 0, 0] },
+  ]
+  const foot = (left: string, rightText: string) => (page: number, pages: number): N => ({
+    margin: [PAGE.margin[0], 0, PAGE.margin[2], 0],
+    columns: [{ text: left, fontSize: 7.5, color: C.muted }, { text: `${rightText} · Page ${page} of ${pages}`, fontSize: 7.5, color: C.muted, alignment: 'right' }],
+  })
+  return {
+    pageSize: 'A4',
+    pageMargins: PAGE.margin,
+    defaultStyle: { font: 'Figtree', fontSize: 9, color: C.ink },
+    info: { title: `${title}`, author: r.shop },
+    footer: (r.ownerCopy
+      ? foot('Approved by the owner: ______________________   Date: ____________', `${r.monthLabel} · Owner copy`)
+      : foot('Checked by the owner: ______________________   Date: ____________', `${r.shop} · ${r.monthLabel}`)) as unknown as TDocumentDefinitions['footer'],
+    content: [
+      {
+        columns: [
+          { width: '*', stack: [{ text: r.shop.toUpperCase(), font: MONO, fontSize: 6.5, characterSpacing: 0.5, color: C.muted }, { text: title, bold: true, fontSize: 17, margin: [0, 1, 0, 0] }] },
+          { width: 'auto', stack: right },
+        ],
+        margin: [0, 0, 0, 5],
+      },
+      { ...rule(PAGE.w - PAGE.margin[0] - PAGE.margin[2], 1.5, false, C.ink), margin: [0, 0, 0, 8] },
+      ...rows,
+    ] as Content[],
+  } as TDocumentDefinitions
+}

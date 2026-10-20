@@ -24,7 +24,7 @@ const lines = buildPayLines(model, {}, '2026-10-01')
 
 const mount = () => {
   const onNotice = vi.fn()
-  render(<DownloadMenu model={model} lines={lines} payments={null} ledger={null} checkDates={{}} now={new Date(2026, 9, 1, 9, 12)} onNotice={onNotice} />)
+  render(<DownloadMenu model={model} lines={lines} now={new Date(2026, 9, 1, 9, 12)} onNotice={onNotice} />)
   fireEvent.click(screen.getByRole('button', { name: /Download/ }))
   return { onNotice }
 }
@@ -48,9 +48,10 @@ describe('Month · Download menu', () => {
 
   it('saves the attendance report on a desktop, with the month in the file name', async () => {
     mount()
-    await click(/Attendance report/)
+    await click(/^Attendance report/)
     expect(renderPdf).toHaveBeenCalledTimes(1)
     expect(JSON.stringify(renderPdf.mock.calls[0][0].content)).toContain('Attendance report · September 2026')
+    expect(JSON.stringify(renderPdf.mock.calls[0][0].content)).not.toContain('₹') // the shareable one holds no money
     expect(shareOrSave).toHaveBeenCalledTimes(1) // the report goes through the share-or-save door; on a desktop that door saves
     expect(shareOrSave.mock.calls).toEqual([[expect.any(Blob), 'Attendance-2026-09.pdf', 'Attendance 2026 09']])
     expect(screen.queryByRole('menu')).toBeNull() // closed once it is done
@@ -82,14 +83,14 @@ describe('Month · Download menu', () => {
     expect(only).not.toContain('Faizan') // one person, one page: nobody else's name on it
   })
 
-  it('saves the payroll summary, stamped for the owner, with the month in the file name', async () => {
+  it('saves Attendance and pay, stamped for the owner, with the month in the file name', async () => {
     mount()
-    await click(/Payroll summary/)
+    await click(/Attendance and pay/)
     expect(renderPdf).toHaveBeenCalledTimes(1)
     const all = JSON.stringify(renderPdf.mock.calls[0][0].content)
-    expect(all).toContain('Payroll summary · September 2026')
+    expect(all).toContain('Attendance and pay · September 2026')
     expect(all).toContain('OWNER COPY · NOT FOR STAFF')
-    expect(saveFile).toHaveBeenCalledWith(expect.any(Blob), 'Payroll-2026-09.pdf')
+    expect(saveFile).toHaveBeenCalledWith(expect.any(Blob), 'Attendance-and-pay-2026-09.pdf')
   })
 
   it('says why when a PDF cannot be made, and stays open to try again', async () => {

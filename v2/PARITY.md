@@ -350,18 +350,19 @@ orientation (v1's does, to landscape); say if the kiosk install should.
 ## Monthly reports as PDFs (2026-10-19), built from the Report boards
 
 Month's header now has one **Download** button (a popover from 900px, a bottom sheet on a phone) in place of "Download Excel":
-- **Attendance report**: A4 landscape, everyone by day (P, H, A, F), Days / Absent / Hours per person, four totals. Hours only.
-  More than about a dozen people continue on a second page with the header row repeated. Offered through the share sheet on a
+- **Attendance report** (cards, 2026-10-20; replaces the landscape table): A4 portrait, a calendar card per person, two across, the month's totals and the legend in the
+  last slot. Each card: avatar and name, a Monday-first calendar (date and hours per day; A, H, F, and a docked Friday in pale red with a struck F), then
+  Worked + Fridays + Overtime = Total. Hours only. A card is never split across pages; more people continue on the next page. Offered through the share sheet on a
   touch device and as a download on a desktop.
 - **Employee statements**: A4 portrait, one page per person (calendar, days, absent, half days, hours worked, "how your hours are
   counted", signature lines). **No money anywhere**: a test fails if a rupee sign, "salary", "payment", "balance" or "rate" appears
   in either document. "All in one PDF" for printing, or each person on their own (Share on a touch device, Save elsewhere).
 - **Data for a spreadsheet**: removed 2026-10-20 (owner's review). The menu has three downloads.
-- **Payroll summary** (built 2026-10-20): A4 landscape, owner only, the one PDF with money. Per person: salary, days, hours worked, paid Fridays,
-  overtime, hours paid, per hour, pay, paid out (owner-entered payments only), balance (to pay / settled / paid ahead), plus totals, how pay is worked
-  out, and a "Needs your attention" box (paid ahead, days still to check, a disputed payment, no rate, payments unreadable). Same figures as Pay
-  (`buildSettlement`); redrawn from the board after Pay was rebuilt, so the old "larger figure" balance wording is gone. Not built: the owner-only
-  "changes and checks" page; it was taken out of the shared pack because a printed list of owner edits invites questions; the board is kept, titled "later".
+- **Attendance and pay** (owner only, 2026-10-20; replaces the payroll summary table): the same cards with the monthly salary and hourly rate ("₹18,000 (₹75.00 an hour)")
+  in each header and a pay row under the hours: each part priced at the hourly rate, ending in a dark Salary box. The last slot totals the team. Same figures as
+  Pay (`payFigures`). Paid out and balance are no longer printed (Pay and Payments have them). Deliberate differences from the board: absent is a solid tint, a
+  docked Friday is a pale red rather than an outlined cell (the PDF library has no hatch or per-cell outline).
+- Not built: the owner-only "changes and checks" page; it was taken out of the shared pack because a printed list of owner edits invites questions; the board is kept, titled "later".
 
 The numbers are Month's own: hours come from `buildMonthModel`, and a test holds every person's printed hours and the statement's
 "hours counted" equal to Month · Pay's `punchedHours` / `paidHours`.

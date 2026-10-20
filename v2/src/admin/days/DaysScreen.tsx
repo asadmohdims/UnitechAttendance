@@ -11,7 +11,9 @@ import { useNow } from '../../kiosk/useNow'
 import { buildAttentionQueue, buildDayEntries } from '../dayEntries'
 import { buildLedger, paymentQueueItems } from '../month/paymentsModel'
 import { revalidateMonthAttendance, usePaymentsMonth } from '../month/useMonthData'
-import { sessionEditForm, missedPunchForm, overtimeForm, confirmDeleteForm, markReviewedForm } from '../forms'
+import { WEEKLY_HOLIDAY_DAY } from '@legacy/config.js'
+import { sessionEditForm, missedPunchForm, overtimeForm, confirmDeleteForm, markReviewedForm, markHolidayForm, removeHolidayForm } from '../forms'
+import { declaredHolidays } from '../holidays'
 import { calloutStamp, chipText, fmtDayShort, rowTimes } from '../dayText'
 import { defaultLunchWindow, MIN_SPLITTABLE_MS } from '../lunchSplit'
 import type { CalloutAction, DayEntry, SessionView, Tone } from '../types'
@@ -155,12 +157,28 @@ export function DaysScreen({ onNotice, initialDate, initialEmp, nowOverride }: P
     return void attempt(() => store.splitSessionForLunch(id, start.toISOString(), end.toISOString()))
   }
 
+  // A paid holiday is a date every active person is paid a standard day for (see holidays.ts). Fridays already are one.
+  const declaredHere = declaredHolidays(overridesQ.data ?? []).has(date)
+  const canDeclare = date <= today && new Date(`${date}T12:00:00`).getDay() !== WEEKLY_HOLIDAY_DAY
+  const markHoliday = async () => {
+    const people = employees.filter((e) => e.active)
+    const v = await sheets.prompt(markHolidayForm(fmtDayShort(date), people.length))
+    if (!v) return
+    await attempt(async () => { await Promise.all(people.map((e) => store.setDayOverride(e.id, date, true))) })
+  }
+  const removeHoliday = async () => {
+    const v = await sheets.prompt(removeHolidayForm(fmtDayShort(date)))
+    if (!v) return
+    const rows = (overridesQ.data ?? []).filter((o) => o.date === date && o.paid)
+    await attempt(async () => { await Promise.all(rows.map((o) => store.setDayOverride(o.emp_id, date, false))) })
+  }
+
   const actions: PersonActions = {
     toggleLunch: (gapSession: SessionView) => void attempt(() => store.setLunchPaid(gapSession.record.id, !gapSession.record.lunch_paid)),
     runAction: (a: CalloutAction, entry: DayEntry) => {
       const session = a.index != null ? entry.model.sessions[a.index] : null
       if (a.id === 'toggle-holiday') {
-        const docked = !!entry.model.callout?.params.docked
+        const docked = entry.model.holiday?.docked ?? !!entry.model.callout?.params.docked
         return void attempt(() => store.setDayOverride(entry.emp.id, date, docked))
       }
       if (a.id === 'split' && session) return splitSession(session)
@@ -222,6 +240,11 @@ export function DaysScreen({ onNotice, initialDate, initialEmp, nowOverride }: P
           <div className="body app-muted">Tap the date to pick any day</div>
         </div>
         <PeriodControl date={date} today={today} onChange={(d) => { setDate(d); setSelected(null) }} />
+        {declaredHere ? (
+          <button type="button" className="tc-btn tc-btn--quiet days__holiday" onClick={() => void removeHoliday()}>Remove the holiday</button>
+        ) : canDeclare ? (
+          <button type="button" className="tc-btn tc-btn--secondary days__holiday" onClick={() => void markHoliday()}>Mark as paid holiday</button>
+        ) : null}
       </header>
 
       <div className="days__cols">
@@ -234,6 +257,12 @@ export function DaysScreen({ onNotice, initialDate, initialEmp, nowOverride }: P
               {stillIn > 0 && <> · <b style={{ color: 'var(--ink)' }}>{stillIn}</b> still in</>}
               {withEdits > 0 && <> · <span style={{ color: 'var(--brand-ink)' }}>✎ <b>{withEdits}</b> with your edits</span></>}
             </p>
+            {declaredHere && (
+              <div className="tc-callout tc-callout--holiday" style={{ background: 'var(--holiday-tint)', border: '1.5px solid var(--holiday)' }}>
+                <span className="tc-stamp tc-stamp--holiday">Paid holiday</span>
+                <p><b>Everyone is paid 8:00 for today.</b> Hours worked are added on top. Take one person off it from their day.</p>
+              </div>
+            )}
             {entries.length === 0 && <p className="body app-muted days__empty">No one to show for this day.</p>}
             {needs.length > 0 && (
               <>

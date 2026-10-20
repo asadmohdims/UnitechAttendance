@@ -3,7 +3,7 @@ import { isAutoClosedSession } from '@legacy/autoClosed.js'
 import { paidPunchTime } from '@legacy/rounding.js'
 import { usePhotoUrl } from '../../data/usePhotoUrl'
 import { fmtHours, fmtTime, initials } from '../../format'
-import { calloutStamp, calloutText, fmtDayShort, fmtDateTime, fmtGap, ownerLine } from '../dayText'
+import { calloutStamp, calloutText, fmtDayShort, fmtDateTime, fmtGap, holidayWorkedText, ownerLine } from '../dayText'
 import type { CalloutAction, DayEntry, SessionView } from '../types'
 import { isConfirmedOnly } from '../review'
 import { PhotoSlot } from './PhotoSlot'
@@ -109,14 +109,34 @@ export function PersonDay({ entry, date, now, actions, onOpenPhoto, onBack }: Pr
         </div>
       )}
 
+      {model.kind === 'worked' && model.holiday && (() => {
+        const h = model.holiday
+        const [hLead, hRest] = holidayWorkedText(h, emp.name, date)
+        return (
+          <div className="tc-callout tc-callout--holiday" style={{ background: 'var(--holiday-tint)', border: '1.5px solid var(--holiday)' }}>
+            <span className="tc-stamp tc-stamp--holiday">{h.docked ? 'Holiday unpaid' : 'Worked on the holiday'}</span>
+            <p><b>{hLead}</b> {hRest}</p>
+            <button type="button" className="tc-btn tc-btn--secondary" onClick={() => actions.runAction({ id: 'toggle-holiday', label: '' }, entry)}>
+              {h.docked ? 'Restore as paid' : 'Mark the holiday unpaid'}
+            </button>
+          </div>
+        )
+      })()}
+
       {model.kind === 'empty' ? (
         <p className="body app-muted">No sessions to show.</p>
       ) : (
         <>
           <div className="day-detail__strip">
+            {model.holiday && !model.holiday.docked && (
+              <>
+                <div><div className="lab">Holiday pay</div><div className="time-large">{fmtHours(model.holiday.hours)}</div></div>
+                <div><div className="lab">Worked today</div><div className="time-large">{model.holiday.worked === null ? '—' : fmtHours(model.holiday.worked)}</div></div>
+              </>
+            )}
             <div><div className="lab">{anyOpen ? 'Paid so far' : 'Paid today'}</div><div className="time-large">{model.paidTotal === null ? '—' : fmtHours(model.paidTotal)}</div></div>
-            <div><div className="lab">{model.sessions.length === 1 ? 'Session' : 'Sessions'}</div><div className="time-large">{model.sessions.length}</div></div>
-            <div><div className="lab">{model.lunch ? (model.lunch.paid ? 'Lunch, paid as work' : 'Lunch, unpaid') : 'Lunch'}</div><div className="time-large">{model.lunch ? fmtGap(model.lunch.hours).replace(' min', 'm').replace(' hr ', 'h ').replace(' hr', 'h') : '—'}</div></div>
+            {!(model.holiday && !model.holiday.docked) && <div><div className="lab">{model.sessions.length === 1 ? 'Session' : 'Sessions'}</div><div className="time-large">{model.sessions.length}</div></div>}
+            {!(model.holiday && !model.holiday.docked) && <div><div className="lab">{model.lunch ? (model.lunch.paid ? 'Lunch, paid as work' : 'Lunch, unpaid') : 'Lunch'}</div><div className="time-large">{model.lunch ? fmtGap(model.lunch.hours).replace(' min', 'm').replace(' hr ', 'h ').replace(' hr', 'h') : '—'}</div></div>}
           </div>
 
           <Timeline sessions={model.sessions} now={now} />

@@ -1,12 +1,12 @@
 import type { Content, TDocumentDefinitions } from 'pdfmake/interfaces'
-import { fmtCurrency, fmtRate } from '@legacy/salary.js'
+import { fmtCurrency } from '@legacy/salary.js'
 import { C, MONO, TONE } from './reportDocs'
-import { fmtHours, fmtPrepared, type CardReport, type DayCode, type PersonCard, type ReportCell } from './reportModel'
+import { fmtHours, fmtPrepared, type CardReport, type DayCode, type Hours, type Parts, type PersonCard, type ReportCell } from './reportModel'
 
 /**
  * The owner's Attendance and pay report: A4 portrait, two cards across, one calendar card per person (their month, the
- * hours worked each day, the sum of their hours, and under it that sum priced at their own hourly rate, ending in their
- * salary), laid out as the "Report · Attendance and pay, owner copy" board on the canvas. Owner only: it carries money,
+ * hours worked each day, the sum of their hours: worked + Fridays + holidays + overtime, and under it that sum priced at
+ * their own hourly rate, ending in their salary). The salary and the hourly rate themselves are not printed. Laid out as the "Report · Attendance and pay, owner copy" board on the canvas. Owner only: it carries money,
  * so it is stamped and is never the page that gets pinned up (the employee statements are).
  * Differences from the boards, deliberate: an absent day is a solid tint with its letter rather than hatching, and a
  * docked Friday is a pale red with a struck-through F rather than an outlined cell (the PDF library has no pattern fill
@@ -17,7 +17,7 @@ const GAP = 9
 const CARD_W = (PAGE.w - PAGE.margin[0] - PAGE.margin[2] - GAP) / 2
 const INNER_W = CARD_W - 2 * 7 - 2 // card padding and its 1pt border
 // pdfmake rewrites a table's widths array in place, so every table gets its own copy of this one.
-const EQ_WIDTHS = [0.2, 0.04, 0.2, 0.04, 0.2, 0.04, 0.28].map((f) => Math.floor(f * INNER_W * 10) / 10)
+const EQ_WIDTHS = [0.15, 0.03, 0.15, 0.03, 0.15, 0.03, 0.15, 0.03, 0.28].map((f) => Math.floor(f * INNER_W * 10) / 10)
 const WHITE = '#ffffff'
 /** pdfmake's own types are a closed union that rejects spreads and extra keys, so layout pieces are plain objects, cast once at the document. */
 type N = Record<string, any> // eslint-disable-line @typescript-eslint/no-explicit-any
@@ -35,7 +35,10 @@ const initials2 = (name: string): string => {
   return (w.length > 1 ? w[0][0] + w[w.length - 1][0] : name.trim().slice(0, 2)).toUpperCase()
 }
 
-const dayText = (c: ReportCell): string => (c.code === 'F' || c.code === 'D' ? 'F' : c.code === 'A' ? 'A' : c.code === 'O' ? '?' : c.hours === null ? '' : fmtHours(c.hours))
+/** F, PH and D with hours mean the person came in: the cell shows the hours worked on top of the 8:00. */
+const cameIn = (c: ReportCell) => (c.code === 'F' || c.code === 'PH' || c.code === 'D') && !!c.hours
+const dayText = (c: ReportCell): string =>
+  cameIn(c) ? `+${fmtHours(c.hours as number)}` : c.code === 'D' ? 'F' : c.code === 'F' || c.code === 'PH' || c.code === 'A' ? c.code : c.code === 'O' ? '?' : c.hours === null ? '' : fmtHours(c.hours)
 
 function dayCell(c: ReportCell): N {
   if (!c.code) return { text: String(c.day), font: MONO, fontSize: 5.6, color: C.muted, margin: [2, 1, 0, 0] }
@@ -43,7 +46,7 @@ function dayCell(c: ReportCell): N {
   return {
     fillColor: t.bg,
     stack: [
-      { text: String(c.day), font: MONO, fontSize: 5.6, color: C.muted, margin: [2, 1, 0, 0] },
+      { text: cameIn(c) ? `${c.day} ${c.code === 'D' ? 'F' : c.code}` : String(c.day), font: MONO, fontSize: 5.6, color: C.muted, margin: [2, 1, 0, 0] },
       { text: dayText(c), font: MONO, bold: true, fontSize: 6.8, color: t.ink, alignment: 'right', margin: [0, 0, 2.5, 0], ...(c.code === 'D' ? { decoration: 'lineThrough' } : {}) },
     ],
   }
@@ -67,15 +70,15 @@ function calendar(cells: ReportCell[], lead: number): N {
   }
 }
 
-/** Worked + Fridays + Overtime = Total, each figure under its label. */
-function hoursRow(h: PersonCard['hours']): N {
+/** Worked + Fridays + Holiday + Overtime = Total, each figure under its label. */
+function hoursRow(h: Hours): N {
   const val = (x: number, extra: object = {}): N => ({ text: fmtHours(x), font: MONO, fontSize: 8.5, ...extra })
   return {
     table: {
       widths: [...EQ_WIDTHS],
       body: [
-        [tiny('Worked'), '', tiny('Fridays'), '', tiny('Overtime'), '', { stack: [rule(EQ_WIDTHS[6] - 2, 1.5, false, C.ink), tiny('Total', { color: C.ink, margin: [0, 1, 0, 0] })] }],
-        [val(h.worked), op('+'), val(h.fridays), op('+'), val(h.overtime, h.overtime ? {} : { color: C.muted }), op('='), val(h.total, { bold: true, fontSize: 10 })],
+        [tiny('Worked'), '', tiny('Fridays'), '', tiny('Holiday'), '', tiny('Overtime'), '', { stack: [rule(EQ_WIDTHS[8] - 2, 1.5, false, C.ink), tiny('Total', { color: C.ink, margin: [0, 1, 0, 0] })] }],
+        [val(h.worked), op('+'), val(h.fridays), op('+'), val(h.holidays, h.holidays ? {} : { color: C.muted }), op('+'), val(h.overtime, h.overtime ? {} : { color: C.muted }), op('='), val(h.total, { bold: true, fontSize: 10 })],
       ],
     },
     layout: noBorders,
@@ -83,7 +86,7 @@ function hoursRow(h: PersonCard['hours']): N {
 }
 
 /** The same columns priced at the person's hourly rate; the dark box at the end is their salary. */
-function payRow(parts: [number, number, number] | null, salary: number | null, salaryLabel = 'Salary'): N {
+function payRow(parts: Parts | null, salary: number | null, salaryLabel = 'Salary'): N {
   const money = (x: number | null): N => ({ text: x === null ? '—' : fmtCurrency(x), font: MONO, fontSize: 8, margin: [0, 5, 0, 0] })
   return {
     stack: [
@@ -93,7 +96,7 @@ function payRow(parts: [number, number, number] | null, salary: number | null, s
         table: {
           widths: [...EQ_WIDTHS],
           body: [[
-            money(parts?.[0] ?? null), op('+', 5.5), money(parts?.[1] ?? null), op('+', 5.5), money(parts?.[2] ?? null), op('=', 5.5),
+            money(parts?.[0] ?? null), op('+', 5.5), money(parts?.[1] ?? null), op('+', 5.5), money(parts?.[2] ?? null), op('+', 5.5), money(parts?.[3] ?? null), op('=', 5.5),
             { fillColor: C.ink, margin: [3, 2, 4, 3], stack: [{ text: salary === null ? 'NO RATE' : salaryLabel.toUpperCase(), font: MONO, fontSize: 4.8, characterSpacing: 0.5, color: WHITE, alignment: 'right' }, { text: salary === null ? 'set' : fmtCurrency(salary), font: MONO, bold: true, fontSize: 10.5, color: WHITE, alignment: 'right' }] },
           ]],
         },
@@ -103,23 +106,18 @@ function payRow(parts: [number, number, number] | null, salary: number | null, s
   }
 }
 
-// The card's own fill goes on the table layout: a fillColor on its cell is painted over the dark salary box inside it.
-const card = (stack: N[], fill?: string): N => ({
+// No fill on a card, deliberately: pdfmake paints a card's own fill over the dark salary box inside it.
+const card = (stack: N[]): N => ({
   table: { widths: ['*'], body: [[{ stack, margin: [7, 6, 7, 6] }]] },
-  layout: { hLineWidth: () => 1, vLineWidth: () => 1, hLineColor: () => C.strong, vLineColor: () => C.strong, ...(fill ? { fillColor: () => fill } : {}) },
+  layout: { hLineWidth: () => 1, vLineWidth: () => 1, hLineColor: () => C.strong, vLineColor: () => C.strong },
 })
 
 function personCard(p: PersonCard, r: CardReport): N {
-  const salary: N =
-    p.pay.monthly === null
-      ? { text: 'No salary set', font: MONO, fontSize: 8, color: C.muted }
-      : { text: [{ text: fmtCurrency(p.pay.monthly), bold: true, font: MONO, fontSize: 9 }, { text: ` (${fmtRate(p.pay.perHour)} an hour)`, font: MONO, fontSize: 7, color: C.muted }] }
   return card([
     {
       columns: [
         { width: 20, table: { widths: [20], heights: [20], body: [[{ text: initials2(p.name), font: MONO, bold: true, fontSize: 7, color: C.muted, fillColor: C.sunken, alignment: 'center', margin: [0, 6, 0, 0] }]] }, layout: noBorders },
         { width: '*', text: p.name, bold: true, fontSize: 11.5, margin: [6, 3, 0, 0] },
-        { width: 'auto', ...salary, alignment: 'right', margin: [0, 4, 0, 0] },
       ],
       margin: [0, 0, 0, 4],
     },
@@ -133,8 +131,10 @@ const SWATCH: { code: Exclude<DayCode, ''>; text: string; label: string }[] = [
   { code: 'P', label: '8:00', text: 'Present: hours worked that day' },
   { code: 'H', label: '4:00', text: 'Half day' },
   { code: 'A', label: 'A', text: 'Absent' },
-  { code: 'F', label: 'F', text: 'Friday, the weekly holiday, paid' },
-  { code: 'D', label: 'F', text: 'Friday docked: not paid, not counted' },
+  { code: 'F', label: 'F', text: 'Friday, the weekly holiday, paid 8:00' },
+  { code: 'PH', label: 'PH', text: 'Paid holiday, 8:00' },
+  { code: 'F', label: '+2:00', text: 'Came in on a holiday (F or PH): 8:00 paid plus the hours' },
+  { code: 'D', label: 'F', text: 'Holiday docked: not paid, not counted' },
 ]
 
 function glance(r: CardReport): N {
@@ -146,18 +146,18 @@ function glance(r: CardReport): N {
     ]),
     ...(r.hasOpen ? [[{ text: '?', font: MONO, bold: true, fontSize: 6, color: TONE.O.ink, fillColor: TONE.O.bg, alignment: 'center', margin: [0, 2, 0, 1.5] }, { text: 'No clock-out yet', fontSize: 7.5, color: C.muted, margin: [6, 2, 0, 0] }]] : []),
   ]
-  const perHourRule = `An hour is the monthly salary ÷ (days in the month × 8 hours), so ${r.monthLabel.split(' ')[0]}, ${r.daysInMonth} days, divides by ${r.daysInMonth * 8}.`
+  const dayLabel = (iso: string) => new Date(`${iso}T12:00:00`).toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' }).replace(',', '')
   return card(
     [
       tiny('The month at a glance, everyone', { margin: [0, 0, 0, 5] }),
       hoursRow(r.totals.hours),
       { ...payRow(r.totals.pay.parts, r.totals.pay.salary, 'Total salary'), margin: [0, 5, 0, 0] },
       ...(items ? [{ text: `Left out of the pay row: ${items} ${items === 1 ? 'person has' : 'people have'} no salary set.`, fontSize: 7, color: C.muted, margin: [0, 4, 0, 0] }] : []),
+      ...(r.holidayDates.length ? [{ text: [{ text: r.holidayDates.length === 1 ? 'Paid holiday' : 'Paid holidays', bold: true }, ` · ${r.holidayDates.map(dayLabel).join(', ')} · 8:00 each`], fontSize: 7.5, color: TONE.F.ink, fillColor: TONE.F.bg, margin: [0, 6, 0, 0] }] : []),
       tiny('How to read a day', { margin: [0, 9, 0, 4] }),
       { table: { widths: [26, '*'], body: legend }, layout: { ...noBorders, hLineWidth: () => 0, paddingBottom: () => 3 } },
-      { text: `Hours are counted to the nearest quarter hour. ${perHourRule}`, fontSize: 7, color: C.muted, margin: [0, 4, 0, 0], lineHeight: 1.2 },
+      { text: 'Hours are counted to the nearest quarter hour. Total = worked + Fridays + holiday + overtime. Worked includes hours worked on a holiday.', fontSize: 7, color: C.muted, margin: [0, 4, 0, 0], lineHeight: 1.2 },
     ],
-    C.sunken,
   )
 }
 

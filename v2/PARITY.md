@@ -347,6 +347,20 @@ Not verified: the real GitHub Actions run (it only runs on `main`), a real table
 deploys (the worker's update check and idle switch are unit-tested for the idle rule only). The manifest does not lock
 orientation (v1's does, to landscape); say if the kiosk install should.
 
+## Fridays worked and paid holidays (2026-10-20), from the owner's review
+
+Proposal boards: "Days · a Friday worked", "Days · mark a day as a paid holiday", "Report · Attendance and pay with holiday pay". Beyond the live app.
+- **A Friday or declared holiday pays 8:00 whether or not anyone punches, and the hours worked are added on top.** The live app credits the 8:00 only to a Friday with
+  no punches, so someone who worked 2 hours was paid less than someone who stayed home. A short visit is no longer a half day. The kiosk was never closed on Fridays.
+- **Days**: a worked holiday shows the "Worked on the holiday" callout (Holiday pay 8:00, Worked today, Paid today), the list chip "Holiday + worked" and a button to take
+  the holiday off for that person; a docked one says "Holiday unpaid" and offers "Restore as paid". **Mark as paid holiday** beside the date asks once and marks the date for
+  every active person; **Remove the holiday** undoes it. Not offered on a Friday or a future date; a banner says so on a declared day.
+- **Storage**: `day_pay_overrides` rows, no migration (see CLAUDE.md). **Deliberate differences from the board**: no holiday *name* (the table has nowhere to keep it, so the
+  sheet has no name field and the report says "Paid holiday · Mon 14 Sep"); the card of totals has no grey fill (the PDF library paints it over the dark salary box).
+- **Month**: team grid and one-person cells show `+2:00` in the holiday colour for a holiday someone came in on, `PH` for a declared one nobody came in on; Pay has a "Paid
+  holidays" line; the day strip and legend name them.
+- **Reports**: Worked + Fridays + Holiday + Overtime = Total; the monthly salary and hourly rate are no longer printed. Statements add a "Paid holidays" line when there are any.
+
 ## Monthly reports as PDFs (2026-10-19), built from the Report boards
 
 Month's header now has one **Download** button (a popover from 900px, a bottom sheet on a phone) in place of "Download Excel", with two items:

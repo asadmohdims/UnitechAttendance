@@ -69,7 +69,7 @@ describe('the numbers on paper are the numbers on screen', () => {
       expect(c.hours.worked).toBeCloseTo(lines[i].punchedHours, 5)
       expect(c.hours.fridays).toBe(lines[i].creditedHours)
       expect(c.hours.overtime).toBe(lines[i].overtime)
-      expect(c.hours.total).toBeCloseTo(c.hours.worked + c.hours.fridays + c.hours.overtime, 5)
+      expect(c.hours.total).toBeCloseTo(c.hours.worked + c.hours.fridays + c.hours.holidays + c.hours.overtime, 5)
       expect(c.hours.total).toBeCloseTo(lines[i].paidHours, 5)
     })
     expect(report.totals.hours.total).toBeCloseTo(lines.reduce((s, l) => s + l.paidHours, 0), 5)
@@ -93,29 +93,65 @@ describe('the numbers on paper are the numbers on screen', () => {
     expect(c.hours.fridays).toBe(24)
   })
 
-  it('the pay row is Month · Pay\'s salary to the rupee, and its three parts always add up to it', () => {
+  it('a Friday someone came in on is a Friday with their hours on top, and a declared holiday is PH', () => {
+    const recs = [...records(people), { ...records([people[0]])[0], id: 'fri-work', date: '2026-09-11', clock_in: at('2026-09-11', 9), clock_out: at('2026-09-11', 11) }]
+    const m = buildMonthModel({ ym: YM, employees: people, records: recs, overrides: [{ emp_id: 'e0', date: '2026-09-14', paid: true }], overtime, today: '2026-10-01' })
+    const l = buildPayLines(m, rates(people), '2026-10-01')
+    const r = buildCardReport(m, l, NOW)
+    const c = r.people[0]
+    expect(c.cells.find((x) => x.day === 11)).toEqual({ day: 11, code: 'F', hours: 2 }) // the Friday keeps its 8:00 and the 2:00 is shown
+    expect(c.cells.find((x) => x.day === 14)).toMatchObject({ code: 'PH' }) // the declared Monday: paid, not absent
+    expect(r.people[1].cells.find((x) => x.day === 14)).toMatchObject({ code: 'PH' }) // for everyone, whichever rows exist
+    expect(c.hours.fridays).toBe(32)
+    expect(c.hours.holidays).toBe(8)
+    expect(c.hours.total).toBeCloseTo(c.hours.worked + 32 + 8 + 2, 5)
+    expect(r.holidayDates).toEqual(['2026-09-14'])
+    const all = JSON.stringify(cardsDoc(r).content)
+    expect(all).toContain('+2:00')
+    expect(all).toContain('Paid holiday')
+    expect(all).toContain('Mon 14 Sep')
+  })
+
+  it('the statements say the paid holidays apart, only when there are any', () => {
+    const plain = buildStatement(model, model.people[0], lines[0], NOW)
+    expect(plain.counted.paidHolidays).toBe(0)
+    const m = month(people, [{ emp_id: 'e0', date: '2026-09-14', paid: true }])
+    const l = buildPayLines(m, rates(people), '2026-10-01')
+    const s = buildStatement(m, m.people[0], l[0], NOW)
+    expect(s.counted.paidHolidays).toBe(1)
+    expect(s.counted.holidayHours).toBe(8)
+    expect(s.counted.total).toBeCloseTo(s.counted.worked + 32 + 8 + 2, 5)
+    expect(JSON.stringify(statementsDoc([s]).content)).toContain('Paid holidays: 1 × 8:00')
+    expect(JSON.stringify(statementsDoc([plain]).content)).not.toContain('Paid holidays')
+  })
+
+  it('the pay row is Month · Pay\'s salary to the rupee, and its four parts always add up to it', () => {
     const owner = buildCardReport(model, lines, NOW)
     owner.people.forEach((c, i) => {
       const pay = c.pay!
       expect(pay.salary).toBe(Math.round(lines[i].pay as number))
       expect(pay.parts!.reduce((a, b) => a + b, 0)).toBe(pay.salary)
-      expect(pay.perHour).toBeCloseTo(18000 / 240, 5) // September: 30 days x 8 hours
-      expect(pay.monthly).toBe(18000)
     })
     expect(owner.totals.pay!.salary).toBe(owner.people.reduce((s, c) => s + c.pay!.salary!, 0))
     expect(owner.totals.pay!.parts.reduce((a, b) => a + b, 0)).toBe(owner.totals.pay!.salary)
   })
 
-  it('the hourly rate follows the days in the month, so the same salary is a different rate in October', () => {
+  it('the hourly rate follows the days in the month, so the same salary is a different rate in October (it is priced from, never printed)', () => {
     const oct = buildMonthModel({ ym: '2026-10', employees: staff(1), records: [], overrides: [], overtime: [], today: '2026-11-01' })
-    const l = buildPayLines(oct, rates(staff(1)), '2026-11-01')
-    expect(buildCardReport(oct, l, NOW).people[0].pay!.perHour).toBeCloseTo(18000 / 248, 5)
+    expect(buildPayLines(oct, rates(staff(1)), '2026-11-01')[0].hourly).toBeCloseTo(18000 / 248, 5)
+    expect(buildPayLines(model, rates(people), '2026-10-01')[0].hourly).toBeCloseTo(18000 / 240, 5)
+  })
+
+  it('no salary and no hourly rate is printed on the cards', () => {
+    const all = JSON.stringify(cardsDoc(buildCardReport(model, lines, NOW)).content)
+    expect(all).not.toMatch(/18,000|18000|an hour|a month|75\.00/)
+    expect(all).not.toMatch(/Monthly salary/i)
   })
 
   it('someone with no rate is left out of the pay row and said so, not shown as ₹0', () => {
     const l = buildPayLines(model, { ...rates(people), e1: [] }, '2026-10-01')
     const owner = buildCardReport(model, l, NOW)
-    expect(owner.people[1].pay).toEqual({ monthly: null, perHour: null, parts: null, salary: null })
+    expect(owner.people[1].pay).toEqual({ parts: null, salary: null })
     expect(owner.totals.pay!.unrated).toBe(1)
     expect(JSON.stringify(cardsDoc(owner).content)).toContain('no salary set')
   })
@@ -142,11 +178,11 @@ describe('what is printed says the right things', () => {
     expect(all).not.toMatch(/within 7 days|looks wrong/)
   })
 
-  it('the report is stamped for the owner and gives the hourly rule', () => {
+  it('the report is stamped for the owner and explains the total', () => {
     const all = JSON.stringify(cardsDoc(buildCardReport(model, lines, NOW)).content)
     expect(all).toContain('OWNER COPY')
     expect(all).toContain('Attendance and pay · September 2026')
-    expect(all).toContain('divides by 240')
+    expect(all).toContain('Total = worked + Fridays + holiday + overtime')
     expect(all).toContain('₹')
   })
 })
@@ -180,6 +216,16 @@ describe('the PDF itself', () => {
     expect(raw).toMatch(/Figtree/)
     expect(raw).toMatch(/IBMPlexMono/)
     expect(raw).toMatch(/\/MediaBox \[0 0 595\.28 841\.89\]/) // A4 portrait
+  })
+
+  it('draws a month with a Friday worked, a docked Friday and a declared holiday on one page', async () => {
+    const worked = { ...records([people[0]])[0], id: 'fri-work', date: '2026-09-11', clock_in: at('2026-09-11', 9), clock_out: at('2026-09-11', 11) }
+    const m = buildMonthModel({
+      ym: YM, employees: people, records: [...records(people), worked],
+      overrides: [{ emp_id: 'e0', date: '2026-09-14', paid: true }, { emp_id: 'e2', date: '2026-09-18', paid: false }], overtime, today: '2026-10-01',
+    })
+    const l = buildPayLines(m, rates(people), '2026-10-01')
+    expect(pageCount(await render(cardsDoc(buildCardReport(m, l, NOW))))).toBe(1)
   })
 
   it('continues onto more pages, with no card split across two, when there are too many people for one', async () => {

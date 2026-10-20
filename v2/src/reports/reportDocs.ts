@@ -15,6 +15,7 @@ export const TONE: Record<Exclude<DayCode, ''>, { bg: string; ink: string }> = {
   H: { bg: '#fdebc8', ink: '#7a3b00' },
   A: { bg: '#f7c4ae', ink: '#7a2400' },
   F: { bg: '#ece5fb', ink: '#4e2f9e' },
+  PH: { bg: '#d9ccf5', ink: '#4e2f9e' },
   D: { bg: '#fdece4', ink: '#7a2400' },
   O: { bg: '#fff4dc', ink: '#7a3b00' },
 }
@@ -45,7 +46,7 @@ export function statementsDoc(list: Statement[]): TDocumentDefinitions {
           fillColor: t.bg,
           stack: [
             { text: String(c.day), font: MONO, fontSize: 6.5, color: C.muted, margin: [4, 3, 0, 0] },
-            { text: c.code === 'F' || c.code === 'A' ? c.code : c.code === 'D' ? 'F' : c.code === 'O' ? '?' : c.hours === null ? '' : fmtHours(c.hours), font: MONO, bold: true, fontSize: 8, color: t.ink, alignment: 'right', margin: [0, 12, 4, 0] },
+            { text: c.code === 'A' ? c.code : c.code === 'F' || c.code === 'PH' || c.code === 'D' ? (c.hours ? `+${fmtHours(c.hours)}` : c.code === 'D' ? 'F' : c.code) : c.code === 'O' ? '?' : c.hours === null ? '' : fmtHours(c.hours), font: MONO, bold: true, fontSize: 8, color: t.ink, alignment: 'right', margin: [0, 12, 4, 0] },
           ],
         }
       }),
@@ -109,7 +110,9 @@ export function statementsDoc(list: Statement[]): TDocumentDefinitions {
           color: C.muted,
           text: [
             'Numbers are hours worked that day   ·   H half day   ·   A absent   ·   F weekly holiday, paid',
-            ...(s.cells.some((c) => c.code === 'D') ? ['   ·   F in red: a Friday not paid'] : []),
+            ...(s.cells.some((c) => c.code === 'PH') ? ['   ·   PH paid holiday'] : []),
+            ...(s.cells.some((c) => c.code === 'F' || c.code === 'PH' ? c.hours : false) ? ['   ·   +2:00 came in on a holiday'] : []),
+            ...(s.cells.some((c) => c.code === 'D') ? ['   ·   F in red: a holiday not paid'] : []),
             ...(s.hasOpen ? ['   ·   ? no clock-out yet'] : []),
             ...(s.counted.overtime > 0 ? [`   ·   Overtime of ${fmtHours(s.counted.overtime)} is added below`] : []),
           ],
@@ -121,6 +124,7 @@ export function statementsDoc(list: Statement[]): TDocumentDefinitions {
             body: [
               row('Hours worked, from your punches', fmtHours(s.counted.worked)),
               row(`Paid Fridays: ${s.counted.paidFridays} weekly ${s.counted.paidFridays === 1 ? 'holiday' : 'holidays'} × 8:00`, `+ ${fmtHours(s.counted.fridayHours)}`),
+              ...(s.counted.paidHolidays > 0 ? [row(`Paid holidays: ${s.counted.paidHolidays} × 8:00`, `+ ${fmtHours(s.counted.holidayHours)}`)] : []),
               row('Overtime added by the owner', s.counted.overtime > 0 ? `+ ${fmtHours(s.counted.overtime)}` : '0:00'),
               row(`Hours counted for ${s.monthLabel.split(' ')[0]}`, fmtHours(s.counted.total), true),
             ],

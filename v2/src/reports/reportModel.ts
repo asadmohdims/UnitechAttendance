@@ -9,15 +9,17 @@ import { SHOP_NAME } from './shop'
  * in them may carry a salary, a pay figure or a payment (a test checks the finished PDF for the rupee sign).
  * The owner's attendance-and-pay cards are the one document that prices the hours.
  *
- * P present, H half day, A absent, F weekly holiday (paid), D weekly holiday the owner docked (not paid), O a session with no clock-out yet, '' nothing to show
+ * P present, H half day, A absent, F weekly holiday (paid), PH a holiday the owner declared (paid), D a holiday the owner docked
+ * (not paid), O a session with no clock-out yet, '' nothing to show. F and PH with hours: the person came in, so the cell is the 8:00
+ * plus those hours.
  * (a day that has not happened, or before the person joined).
  */
-export type DayCode = 'P' | 'H' | 'A' | 'F' | 'D' | 'O' | ''
+export type DayCode = 'P' | 'H' | 'A' | 'F' | 'PH' | 'D' | 'O' | ''
 
 export interface ReportCell {
   day: number
   code: DayCode
-  /** Hours worked that day, each punch counted to the nearest quarter hour, overtime not included. */
+  /** Hours worked that day, each punch counted to the nearest quarter hour, overtime not included. On F, PH and D: the hours worked on top. */
   hours: number | null
 }
 
@@ -26,10 +28,19 @@ const weekdayOf = (ym: string, day: number) => new Date(Number(ym.slice(0, 4)), 
 
 const CODE: Record<string, DayCode> = { worked: 'P', half: 'H', absent: 'A', holiday: 'F', open: 'O', none: '' }
 
+/** A day that earns a standard day takes its holiday letter whether or not the person came in; a docked one is D. */
+function codeOf(d: PersonMonth['days'][number]): DayCode {
+  if (d.credit) {
+    if (d.docked) return 'D'
+    if (d.kind === 'holiday' || d.kind === 'worked' || d.kind === 'half') return d.credit === 'holiday' ? 'PH' : 'F'
+  }
+  return CODE[d.kind] ?? ''
+}
+
 function cellsOf(p: PersonMonth): ReportCell[] {
   return p.days.map((d) => ({
     day: d.day,
-    code: d.kind === 'holiday' && d.docked ? 'D' : (CODE[d.kind] ?? ''),
+    code: codeOf(d),
     // paidHours folds overtime in; the printed day is the worked time alone, the same split Month · Pay uses.
     hours: d.kind === 'worked' || d.kind === 'half' ? (d.paidHours ?? 0) - d.overtime : null,
   }))
@@ -38,20 +49,20 @@ function cellsOf(p: PersonMonth): ReportCell[] {
 /** The hours a person worked from their punches: Month · Pay's "Hours worked". */
 const workedHours = (p: PersonMonth) => p.paidTotal - p.overtimeTotal
 
-/** What the owner-copy cards add to a person's hours: the same hours, priced at their own hourly rate. */
+/** What the cards add to a person's hours: the same hours, priced at their own hourly rate (which is not printed). */
 export interface PayFigures {
-  monthly: number | null
-  perHour: number | null
-  /** Worked, Fridays, Overtime: each part at the hourly rate, to the rupee, adding up to `salary`. */
-  parts: [number, number, number] | null
+  /** Worked, Fridays, Holidays, Overtime: each part at the hourly rate, to the rupee, adding up to `salary`. */
+  parts: Parts | null
   /** Month · Pay's figure for this person, to the rupee. null when no rate is in force. */
   salary: number | null
 }
+export type Parts = [number, number, number, number]
+export interface Hours { worked: number; fridays: number; holidays: number; overtime: number; total: number }
 
 export interface PersonCard {
   name: string
   cells: ReportCell[]
-  hours: { worked: number; fridays: number; overtime: number; total: number }
+  hours: Hours
   pay: PayFigures
 }
 
@@ -62,22 +73,23 @@ export interface CardReport {
   /** Monday-first: blanks before the 1st. */
   leadBlanks: number
   people: PersonCard[]
-  totals: { hours: PersonCard['hours']; pay: { parts: [number, number, number]; salary: number; unrated: number } }
+  totals: { hours: Hours; pay: { parts: Parts; salary: number; unrated: number } }
+  /** Dates this month declared a paid holiday, as "2026-09-14". */
+  holidayDates: string[]
   hasOpen: boolean
   preparedAt: Date
 }
 
 /**
  * Each part at the hourly rate, rounded to the rupee, with the odd rupee that rounding leaves put on the largest part so
- * the three always add up to Month · Pay's own figure (the pay is rounded once, from the total hours).
+ * the four always add up to Month · Pay's own figure (the pay is rounded once, from the total hours).
  */
 export function payFigures(line: PayLine): PayFigures {
-  const monthly = line.rate?.monthly ?? null
-  if (line.hourly === null || line.pay === null) return { monthly, perHour: null, parts: null, salary: null }
+  if (line.hourly === null || line.pay === null) return { parts: null, salary: null }
   const salary = Math.round(line.pay)
-  const parts = [line.punchedHours, line.creditedHours, line.overtime].map((h) => Math.round((line.hourly as number) * h)) as [number, number, number]
+  const parts = [line.punchedHours, line.creditedHours, line.holidayHours, line.overtime].map((h) => Math.round((line.hourly as number) * h)) as Parts
   parts[parts.indexOf(Math.max(...parts))] += salary - parts.reduce((a, b) => a + b, 0)
-  return { monthly, perHour: line.hourly, parts, salary }
+  return { parts, salary }
 }
 
 export function buildCardReport(model: MonthModel, lines: PayLine[], now: Date): CardReport {
@@ -87,7 +99,7 @@ export function buildCardReport(model: MonthModel, lines: PayLine[], now: Date):
       name: p.emp.name,
       cells: cellsOf(p),
       // Exactly Month · Pay's hours lines: what the paid hours are made of.
-      hours: { worked: line.punchedHours, fridays: line.creditedHours, overtime: line.overtime, total: line.paidHours },
+      hours: { worked: line.punchedHours, fridays: line.creditedHours, holidays: line.holidayHours, overtime: line.overtime, total: line.paidHours },
       pay: payFigures(line),
     }
   })
@@ -100,13 +112,14 @@ export function buildCardReport(model: MonthModel, lines: PayLine[], now: Date):
     leadBlanks: (weekdayOf(model.ym, 1) + 6) % 7,
     people,
     totals: {
-      hours: { worked: sum((c) => c.hours.worked), fridays: sum((c) => c.hours.fridays), overtime: sum((c) => c.hours.overtime), total: sum((c) => c.hours.total) },
+      hours: { worked: sum((c) => c.hours.worked), fridays: sum((c) => c.hours.fridays), holidays: sum((c) => c.hours.holidays), overtime: sum((c) => c.hours.overtime), total: sum((c) => c.hours.total) },
       pay: {
-        parts: [0, 1, 2].map((i) => priced.reduce((s, c) => s + (c.pay.parts?.[i] ?? 0), 0)) as [number, number, number],
+        parts: [0, 1, 2, 3].map((i) => priced.reduce((s, c) => s + (c.pay.parts?.[i] ?? 0), 0)) as Parts,
         salary: priced.reduce((s, c) => s + (c.pay.salary ?? 0), 0),
         unrated: people.length - priced.length,
       },
     },
+    holidayDates: model.declaredHolidays,
     hasOpen: model.people.some((p) => p.days.some((d) => d.kind === 'open')),
     preparedAt: now,
   }
@@ -124,7 +137,7 @@ export interface Statement {
   leadBlanks: number
   cells: ReportCell[]
   hasOpen: boolean
-  counted: { worked: number; paidFridays: number; fridayHours: number; overtime: number; total: number }
+  counted: { worked: number; paidFridays: number; fridayHours: number; paidHolidays: number; holidayHours: number; overtime: number; total: number }
   preparedAt: Date
 }
 
@@ -143,7 +156,7 @@ export function buildStatement(model: MonthModel, person: PersonMonth, line: Pay
     cells: cellsOf(person),
     hasOpen: person.days.some((d) => d.kind === 'open'),
     // Exactly Month · Pay's hours lines, hours only: what the paid hours are made of.
-    counted: { worked: line.punchedHours, paidFridays: line.paidFridays, fridayHours: line.creditedHours, overtime: line.overtime, total: line.paidHours },
+    counted: { worked: line.punchedHours, paidFridays: line.paidFridays, fridayHours: line.creditedHours, paidHolidays: line.paidHolidays, holidayHours: line.holidayHours, overtime: line.overtime, total: line.paidHours },
     preparedAt: now,
   }
 }

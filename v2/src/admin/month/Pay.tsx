@@ -164,6 +164,13 @@ function Statement({ row: r, monthName, daysInMonth, paymentsKnown, checkDates, 
               value={l.creditedHours ? `+ ${fmtHours(l.creditedHours)}` : '0:00'}
               why={l.totalFridays === 0 ? 'No Fridays yet' : l.dockedFridays ? `${l.paidFridays} of ${l.totalFridays} Fridays paid, ${l.dockedFridays} marked unpaid · ${l.paidFridays} × ${fmtHours(STANDARD_DAY_HOURS)}` : `${plural(l.paidFridays, 'Friday')} × ${fmtHours(STANDARD_DAY_HOURS)}`}
             />
+            {l.totalHolidays > 0 && (
+              <Line
+                label="Paid holidays" hours positive={l.holidayHours > 0}
+                value={l.holidayHours ? `+ ${fmtHours(l.holidayHours)}` : '0:00'}
+                why={l.dockedHolidays ? `${l.paidHolidays} of ${l.totalHolidays} holidays paid, ${l.dockedHolidays} marked unpaid · ${l.paidHolidays} × ${fmtHours(STANDARD_DAY_HOURS)}` : `${plural(l.paidHolidays, 'holiday')} × ${fmtHours(STANDARD_DAY_HOURS)}, paid with or without punches. Hours worked on one are in Hours worked`}
+              />
+            )}
             {l.overtime > 0 && <Line label="Overtime" value={`+ ${fmtHours(l.overtime)}`} why="Hours you added, paid at the normal rate" hours positive />}
             <Line label="Total hours" value={fmtHours(l.paidHours)} hours total />
             <Line label="Rate" value={`× ${rateText(l.hourly)} an hour`} why={`${fmtCurrency(rate.monthly)} a month ÷ ${fmtHours(l.standardHours)} (${daysInMonth} days × ${STANDARD_DAY_HOURS}h) · from ${rate.from}`} />

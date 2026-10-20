@@ -55,6 +55,17 @@ export interface SessionView {
   problems: Problem[]
 }
 
+/** A standard day paid whatever the punches: the weekly Friday, or a holiday the owner declared. */
+export interface HolidayPay {
+  kind: 'friday' | 'holiday'
+  /** The owner took this person off it. */
+  docked: boolean
+  /** The standard day, in hours. */
+  hours: number
+  /** Hours worked that day on top of it (null: none, or still in). */
+  worked: number | null
+}
+
 export interface DayModel {
   kind: 'worked' | 'empty'
   chip: Chip | null
@@ -63,6 +74,8 @@ export interface DayModel {
   sessions: SessionView[]
   paidTotal: number | null
   lunch: { hours: number; paid: boolean; index: number } | null
+  /** Set on a day that earns a standard day, with or without punches. `paidTotal` then includes it (unless docked). */
+  holiday?: HolidayPay
   ownerPunchCount?: number
   punchCount?: number
   needsLook: boolean

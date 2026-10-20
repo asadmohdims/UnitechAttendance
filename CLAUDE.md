@@ -48,7 +48,7 @@ provided from npm). Do not edit those shared modules for v2's sake; the live app
   after a failure or 3s, so v2 never awaits it for a first draw: `useCachedQuery` renders the last good value
   at once and refetches behind it, and photos are saved on the device (`photoCache.ts`). Every store call goes
   through `store.ts`, which makes each method return a promise (demoStore returns plain values). v1 is untouched.
-- Status (2026-10-19): every screen on the canvas is built, tested (`npm test` in `v2/`, 229 tests) and deployed: the
+- Status (2026-10-19): every screen on the canvas is built, tested (`npm test` in `v2/`, 258 tests) and deployed: the
   offline-first data layer, kiosk home and punch flow, kiosk Payments (PIN, own month, add, confirmation), phone layouts,
   the admin shell with unlock, Days (all its edit actions), Month (Attendance, Pay, the Payments ledger, PDF
   reports), People (including photo, PIN, rate, deactivate), the sign-in dialog, and the service worker. Not built: the
@@ -69,15 +69,26 @@ provided from npm). Do not edit those shared modules for v2's sake; the live app
   `styles/tokens.json` AND `tokens.css` (hand-kept in step; `tokens.test.ts` checks the JSON for contrast).
 - Month → **Pay** is a settlement list (earned, paid out, still to pay per person) beside a statement built as hours worked + paid Fridays
   + overtime = total hours, x hourly rate = pay, less owner-entered payments (`payModel.ts`; see `v2/PARITY.md`). Money appears on screen only, never on a PDF.
+- **Paid days without punches** (`v2/src/admin/holidays.ts`, `monthModel.ts`): a Friday (`WEEKLY_HOLIDAY_DAY`) or a holiday the owner declares pays a standard day
+  (8:00) to everyone on the roster **whether or not they punch**; anyone who comes in is paid their hours **on top** (so 2 hours on a Friday is 10:00, never less
+  than staying home), and a short visit is not a half day. The kiosk is open on holidays as on any day. A day's `credit` (`'friday' | 'holiday'`) and `docked`
+  are on every `MonthDay`; `PersonMonth.holidays/docked` count Fridays, `declared/declaredDocked` count declared holidays; `PayLine` has `creditedHours` (Fridays) and
+  `holidayHours`, and `paidHours = punched + credited + holiday + overtime`. A full month still equals the salary because standard hours already count every calendar day.
+  **Declared holidays reuse `day_pay_overrides`** (no migration, shared `js/store` untouched): a `paid: true` row on a non-Friday date declares it (any one row
+  does, so someone added later is still covered), and a `paid: false` row on that date or on a Friday takes one person off it. A `paid: true` row on a Friday is only
+  "restore as paid" and never declares anything. The table has no room for a name, so a holiday has none. Days has **Mark as paid holiday** (everyone active, one sheet,
+  not for Fridays or future dates) and **Remove the holiday** (sets those rows to `false`); the one-person docking toggle is the existing "Mark unpaid / Restore as paid".
+  v1's Salary screen still follows the old rule (a worked Friday gets no 8:00), so v1 and v2 disagree on pay for such a day until cutover.
 - Month's **Download** menu builds PDFs on the device (`v2/src/reports/`, pdfmake, fonts in `src/assets/pdf-fonts/`), two items: per-person **statements**
-  (A4 portrait, hours only, safe to print and pin up; `reports.test.ts` fails on a rupee sign) and the owner's **Attendance and pay** (A4 portrait, a calendar
-  card per person, two across: the day's hours, then Worked + Fridays + Overtime = Total, then a pay row that prices each part at the person's hourly rate and
-  ends in their salary; the monthly salary and hourly rate sit in the card header; stamped "Owner copy · not for staff"; the last slot totals the team and holds
-  the legend). Pay figures are Month · Pay's (`payFigures`): hourly rate = monthly salary / (days in the month x 8h), salary rounded once from the total hours,
-  and the odd rupee that rounding the three parts leaves goes on the largest part so the row always adds up. A Friday the owner docked is drawn apart (code `D`)
-  and not counted. The landscape table report, the payroll summary and the shareable attendance report were dropped on the owner's review (2026-10-20), so paid
-  out and balance are on Month · Pay only, not on paper. There is no Excel export in v2 either; v1 still has it. pdfmake rewrites a table's `widths` array in
-  place: never share one array between tables.
+  (A4 portrait, hours only, safe to print and pin up; `reports.test.ts` fails on a rupee sign; a "Paid holidays" line appears only when there are any) and the owner's
+  **Attendance and pay** (A4 portrait, a calendar card per person, two across: the day's hours, then Worked + Fridays + Holiday + Overtime = Total, then a pay row that
+  prices each part at the person's hourly rate and ends in their salary; stamped "Owner copy · not for staff"; the last slot totals the team, names the paid holidays and holds
+  the legend). **The monthly salary and the hourly rate are not printed** (owner's review, 2026-10-20; a test checks), only the rupees they produce. Calendar marks: `F` a
+  Friday, `PH` a declared holiday, `11 F` over `+2:00` a holiday someone came in on (8:00 paid plus those hours), a pale-red struck `F` a docked one. Pay figures are
+  Month · Pay's (`payFigures`): hourly rate = monthly salary / (days in the month x 8h), salary rounded once from the total hours, and the odd rupee that rounding the
+  four parts leaves goes on the largest part so the row always adds up. The landscape table report, the payroll summary and the shareable attendance report were dropped
+  on the owner's review, so paid out and balance are on Month · Pay only, not on paper. There is no Excel export in v2 either; v1 still has it. pdfmake rewrites a table's
+  `widths` array in place (never share one between tables) and paints a table cell's own fill over a nested table's fill (so the card has none).
 - Parity checklist (what the live app does vs the design): `v2/PARITY.md`. Update it as screens are built.
 - Design: Timecard design system `https://claude.ai/artifact/KzxKqSUN3rihzLhvpjz4Z9` and screens canvas
   `https://claude.ai/artifact/GNPVhdUoyDmES5x2cok6qs`. Admin is Days / Month / People; the kiosk grid never

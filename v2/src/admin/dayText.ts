@@ -1,3 +1,4 @@
+import { STANDARD_DAY_HOURS } from '@legacy/config.js'
 import { fmtHours, fmtTime } from '../format'
 import type { DayModel, Problem } from './types'
 
@@ -94,7 +95,10 @@ export function calloutText(model: DayModel, name: string, date: string): [strin
     case 'absent':
       return [`No punches on ${fmtDayShort(date)}.`, `If ${name} was actually in, add the missed punch.`]
     case 'holiday':
-      return [`${fmtDay(date, { weekday: 'long' })} is the weekly holiday.`, p.docked ? `You marked it unpaid for ${name} this month.` : 'Paid without punches.']
+      return [
+        p.declared ? `${fmtDayShort(date)} is a paid holiday.` : `${fmtDay(date, { weekday: 'long' })} is the weekly holiday.`,
+        p.docked ? `You marked it unpaid for ${name}.` : `Paid ${fmtHours(STANDARD_DAY_HOURS)} without punches. If ${name} comes in, the hours worked are paid on top.`,
+      ]
     default:
       return ['', '']
   }
@@ -104,6 +108,17 @@ export function calloutText(model: DayModel, name: string, date: string): [strin
 export function ownerLine(count: number, total: number): string {
   if (count === total) return total === 1 ? 'This punch was set by you, not the kiosk' : `All ${total} punches were set by you, not the kiosk`
   return `${count} of ${total} punches ${count === 1 ? 'was' : 'were'} set by you, not the kiosk`
+}
+
+/**
+ * A holiday someone also worked: [lead, rest]. The standard day is paid whatever the punches, and the hours worked
+ * are added to it, so the day reads as the sum.
+ */
+export function holidayWorkedText(h: { kind: 'friday' | 'holiday'; docked: boolean; hours: number; worked: number | null }, name: string, date: string): [string, string] {
+  const what = h.kind === 'holiday' ? `${fmtDayShort(date)} is a paid holiday` : `${fmtDay(date, { weekday: 'long' })} is the weekly holiday`
+  if (h.docked) return [`${what}, but you marked it unpaid for ${name}.`, `Only the ${h.worked === null ? 'hours worked' : fmtHours(h.worked)} ${h.worked === null ? 'are' : 'is'} paid.`]
+  if (h.worked === null) return [`${what}: ${fmtHours(h.hours)} is paid.`, `${name} is still in. The hours worked are added when they clock out.`]
+  return [`${what}: ${fmtHours(h.hours)} is paid.`, `${name} also worked ${fmtHours(h.worked)}, so this day is paid ${fmtHours(h.hours + h.worked)}.`]
 }
 
 export interface RowTimes {

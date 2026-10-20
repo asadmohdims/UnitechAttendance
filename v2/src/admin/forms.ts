@@ -95,6 +95,25 @@ export function markReviewedForm(name: string, dayLabel: string, clockOut: strin
   }
 }
 
+/** Marks a date as a paid holiday for everyone. Asks once: it changes everyone's pay for the day. */
+export function markHolidayForm(dayLabel: string, people: number): PromptConfig {
+  return {
+    title: `Mark ${dayLabel} as a paid holiday?`,
+    note: [`All ${people} ${people === 1 ? 'person gets' : 'people get'} 8:00 holiday pay for the day, with no punches needed. Anyone who comes in is paid their hours on top. Absent marks for the day go away. You can still take one person off it afterwards.`],
+    submitLabel: 'Mark as paid holiday',
+    fields: [],
+  }
+}
+
+export function removeHolidayForm(dayLabel: string): PromptConfig {
+  return {
+    title: `Remove the holiday on ${dayLabel}?`,
+    note: ['Nobody is paid the 8:00 for the day any more. Hours people worked that day stay paid, and anyone with no punches goes back to Absent.'],
+    submitLabel: 'Remove the holiday',
+    fields: [],
+  }
+}
+
 /** Month · Pay and the People page both change a rate, so they share this one dialog. */
 export function rateForm(name: string, currentMonthly: number | null, today: string): PromptConfig {
   return {

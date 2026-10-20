@@ -1,13 +1,10 @@
 import { useMemo, useState } from 'react'
-import { dayModel, emptyDayModel } from '@legacy/dayStatus.js'
 import type { RecordRow } from '../../data/types'
 import { dateKey, fmtHours, fmtTime } from '../../format'
 import { Avatar } from '../../ui/Avatar'
 import { useMinWidth } from '../../ui/useMinWidth'
-import { buildAttentionQueue, type QueueItem } from '../dayEntries'
-import { withReview } from '../review'
-import { calloutStamp, calloutText, fmtDayShort } from '../dayText'
-import type { DayModel } from '../types'
+import { buildAttentionQueue, personDayModel, type QueueItem } from '../dayEntries'
+import { calloutStamp, calloutText, fmtDayShort, holidayWorkedText } from '../dayText'
 import { dayBase, dayText } from './dayCell'
 import { statsFor, type MonthDay, type MonthModel, type PersonMonth } from './monthModel'
 import { TeamGrid } from './TeamGrid'
@@ -154,7 +151,8 @@ export function Attendance({ model, records, overtime, now, currentYm, actions }
             <span><i className="month-dot" style={{ background: 'var(--in-tint)' }} />Full day</span>
             <span><i className="month-dot" style={{ background: 'var(--attention-tint)' }} />Half day</span>
             <span><i className="month-dot" style={{ background: 'var(--alert-wash)', border: '1.5px solid var(--alert)', boxSizing: 'border-box' }} />Absent</span>
-            <span><i className="month-dot" style={{ background: 'var(--holiday-tint)' }} />Paid holiday</span>
+            <span><i className="month-dot" style={{ background: 'var(--holiday-tint)' }} />Paid holiday (F, PH)</span>
+            <span><b className="time">+2:00</b>Came in on a holiday</span>
             <span><b className="tg__mark tg__mark--look tg__mark--legend">!</b>Needs review</span>
             <span><b className="tg__mark tg__mark--done tg__mark--legend">✓</b>Reviewed (you set it)</span>
             <span><b className="time">In</b>Still clocked in</span>
@@ -247,11 +245,7 @@ export function Attendance({ model, records, overtime, now, currentYm, actions }
 function DayCard({ person, day, today, now, actions }: { person: PersonMonth; day: MonthDay; today: string; now: Date; actions: AttendanceActions }) {
   const { emp } = person
   const since = emp.created_at ? dateKey(new Date(emp.created_at)) : undefined
-  const model = withReview((
-    day.sessions.length
-      ? dayModel({ sessions: day.sessions, date: day.date, today, now, overtimeHours: day.overtime })
-      : emptyDayModel({ date: day.date, today, weekday: new Date(`${day.date}T12:00:00`).getDay(), employeeSince: since, now, docked: day.docked })
-  ) as unknown as DayModel | null, day.sessions)
+  const model = personDayModel({ sessions: day.sessions, date: day.date, today, now, overtimeHours: day.overtime, since, credit: day.credit ? { kind: day.credit, docked: day.docked } : null })
   if (!model) return null
   const c = model.callout
   const [lead, rest] = c ? calloutText(model, emp.name, day.date) : ['', '']
@@ -271,6 +265,10 @@ function DayCard({ person, day, today, now, actions }: { person: PersonMonth; da
       ) : model.paidTotal !== null ? (
         <p>{fmtHours(model.paidTotal)} paid.</p>
       ) : null}
+      {model.kind === 'worked' && model.holiday && (() => {
+        const [hLead, hRest] = holidayWorkedText(model.holiday, emp.name, day.date)
+        return <p><b>{hLead}</b> {hRest}</p>
+      })()}
       {model.sessions.map((s) => (
         <div key={s.record.id} className="month-sess" style={{ alignSelf: 'stretch' }}>
           <span className="time">{fmtTime(s.record.clock_in)} → {s.record.clock_out ? fmtTime(s.record.clock_out) : 'still in'}</span>
@@ -283,7 +281,7 @@ function DayCard({ person, day, today, now, actions }: { person: PersonMonth; da
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 'var(--space-2)' }}>
         {c?.id === 'no-photo' && <button type="button" className="tc-btn tc-btn--primary" onClick={() => actions.markReviewed(person, day)}>Mark as reviewed</button>}
         {day.kind === 'absent' && <button type="button" className="tc-btn tc-btn--primary" onClick={() => actions.addMissedPunch(person, day.date)}>Add missed punch</button>}
-        {day.kind === 'holiday' && <button type="button" className="tc-btn tc-btn--secondary" onClick={() => actions.toggleHoliday(person, day.date, day.docked)}>{day.docked ? 'Restore as paid' : 'Mark unpaid'}</button>}
+        {(day.kind === 'holiday' || day.credit) && <button type="button" className="tc-btn tc-btn--secondary" onClick={() => actions.toggleHoliday(person, day.date, day.docked)}>{day.docked ? 'Restore as paid' : 'Mark unpaid'}</button>}
         {(day.sessions.length > 0 || day.kind === 'holiday') && <button type="button" className="tc-btn tc-btn--secondary" onClick={() => actions.openInDays(day.date, emp.id)}>Open in Days</button>}
       </div>
     </div>

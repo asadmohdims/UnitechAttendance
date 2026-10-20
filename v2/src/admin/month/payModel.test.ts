@@ -6,7 +6,7 @@ import type { PayLine, PersonMonth } from './monthModel'
 const emp = (id: string) => ({ id, name: id, active: true, avatar: null, created_at: '2026-01-01T00:00:00Z' })
 const line = (id: string, pay: number | null): PayLine => ({
   emp: emp(id), rate: pay === null ? null : { monthly: 1, from: '2026-01-01' }, standardHours: 240, hourly: null, paidHours: 0, punchedHours: 0,
-  overtime: 0, creditedHours: 0, paidFridays: 0, dockedFridays: 0, totalFridays: 0, daysWorked: 0, pay,
+  overtime: 0, creditedHours: 0, paidFridays: 0, dockedFridays: 0, totalFridays: 0, holidayHours: 0, paidHolidays: 0, dockedHolidays: 0, totalHolidays: 0, daysWorked: 0, pay,
 })
 const person = (id: string) => ({ emp: emp(id) }) as PersonMonth
 const pay = (emp_id: string, amount: number, entered_by: 'owner' | 'employee' = 'owner', occurred_on = '2026-09-10'): Payment => ({ id: `${emp_id}${amount}${entered_by}`, emp_id, amount, occurred_on, entered_by })

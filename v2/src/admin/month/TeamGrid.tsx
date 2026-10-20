@@ -11,8 +11,10 @@ interface Props {
   model: MonthModel
   /** `empId:date` of every day on the one attention list; those get the "!" mark. */
   attention: Set<string>
-  /** A day or a name was tapped: open that person (and day) in the one-person view. */
-  onPick: (empId: string, day: number | null) => void
+  /** A name was tapped: open that person in the one-person view. */
+  onPick: (empId: string) => void
+  /** A day was tapped: go straight to that person's day in Days. */
+  onOpenDay: (date: string, empId: string) => void
 }
 
 /** What sits under a name: days off, then the review state, so the owner sees who still needs a look. */
@@ -26,7 +28,7 @@ function sub(p: PersonMonth, attention: Set<string>): { text: string; tone: 'loo
 }
 
 /** Everyone, every day: the v1 calendar, rebuilt from the same per-person days the one-person view uses. */
-export function TeamGrid({ model, attention, onPick }: Props) {
+export function TeamGrid({ model, attention, onPick, onOpenDay }: Props) {
   const scroller = useRef<HTMLDivElement>(null)
   // Open scrolled so today is in view; the name and total columns are pinned and stay put.
   useEffect(() => {
@@ -60,7 +62,7 @@ export function TeamGrid({ model, attention, onPick }: Props) {
             return (
               <tr key={p.emp.id}>
                 <th scope="row" className="tg__name">
-                  <button type="button" className="tg__who" onClick={() => onPick(p.emp.id, null)}>
+                  <button type="button" className="tg__who" onClick={() => onPick(p.emp.id)}>
                     <Avatar emp={p.emp} />
                     <span className="tg__who-text">
                       <span className="tg__who-name">{p.emp.name}</span>
@@ -84,7 +86,7 @@ export function TeamGrid({ model, attention, onPick }: Props) {
                   return (
                     <td key={d.day} className="tg__slot">
                       {clickable ? (
-                        <button type="button" className={cls} aria-label={label} onClick={() => onPick(p.emp.id, d.day)}>{inner}</button>
+                        <button type="button" className={cls} aria-label={label} onClick={() => onOpenDay(d.date, p.emp.id)}>{inner}</button>
                       ) : (
                         <span className={cls}>{inner}</span>
                       )}

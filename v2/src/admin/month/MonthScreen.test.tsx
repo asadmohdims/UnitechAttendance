@@ -68,14 +68,21 @@ describe('Month · Attendance', () => {
     expect(within(detail).getByRole('button', { name: 'Open in Days' })).toBeInTheDocument()
   })
 
-  it('opens on the whole team: one row per person, and a tap on a day opens that person on that day', async () => {
+  it('opens on the whole team: one row per person, and a tap on a day goes straight to that day in Days', async () => {
     boot()
-    await open()
+    const { onOpenDay } = await open()
     const grid = screen.getByRole('table', { name: /Attendance by person and day/ })
     expect(within(grid).getAllByRole('row')).toHaveLength(3) // header + two people
     fireEvent.click(within(grid).getByRole('button', { name: /^Shakib, Mon 12 Oct/ }))
-    const detail = screen.getByRole('region', { name: /Shakib/ })
-    expect(within(detail).getByText('Mon 12 Oct')).toBeInTheDocument()
+    expect(onOpenDay).toHaveBeenCalledWith('2026-10-12', 'b')
+  })
+
+  it('a tap on a name in the team grid opens that person in the one-person view', async () => {
+    boot()
+    await open()
+    const grid = screen.getByRole('table', { name: /Attendance by person and day/ })
+    fireEvent.click(within(grid).getByText('Shakib').closest('button') as HTMLElement)
+    expect(screen.getByRole('region', { name: /Shakib/ })).toBeInTheDocument()
   })
 
   it('shows the team\'s figures for the whole team and one person\'s once chosen', async () => {
@@ -136,8 +143,9 @@ describe('Month · Attendance', () => {
     vi.spyOn(store, 'listRecordsForRange').mockResolvedValue([...records, noPhoto])
     const update = vi.spyOn(store, 'updateRecordTimes').mockResolvedValue()
     await open()
-    const grid = screen.getByRole('table', { name: /Attendance by person and day/ })
-    fireEvent.click(within(grid).getByRole('button', { name: /^Faizan, Thu 8 Oct.*needs review$/ }))
+    fireEvent.click(screen.getByRole('button', { name: 'One person' }))
+    fireEvent.click(screen.getByText('Faizan').closest('button') as HTMLElement)
+    fireEvent.click(within(screen.getByRole('region', { name: /Faizan/ })).getByRole('button', { name: /^Thu 8 Oct/ }))
     fireEvent.click(screen.getByRole('button', { name: 'Mark as reviewed' }))
     expect(update).not.toHaveBeenCalled()
     fireEvent.click(screen.getAllByRole('button', { name: 'Mark as reviewed' }).pop() as HTMLElement)

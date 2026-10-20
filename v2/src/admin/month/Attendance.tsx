@@ -149,7 +149,7 @@ export function Attendance({ model, records, overtime, now, currentYm, actions }
             <h2 className="heading" style={{ margin: 0 }}>Everyone, every day</h2>
             <span className="caption app-muted">Tap a name or a day to open that person. Scrolls sideways; names and totals stay put.</span>
           </div>
-          <TeamGrid model={model} attention={attentionKeys} onPick={pick} />
+          <TeamGrid model={model} attention={attentionKeys} onPick={(id) => pick(id, null)} onOpenDay={actions.openInDays} />
           <div className="month-legend caption">
             <span><i className="month-dot" style={{ background: 'var(--in-tint)' }} />Full day</span>
             <span><i className="month-dot" style={{ background: 'var(--attention-tint)' }} />Half day</span>

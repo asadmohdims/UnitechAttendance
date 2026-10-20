@@ -83,6 +83,7 @@ provided from npm). Do not edit those shared modules for v2's sake; the live app
 - **v1's `sw.js` now leaves `/v2/` alone** (`V2_PATH`, tested by `js/swScope.test.mjs` against the real file). Its scope
   covers that folder and it answers every navigation with v1's index.html, so a device with v1 installed would open v1
   when asked for v2. A tablet that already has v1 must load v1 once after that deploy so it picks the change up, then v2.
+- v2's icon is a blue U with a green tick (`v2/public/icons/`, source `icon.svg`; PNGs made with `sips`; the maskable one has the drawing at 82% so a round crop keeps it). It is deliberately unlike v1's navy calendar so the two are never confused on one device.
 - v2's own worker (`vite-plugin-pwa` 1.3.0, `src/pwa.ts`) precaches the whole app on first run, so it starts with no
   network (checked: with the server stopped, a reload showed the kiosk). It asks for a new version every 5 minutes and
   switches only when nothing is open (`isIdle`: no dialog, confirmation or photo viewer). It exists only in a build.

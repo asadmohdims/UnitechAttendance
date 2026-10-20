@@ -50,9 +50,9 @@ provided from npm). Do not edit those shared modules for v2's sake; the live app
   through `store.ts`, which makes each method return a promise (demoStore returns plain values). v1 is untouched.
 - Status (2026-10-19): every screen on the canvas is built, tested (`npm test` in `v2/`, 228 tests) and deployed: the
   offline-first data layer, kiosk home and punch flow, kiosk Payments (PIN, own month, add, confirmation), phone layouts,
-  the admin shell with unlock, Days (all its edit actions), Month (Attendance, Pay, Excel, the Payments ledger, PDF
+  the admin shell with unlock, Days (all its edit actions), Month (Attendance, Pay, the Payments ledger, PDF
   reports), People (including photo, PIN, rate, deactivate), the sign-in dialog, and the service worker. Not built: the
-  payroll summary PDF and the owner-only "changes and checks" page (both drawn on the canvas). Run it:
+  owner-only "changes and checks" page (drawn on the canvas). Run it:
   `npm --prefix v2 run dev` (demo mode, port 5173) or `npm --prefix v2 run dev:live` (the real project, every write
   refused, port 5174). Month, People and the Days queue read through one hook (`v2/src/admin/month/useMonthData.ts`) so
   a number cannot differ between screens. The demo sandbox's records end 14 Oct 2026, so later days read as absent there.
@@ -70,7 +70,7 @@ provided from npm). Do not edit those shared modules for v2's sake; the live app
 - Month → **Pay** is a settlement list (earned, paid out, still to pay per person) beside a statement built as hours worked + paid Fridays
   + overtime = total hours, x hourly rate = pay, less owner-entered payments (`payModel.ts`; see `v2/PARITY.md`). Money appears on screen only, never on a PDF.
 - Month's **Download** menu builds PDFs on the device (`v2/src/reports/`, pdfmake, fonts in `src/assets/pdf-fonts/`): an attendance report (A4 landscape),
-  per-person statements (A4 portrait). Both are hours only, by design and by test, since they get printed and pinned up. Payroll summary is drawn, not built.
+  per-person statements (A4 portrait). Both are hours only, by design and by test, since they get printed and pinned up. The **payroll summary** (A4 landscape, `reports/payrollModel.ts` + `payrollDoc.ts`) is the one PDF with money: same figures as Pay (`buildSettlement`; paid out = owner-entered payments only), stamped "Owner copy · not for staff". There is no Excel export in v2 (dropped on the owner's review, 2026-10-20); v1 still has it.
 - Parity checklist (what the live app does vs the design): `v2/PARITY.md`. Update it as screens are built.
 - Design: Timecard design system `https://claude.ai/artifact/KzxKqSUN3rihzLhvpjz4Z9` and screens canvas
   `https://claude.ai/artifact/GNPVhdUoyDmES5x2cok6qs`. Admin is Days / Month / People; the kiosk grid never

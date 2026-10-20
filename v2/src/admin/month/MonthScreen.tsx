@@ -8,7 +8,6 @@ import type { Employee, Payment } from '../../data/types'
 import { confirmPaymentDeleteForm, markReviewedForm, missedPunchForm, paymentForm, rateForm } from '../forms'
 import { fmtDayShort } from '../dayText'
 import { Attendance, type AttendanceActions } from './Attendance'
-import { downloadMonthXlsx } from './exportXlsx'
 import { MonthPeriod } from './MonthPeriod'
 import type { PayLine } from './monthModel'
 import { DownloadMenu } from './DownloadMenu'
@@ -40,7 +39,6 @@ export function MonthScreen({ onNotice, onOpenDay, nowOverride }: Props) {
   const currentYm = today.slice(0, 7)
   const [ym, setYm] = useState(currentYm)
   const [section, setSection] = useState<Section>('attendance')
-  const [busyExport, setBusyExport] = useState(false)
 
   const data = useMonthData(ym, today)
   const { model, lines, records, overtime, payments } = data
@@ -141,18 +139,6 @@ export function MonthScreen({ onNotice, onOpenDay, nowOverride }: Props) {
     })
   }
 
-  const download = async () => {
-    if (!model || busyExport) return
-    setBusyExport(true)
-    try {
-      await downloadMonthXlsx(model)
-    } catch (err) {
-      onNotice((err as Error).message)
-    } finally {
-      setBusyExport(false)
-    }
-  }
-
   return (
     <div className="month">
       <header className="month__header">
@@ -160,7 +146,7 @@ export function MonthScreen({ onNotice, onOpenDay, nowOverride }: Props) {
         <div className="month__header-actions">
           <MonthPeriod ym={ym} currentYm={currentYm} onChange={setYm} />
           {section === 'payments' && <button type="button" className="tc-btn tc-btn--secondary" onClick={() => void logPayment()}>Log a payment</button>}
-          <DownloadMenu model={model} lines={lines} now={now} onExcel={() => void download()} onNotice={onNotice} />
+          <DownloadMenu model={model} lines={lines} payments={payments ?? null} ledger={ledger} checkDates={checkDates} now={now} onNotice={onNotice} />
         </div>
       </header>
 

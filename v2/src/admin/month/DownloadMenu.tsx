@@ -2,17 +2,24 @@ import { useEffect, useRef, useState, type ReactNode } from 'react'
 import type { TDocumentDefinitions } from 'pdfmake/interfaces'
 import { canShareFiles, saveFile, shareOrSave } from '../../reports/deliver'
 import { renderPdf } from '../../reports/makePdf'
+import { payrollDoc } from '../../reports/payrollDoc'
+import { buildPayrollSummary } from '../../reports/payrollModel'
 import { attendanceDoc, statementsDoc } from '../../reports/reportDocs'
 import { buildAttendanceReport, buildStatement } from '../../reports/reportModel'
-import { NOT_BUILT } from '../../ui/useToast'
+import { STANDARD_DAY_HOURS } from '@legacy/config.js'
+import type { Payment } from '../../data/types'
 import type { MonthModel, PayLine } from './monthModel'
+import type { Ledger } from './paymentsModel'
 
 interface Props {
   model: MonthModel | null
-  /** Month · Pay's lines: only their hours are used, so a statement can never print a rupee. */
+  /** Month · Pay's lines. The statements use only their hours, so one can never print a rupee; the payroll summary uses all of it. */
   lines: PayLine[]
+  /** null when the payments read failed. Only the payroll summary uses these three. */
+  payments: Payment[] | null
+  ledger: Ledger | null
+  checkDates: Record<string, string[]>
   now: Date
-  onExcel: () => void
   onNotice: (msg: string) => void
 }
 
@@ -21,7 +28,6 @@ const ICONS = {
   report: <svg {...ICON}><rect x="3" y="5" width="18" height="16" rx="2" /><path d="M3 10h18M8 3v4M16 3v4" /></svg>,
   people: <svg {...ICON}><circle cx="9" cy="8" r="3.5" /><path d="M2.5 20c.6-3.6 3.2-5.5 6.5-5.5s5.9 1.9 6.5 5.5" /></svg>,
   payroll: <svg {...ICON}><rect x="3" y="6" width="18" height="12" rx="2" /><circle cx="12" cy="12" r="2.5" /></svg>,
-  sheet: <svg {...ICON}><path d="M4 4h16v16H4zM4 10h16M10 4v16" /></svg>,
 }
 
 const safe = (s: string) => s.replace(/[^\p{L}\p{N}]+/gu, '-').replace(/^-|-$/g, '')
@@ -41,9 +47,9 @@ function Item({ icon, title, sub, tag, tone = 'neutral', onClick, disabled }: { 
 
 /**
  * Month's one Download button. PDFs are drawn on the device (offline too). The attendance report and the statements
- * hold hours only, so they are safe to print and pin up; pay is for the owner's own payroll summary, drawn but not built.
+ * hold hours only, so they are safe to print and pin up; the payroll summary carries pay, is stamped for the owner, and is the only one that does.
  */
-export function DownloadMenu({ model, lines, now, onExcel, onNotice }: Props) {
+export function DownloadMenu({ model, lines, payments, ledger, checkDates, now, onNotice }: Props) {
   const [open, setOpen] = useState(false)
   const [view, setView] = useState<'main' | 'people'>('main')
   const [busy, setBusy] = useState<string | null>(null)
@@ -83,6 +89,11 @@ export function DownloadMenu({ model, lines, now, onExcel, onNotice }: Props) {
 
   const people = model?.people ?? []
   const statements = () => (model ? people.map((p) => buildStatement(model, p, lines.find((l) => l.emp.id === p.emp.id) as PayLine, now)) : [])
+  const payroll = (m: MonthModel) =>
+    buildPayrollSummary({
+      monthLabel: new Date(`${m.ym}-01T00:00:00`).toLocaleDateString('en-GB', { month: 'long', year: 'numeric' }),
+      daysInMonth: m.daysInMonth, standardDayHours: STANDARD_DAY_HOURS, people: m.people, lines, payments, ledger, checkDates, now,
+    })
   const sub = (key: string, text: string) => (busy === key ? 'Preparing…' : text)
 
   return (
@@ -100,10 +111,8 @@ export function DownloadMenu({ model, lines, now, onExcel, onNotice }: Props) {
                   onClick={() => model && make('report', attendanceDoc(buildAttendanceReport(model, now)), `Attendance-${model.ym}.pdf`, 'share')} />
                 <Item icon={ICONS.people} title="Employee statements" sub="One page each: attendance and hours, no money · PDF" tag={`${people.length} ${people.length === 1 ? 'person' : 'people'}`} disabled={!!busy}
                   onClick={() => setView('people')} />
-                <Item icon={ICONS.payroll} title="Payroll summary" sub="Salary, pay, paid out, balance · PDF" tag="Owner only" tone="alert" disabled={!!busy}
-                  onClick={() => { close(); onNotice(NOT_BUILT('Payroll summary')) }} />
-                <Item icon={ICONS.sheet} title="Data for a spreadsheet" sub="Every day, every person · Excel" disabled={!!busy}
-                  onClick={() => { close(); onExcel() }} />
+                <Item icon={ICONS.payroll} title="Payroll summary" sub={sub('payroll', 'Salary, pay, paid out, balance · PDF')} tag="Owner only" tone="alert" disabled={!!busy}
+                  onClick={() => model && make('payroll', payrollDoc(payroll(model)), `Payroll-${model.ym}.pdf`, 'save')} />
               </>
             ) : (
               <>

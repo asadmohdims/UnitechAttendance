@@ -7,6 +7,8 @@ import pdfmake from 'pdfmake'
 import type { Employee, OvertimeRow, RecordRow } from '../data/types'
 import { buildMonthModel, buildPayLines } from '../admin/month/monthModel'
 import { PDF_FONTS } from './fonts'
+import { payrollDoc } from './payrollDoc'
+import { buildPayrollSummary } from './payrollModel'
 import { attendanceDoc, GRID_PAGE_WIDTH, statementsDoc } from './reportDocs'
 import { buildAttendanceReport, buildStatement } from './reportModel'
 
@@ -115,6 +117,44 @@ describe('what is printed never carries money', () => {
       expect(all).not.toMatch(/salary|payment|balance|per hour|rate/i)
       expect(all).not.toMatch(/18000|18,000/)
     }
+  })
+})
+
+describe('the owner payroll summary', () => {
+  const people = staff(5)
+  const model = month(people)
+  const lines = buildPayLines(model, rates(people), '2026-10-01')
+  const payment = (id: string, emp: string, date: string, amount: number, by: 'owner' | 'employee') => ({ id, emp_id: emp, amount, occurred_on: date, entered_by: by, created_at: `${date}T10:00:00Z` })
+  const build = (payments: ReturnType<typeof payment>[] | null, checkDates: Record<string, string[]> = {}) =>
+    buildPayrollSummary({ monthLabel: 'September 2026', daysInMonth: 30, standardDayHours: 8, people: model.people, lines, payments: payments as never, ledger: null, checkDates, now: NOW })
+
+  it('shows the same pay and balance as Month · Pay, counting only the owner\'s payments', () => {
+    const pay0 = Math.round(lines[0].pay as number)
+    const s = build([payment('1', 'e0', '2026-09-10', 5000, 'owner'), payment('2', 'e0', '2026-09-10', 9999, 'employee')])
+    expect(s.rows[0].pay).toBe(`₹${pay0.toLocaleString('en-IN')}`)
+    expect(s.rows[0].paidOut).toBe('₹5,000')
+    expect(s.rows[0].balance).toBe(`₹${(pay0 - 5000).toLocaleString('en-IN')}`)
+    expect(s.rows[0].balanceLabel).toBe('to pay')
+    expect(s.rows[1].paidOut).toBe('₹0')
+  })
+
+  it('says settled, paid ahead and an unknown balance, and flags what needs a look', () => {
+    const pay1 = Math.round(lines[1].pay as number)
+    const s = build([payment('1', 'e1', '2026-09-20', pay1, 'owner'), payment('2', 'e2', '2026-09-20', Math.round(lines[2].pay as number) + 500, 'owner')], { e3: ['2026-09-08'] })
+    expect(s.rows[1]).toMatchObject({ balance: '₹0', balanceLabel: 'settled', tone: 'settled' })
+    expect(s.rows[2]).toMatchObject({ balance: '₹500', balanceLabel: 'paid ahead', tone: 'ahead' })
+    expect(s.notes.join(' ')).toContain('Raju has been paid ₹500 more')
+    expect(s.notes.join(' ')).toContain('1 day in Attendance still needs a look (Qadir, 8 Sep')
+    const none = build(null)
+    expect(none.rows[0]).toMatchObject({ paidOut: '—', balance: '—', balanceLabel: 'not known' })
+    expect(none.notes[0]).toMatch(/Payments could not be read/)
+  })
+
+  it('draws a real one-page PDF with the rupee sign, unlike the hours-only reports', async () => {
+    const doc = payrollDoc(build([payment('1', 'e0', '2026-09-10', 5000, 'owner')]))
+    expect(JSON.stringify(doc.content)).toContain('₹')
+    expect(JSON.stringify(doc.content)).toContain('OWNER COPY')
+    expect(pageCount(await render(doc))).toBe(1)
   })
 })
 

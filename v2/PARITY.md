@@ -92,7 +92,7 @@ Nothing here changes functionality. Every MISSING row is a function the live app
 | # | Live app does | Canvas | Status |
 |---|---|---|---|
 | M1 | Month picker, prev/next | PeriodControl, one shared period | OK |
-| M2 | Download Excel (loads the library on first tap; "Could not load the Excel exporter — check Wi-Fi.") | Button; failure not drawn | PART · failure toast generic only |
+| M2 | Download Excel | Dropped on the owner's review (2026-10-20): not in 2.0 | DROPPED · v1 keeps it |
 | M3 | Review alert "N attendance entries need review — X have not clocked out yet; Y has a day closed without a clock-out photo" + **Review entries** jumps to the first flagged day | Replaced by the Needs attention queue; no jump from Month | OK · "Review entries" link added (default). The banner, tile, marks and Days queue are one list (also holds a day closed with no photo; today's clocked-in people are not on it, unlike v1's alert) |
 | M4 | Day states: full, half, absent A, holiday F, docked (marked unpaid), open "!", flagged, auto-info (blue dot: earlier session closed with no photo), unbroken (pink dot: possible missed lunch) | Full, half, A, F, flag "!", today; **docked, auto-info, unbroken, open-vs-flagged** missing | PART · legend drawn; markers not on the cells |
 | M5 | Row sub-labels "● N days off", "● Review required" | Team grid names carry "N days off · ● N to review / ✓ reviewed"; the one-person list keeps the strip | OK · Proposal · Month boards |
@@ -356,9 +356,12 @@ Month's header now has one **Download** button (a popover from 900px, a bottom s
 - **Employee statements**: A4 portrait, one page per person (calendar, days, absent, half days, hours worked, "how your hours are
   counted", signature lines). **No money anywhere**: a test fails if a rupee sign, "salary", "payment", "balance" or "rate" appears
   in either document. "All in one PDF" for printing, or each person on their own (Share on a touch device, Save elsewhere).
-- **Data for a spreadsheet**: the existing Excel export, renamed.
-- **Payroll summary**: drawn, **not built** (the menu says so on use). So is the owner-only "changes and checks" page: it was taken
-  out of the shared pack because a printed list of owner edits invites questions; the board is kept, titled "later".
+- **Data for a spreadsheet**: removed 2026-10-20 (owner's review). The menu has three downloads.
+- **Payroll summary** (built 2026-10-20): A4 landscape, owner only, the one PDF with money. Per person: salary, days, hours worked, paid Fridays,
+  overtime, hours paid, per hour, pay, paid out (owner-entered payments only), balance (to pay / settled / paid ahead), plus totals, how pay is worked
+  out, and a "Needs your attention" box (paid ahead, days still to check, a disputed payment, no rate, payments unreadable). Same figures as Pay
+  (`buildSettlement`); redrawn from the board after Pay was rebuilt, so the old "larger figure" balance wording is gone. Not built: the owner-only
+  "changes and checks" page; it was taken out of the shared pack because a printed list of owner edits invites questions; the board is kept, titled "later".
 
 The numbers are Month's own: hours come from `buildMonthModel`, and a test holds every person's printed hours and the statement's
 "hours counted" equal to Month · Pay's `punchedHours` / `paidHours`.

@@ -7,7 +7,7 @@ import { cellHours, fmtHours, fmtPrepared, type AttendanceReport, type DayCode, 
  * Differences from the boards, deliberate: an absent day is a solid tint with its letter rather than hatching (the PDF
  * library has no pattern fill), and the letters and tints are the whole legend, so a black-and-white print still reads.
  */
-const C = {
+export const C = {
   ink: '#0f1a30', muted: '#4a5772', line: '#d7dde8', strong: '#7c879c', sunken: '#e9edf4',
 } as const
 const TONE: Record<Exclude<DayCode, ''>, { bg: string; ink: string }> = {
@@ -17,11 +17,11 @@ const TONE: Record<Exclude<DayCode, ''>, { bg: string; ink: string }> = {
   F: { bg: '#ece5fb', ink: '#4e2f9e' },
   O: { bg: '#fff4dc', ink: '#7a3b00' },
 }
-const MONO = 'PlexMono'
+export const MONO = 'PlexMono'
 
-const label = (text: string, extra: object = {}) => ({ text: text.toUpperCase(), font: MONO, fontSize: 6.5, characterSpacing: 0.5, color: C.muted, ...extra })
+export const label = (text: string, extra: object = {}) => ({ text: text.toUpperCase(), font: MONO, fontSize: 6.5, characterSpacing: 0.5, color: C.muted, ...extra })
 
-const box = (stack: Content[]): Content => ({
+export const box = (stack: Content[]): Content => ({
   table: { widths: ['*'], body: [[{ stack, margin: [6, 5, 6, 5] }]] },
   layout: { hLineWidth: () => 1, vLineWidth: () => 1, hLineColor: () => C.line, vLineColor: () => C.line },
 })
@@ -39,7 +39,7 @@ const dayCell = (c: ReportCell): TableCell => {
   }
 }
 
-const footerLine = (left: string, right: string) => ({ margin: [30, 0, 30, 0], columns: [{ text: left, fontSize: 7.5, color: C.muted }, { text: right, fontSize: 7.5, color: C.muted, alignment: 'right' }] }) as Content
+export const footerLine = (left: string, right: string) => ({ margin: [30, 0, 30, 0], columns: [{ text: left, fontSize: 7.5, color: C.muted }, { text: right, fontSize: 7.5, color: C.muted, alignment: 'right' }] }) as Content
 
 /** A4 landscape: everyone, every day, one page for up to a dozen people, then it continues on the next. */
 /** Width of the grid on the page, in points: column widths plus the grid lines. Exported so a test can hold it to the margins. */

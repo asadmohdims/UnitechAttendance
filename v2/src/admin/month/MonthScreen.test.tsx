@@ -5,8 +5,6 @@ import { queryCache } from '../../data/queryCache'
 import { store } from '../../data/store'
 import type { Employee, RecordRow } from '../../data/types'
 import { SheetsProvider } from '../../ui/Sheets'
-import { buildExportSheet } from './exportXlsx'
-import { buildMonthModel } from './monthModel'
 import { MonthScreen } from './MonthScreen'
 import { revalidateMonthAttendance } from './useMonthData'
 
@@ -219,21 +217,5 @@ describe('Month · Pay', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Open in Payments' }))
     await act(async () => {})
     expect(screen.getByRole('button', { name: 'Payments' })).toHaveAttribute('aria-pressed', 'true')
-  })
-})
-
-describe('Excel sheet', () => {
-  it('matches the live export: exact hours, "IN (no out)" for an open day, totals without overtime', () => {
-    const model = buildMonthModel({ ym: '2026-10', employees: staff, records, overrides: [], overtime: [{ emp_id: 'a', date: '2026-10-05', hours: 2 }], today: '2026-10-14' })
-    const { header, rows } = buildExportSheet(model)
-    expect(header[0]).toBe('Employee')
-    expect(header[1]).toBe('2026-10-01')
-    expect(header).toHaveLength(1 + 31 + 2)
-    const faizan = rows[0]
-    expect(faizan[0]).toBe('Faizan')
-    expect(faizan[5]).toBe(8) // 5 Oct
-    expect(faizan.at(-2)).toBe(3) // days worked
-    expect(faizan.at(-1)).toBe(24) // overtime is not added
-    expect(rows[1][12]).toBe('IN (no out)') // Shakib, 12 Oct
   })
 })

@@ -24,10 +24,9 @@ const lines = buildPayLines(model, {}, '2026-10-01')
 
 const mount = () => {
   const onNotice = vi.fn()
-  const onExcel = vi.fn()
-  render(<DownloadMenu model={model} lines={lines} now={new Date(2026, 9, 1, 9, 12)} onExcel={onExcel} onNotice={onNotice} />)
+  render(<DownloadMenu model={model} lines={lines} payments={null} ledger={null} checkDates={{}} now={new Date(2026, 9, 1, 9, 12)} onNotice={onNotice} />)
   fireEvent.click(screen.getByRole('button', { name: /Download/ }))
-  return { onNotice, onExcel }
+  return { onNotice }
 }
 const click = async (name: RegExp) => { await act(async () => { fireEvent.click(screen.getByRole('menuitem', { name })) }) }
 
@@ -37,14 +36,14 @@ beforeEach(() => {
 })
 
 describe('Month · Download menu', () => {
-  it('lists the four downloads in the board\'s words, with who each is for', () => {
+  it('lists the three downloads in the board\'s words, with who each is for', () => {
     mount()
     expect(screen.getByText('Attendance report')).toBeInTheDocument()
     expect(screen.getByText('Shareable')).toBeInTheDocument()
     expect(screen.getByText('One page each: attendance and hours, no money · PDF')).toBeInTheDocument()
     expect(screen.getByText('2 people')).toBeInTheDocument()
     expect(screen.getByText('Owner only')).toBeInTheDocument()
-    expect(screen.getByText('Data for a spreadsheet')).toBeInTheDocument()
+    expect(screen.queryByText('Data for a spreadsheet')).toBeNull() // dropped on the owner's review: no Excel in 2.0
   })
 
   it('saves the attendance report on a desktop, with the month in the file name', async () => {
@@ -83,17 +82,14 @@ describe('Month · Download menu', () => {
     expect(only).not.toContain('Faizan') // one person, one page: nobody else's name on it
   })
 
-  it('says so on use that the payroll summary is not built, instead of looking dead', async () => {
-    const { onNotice } = mount()
+  it('saves the payroll summary, stamped for the owner, with the month in the file name', async () => {
+    mount()
     await click(/Payroll summary/)
-    expect(onNotice).toHaveBeenCalledWith("Payroll summary isn't built in 2.0 yet.")
-    expect(renderPdf).not.toHaveBeenCalled()
-  })
-
-  it('hands the spreadsheet to the existing exporter', async () => {
-    const { onExcel } = mount()
-    await click(/Data for a spreadsheet/)
-    expect(onExcel).toHaveBeenCalledTimes(1)
+    expect(renderPdf).toHaveBeenCalledTimes(1)
+    const all = JSON.stringify(renderPdf.mock.calls[0][0].content)
+    expect(all).toContain('Payroll summary · September 2026')
+    expect(all).toContain('OWNER COPY · NOT FOR STAFF')
+    expect(saveFile).toHaveBeenCalledWith(expect.any(Blob), 'Payroll-2026-09.pdf')
   })
 
   it('says why when a PDF cannot be made, and stays open to try again', async () => {

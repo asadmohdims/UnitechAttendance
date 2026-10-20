@@ -36,25 +36,14 @@ beforeEach(() => {
 })
 
 describe('Month · Download menu', () => {
-  it('lists the three downloads in the board\'s words, with who each is for', () => {
+  it('lists the two downloads in the board\'s words, with who each is for', () => {
     mount()
-    expect(screen.getByText('Attendance report')).toBeInTheDocument()
-    expect(screen.getByText('Shareable')).toBeInTheDocument()
+    expect(screen.queryByText('Attendance report')).toBeNull() // dropped on the owner's review: only statements and the owner's report
     expect(screen.getByText('One page each: attendance and hours, no money · PDF')).toBeInTheDocument()
     expect(screen.getByText('2 people')).toBeInTheDocument()
     expect(screen.getByText('Owner only')).toBeInTheDocument()
+    expect(screen.getByText('Attendance and pay')).toBeInTheDocument()
     expect(screen.queryByText('Data for a spreadsheet')).toBeNull() // dropped on the owner's review: no Excel in 2.0
-  })
-
-  it('saves the attendance report on a desktop, with the month in the file name', async () => {
-    mount()
-    await click(/^Attendance report/)
-    expect(renderPdf).toHaveBeenCalledTimes(1)
-    expect(JSON.stringify(renderPdf.mock.calls[0][0].content)).toContain('Attendance report · September 2026')
-    expect(JSON.stringify(renderPdf.mock.calls[0][0].content)).not.toContain('₹') // the shareable one holds no money
-    expect(shareOrSave).toHaveBeenCalledTimes(1) // the report goes through the share-or-save door; on a desktop that door saves
-    expect(shareOrSave.mock.calls).toEqual([[expect.any(Blob), 'Attendance-2026-09.pdf', 'Attendance 2026 09']])
-    expect(screen.queryByRole('menu')).toBeNull() // closed once it is done
   })
 
   it('offers each person their own one-page statement, and everyone in one file', async () => {
@@ -96,10 +85,10 @@ describe('Month · Download menu', () => {
   it('says why when a PDF cannot be made, and stays open to try again', async () => {
     renderPdf.mockRejectedValueOnce(new Error('font file 404'))
     const { onNotice } = mount()
-    await click(/Attendance report/)
+    await click(/Attendance and pay/)
     expect(onNotice).toHaveBeenCalledWith('Failed: font file 404')
     expect(screen.getByRole('menu')).toBeInTheDocument()
-    expect(screen.getByRole('menuitem', { name: /Attendance report/ })).toBeEnabled()
+    expect(screen.getByRole('menuitem', { name: /Attendance and pay/ })).toBeEnabled()
   })
 
   it('closes on Escape', () => {

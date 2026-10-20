@@ -5,9 +5,9 @@ import { SHOP_NAME } from './shop'
 
 /**
  * What the printed reports say, worked out from the same month model the Month screen uses, so a number on
- * paper is the number on screen. The attendance report and the statements are hours only: they get printed and
- * pinned up, so nothing in them may carry a salary, a pay figure or a payment (a test checks the finished PDFs for
- * the rupee sign). The owner copy of the attendance report is the one document that prices the hours.
+ * paper is the number on screen. The employee statements are hours only: they get printed and pinned up, so nothing
+ * in them may carry a salary, a pay figure or a payment (a test checks the finished PDF for the rupee sign).
+ * The owner's attendance-and-pay cards are the one document that prices the hours.
  *
  * P present, H half day, A absent, F weekly holiday (paid), D weekly holiday the owner docked (not paid), O a session with no clock-out yet, '' nothing to show
  * (a day that has not happened, or before the person joined).
@@ -50,11 +50,9 @@ export interface PayFigures {
 
 export interface PersonCard {
   name: string
-  initials: string
   cells: ReportCell[]
   hours: { worked: number; fridays: number; overtime: number; total: number }
-  /** Only on the owner copy. The shareable report is built without it, so a rupee cannot reach it by accident. */
-  pay: PayFigures | null
+  pay: PayFigures
 }
 
 export interface CardReport {
@@ -64,9 +62,8 @@ export interface CardReport {
   /** Monday-first: blanks before the 1st. */
   leadBlanks: number
   people: PersonCard[]
-  totals: { hours: PersonCard['hours']; pay: { parts: [number, number, number]; salary: number; unrated: number } | null }
+  totals: { hours: PersonCard['hours']; pay: { parts: [number, number, number]; salary: number; unrated: number } }
   hasOpen: boolean
-  ownerCopy: boolean
   preparedAt: Date
 }
 
@@ -83,20 +80,19 @@ export function payFigures(line: PayLine): PayFigures {
   return { monthly, perHour: line.hourly, parts, salary }
 }
 
-export function buildCardReport(model: MonthModel, lines: PayLine[], now: Date, opts: { ownerCopy: boolean }): CardReport {
+export function buildCardReport(model: MonthModel, lines: PayLine[], now: Date): CardReport {
   const people: PersonCard[] = model.people.map((p) => {
     const line = lines.find((l) => l.emp.id === p.emp.id) as PayLine
     return {
       name: p.emp.name,
-      initials: initials(p.emp.name),
       cells: cellsOf(p),
       // Exactly Month · Pay's hours lines: what the paid hours are made of.
       hours: { worked: line.punchedHours, fridays: line.creditedHours, overtime: line.overtime, total: line.paidHours },
-      pay: opts.ownerCopy ? payFigures(line) : null,
+      pay: payFigures(line),
     }
   })
   const sum = (f: (c: PersonCard) => number) => people.reduce((s, c) => s + f(c), 0)
-  const priced = people.filter((c) => c.pay?.parts)
+  const priced = people.filter((c) => c.pay.parts)
   return {
     shop: SHOP_NAME,
     monthLabel: MONTH_NAME(model.ym),
@@ -105,16 +101,13 @@ export function buildCardReport(model: MonthModel, lines: PayLine[], now: Date, 
     people,
     totals: {
       hours: { worked: sum((c) => c.hours.worked), fridays: sum((c) => c.hours.fridays), overtime: sum((c) => c.hours.overtime), total: sum((c) => c.hours.total) },
-      pay: opts.ownerCopy
-        ? {
-            parts: [0, 1, 2].map((i) => priced.reduce((s, c) => s + (c.pay?.parts?.[i] ?? 0), 0)) as [number, number, number],
-            salary: priced.reduce((s, c) => s + (c.pay?.salary ?? 0), 0),
-            unrated: people.length - priced.length,
-          }
-        : null,
+      pay: {
+        parts: [0, 1, 2].map((i) => priced.reduce((s, c) => s + (c.pay.parts?.[i] ?? 0), 0)) as [number, number, number],
+        salary: priced.reduce((s, c) => s + (c.pay.salary ?? 0), 0),
+        unrated: people.length - priced.length,
+      },
     },
     hasOpen: model.people.some((p) => p.days.some((d) => d.kind === 'open')),
-    ownerCopy: opts.ownerCopy,
     preparedAt: now,
   }
 }

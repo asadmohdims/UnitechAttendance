@@ -349,16 +349,12 @@ orientation (v1's does, to landscape); say if the kiosk install should.
 
 ## Monthly reports as PDFs (2026-10-19), built from the Report boards
 
-Month's header now has one **Download** button (a popover from 900px, a bottom sheet on a phone) in place of "Download Excel":
-- **Attendance report** (cards, 2026-10-20; replaces the landscape table): A4 portrait, a calendar card per person, two across, the month's totals and the legend in the
-  last slot. Each card: avatar and name, a Monday-first calendar (date and hours per day; A, H, F, and a docked Friday in pale red with a struck F), then
-  Worked + Fridays + Overtime = Total. Hours only. A card is never split across pages; more people continue on the next page. Offered through the share sheet on a
-  touch device and as a download on a desktop.
+Month's header now has one **Download** button (a popover from 900px, a bottom sheet on a phone) in place of "Download Excel", with two items:
 - **Employee statements**: A4 portrait, one page per person (calendar, days, absent, half days, hours worked, "how your hours are
   counted", signature lines). **No money anywhere**: a test fails if a rupee sign, "salary", "payment", "balance" or "rate" appears
   in either document. "All in one PDF" for printing, or each person on their own (Share on a touch device, Save elsewhere).
 - **Data for a spreadsheet**: removed 2026-10-20 (owner's review). The menu has three downloads.
-- **Attendance and pay** (owner only, 2026-10-20; replaces the payroll summary table): the same cards with the monthly salary and hourly rate ("₹18,000 (₹75.00 an hour)")
+- **Attendance and pay** (owner only, 2026-10-20; replaces the landscape attendance report, the shareable card version and the payroll summary table): A4 portrait, a calendar card per person, two across (date and hours per day; A, H, F, and a docked Friday in pale red with a struck F), then Worked + Fridays + Overtime = Total, with the monthly salary and hourly rate ("₹18,000 (₹75.00 an hour)")
   in each header and a pay row under the hours: each part priced at the hourly rate, ending in a dark Salary box. The last slot totals the team. Same figures as
   Pay (`payFigures`). Paid out and balance are no longer printed (Pay and Payments have them). Deliberate differences from the board: absent is a solid tint, a
   docked Friday is a pale red rather than an outlined cell (the PDF library has no hatch or per-cell outline).

@@ -17,7 +17,6 @@ interface Props {
 
 const ICON = { width: 22, height: 22, viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', strokeWidth: 1.8, strokeLinecap: 'round', strokeLinejoin: 'round', 'aria-hidden': true } as const
 const ICONS = {
-  report: <svg {...ICON}><rect x="3" y="5" width="18" height="16" rx="2" /><path d="M3 10h18M8 3v4M16 3v4" /></svg>,
   people: <svg {...ICON}><circle cx="9" cy="8" r="3.5" /><path d="M2.5 20c.6-3.6 3.2-5.5 6.5-5.5s5.9 1.9 6.5 5.5" /></svg>,
   payroll: <svg {...ICON}><rect x="3" y="6" width="18" height="12" rx="2" /><circle cx="12" cy="12" r="2.5" /></svg>,
 }
@@ -94,12 +93,10 @@ export function DownloadMenu({ model, lines, now, onNotice }: Props) {
           <div className="dl__panel" role="menu" aria-label={`Download ${model?.ym ?? ''}`}>
             {view === 'main' ? (
               <>
-                <Item icon={ICONS.report} title="Attendance report" sub={sub('report', 'A calendar card each, hours only · PDF')} tag="Shareable" tone="in" disabled={!!busy}
-                  onClick={() => model && make('report', cardsDoc(buildCardReport(model, lines, now, { ownerCopy: false })), `Attendance-${model.ym}.pdf`, 'share')} />
                 <Item icon={ICONS.people} title="Employee statements" sub="One page each: attendance and hours, no money · PDF" tag={`${people.length} ${people.length === 1 ? 'person' : 'people'}`} disabled={!!busy}
                   onClick={() => setView('people')} />
                 <Item icon={ICONS.payroll} title="Attendance and pay" sub={sub('owner', 'Hours, salary and pay, a card each · PDF')} tag="Owner only" tone="alert" disabled={!!busy}
-                  onClick={() => model && make('owner', cardsDoc(buildCardReport(model, lines, now, { ownerCopy: true })), `Attendance-and-pay-${model.ym}.pdf`, 'save')} />
+                  onClick={() => model && make('owner', cardsDoc(buildCardReport(model, lines, now)), `Attendance-and-pay-${model.ym}.pdf`, 'save')} />
               </>
             ) : (
               <>

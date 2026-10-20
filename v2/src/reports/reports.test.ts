@@ -64,7 +64,7 @@ describe('the numbers on paper are the numbers on screen', () => {
   const lines = buildPayLines(model, rates(people), '2026-10-01')
 
   it("a card's hours are Month · Pay's lines: worked, paid Fridays and overtime add up to the hours counted", () => {
-    const report = buildCardReport(model, lines, NOW, { ownerCopy: false })
+    const report = buildCardReport(model, lines, NOW)
     report.people.forEach((c, i) => {
       expect(c.hours.worked).toBeCloseTo(lines[i].punchedHours, 5)
       expect(c.hours.fridays).toBe(lines[i].creditedHours)
@@ -76,7 +76,7 @@ describe('the numbers on paper are the numbers on screen', () => {
   })
 
   it("a calendar's day cells add up to the person's worked hours, and the codes follow the month model", () => {
-    const report = buildCardReport(model, lines, NOW, { ownerCopy: false })
+    const report = buildCardReport(model, lines, NOW)
     for (const c of report.people) {
       expect(c.cells.reduce((s, x) => s + (x.hours ?? 0), 0)).toBeCloseTo(c.hours.worked, 5)
       expect(c.cells.filter((x) => x.code === 'F')).toHaveLength(4) // four Fridays in September 2026
@@ -87,14 +87,14 @@ describe('the numbers on paper are the numbers on screen', () => {
   it('a Friday the owner docked is drawn apart and is not counted: three paid Fridays, 24:00', () => {
     const docked = month(people, [{ emp_id: 'e0', date: '2026-09-18', paid: false }])
     const l = buildPayLines(docked, rates(people), '2026-10-01')
-    const c = buildCardReport(docked, l, NOW, { ownerCopy: false }).people[0]
+    const c = buildCardReport(docked, l, NOW).people[0]
     expect(c.cells.filter((x) => x.code === 'D').map((x) => x.day)).toEqual([18])
     expect(c.cells.filter((x) => x.code === 'F')).toHaveLength(3)
     expect(c.hours.fridays).toBe(24)
   })
 
   it('the pay row is Month · Pay\'s salary to the rupee, and its three parts always add up to it', () => {
-    const owner = buildCardReport(model, lines, NOW, { ownerCopy: true })
+    const owner = buildCardReport(model, lines, NOW)
     owner.people.forEach((c, i) => {
       const pay = c.pay!
       expect(pay.salary).toBe(Math.round(lines[i].pay as number))
@@ -109,12 +109,12 @@ describe('the numbers on paper are the numbers on screen', () => {
   it('the hourly rate follows the days in the month, so the same salary is a different rate in October', () => {
     const oct = buildMonthModel({ ym: '2026-10', employees: staff(1), records: [], overrides: [], overtime: [], today: '2026-11-01' })
     const l = buildPayLines(oct, rates(staff(1)), '2026-11-01')
-    expect(buildCardReport(oct, l, NOW, { ownerCopy: true }).people[0].pay!.perHour).toBeCloseTo(18000 / 248, 5)
+    expect(buildCardReport(oct, l, NOW).people[0].pay!.perHour).toBeCloseTo(18000 / 248, 5)
   })
 
   it('someone with no rate is left out of the pay row and said so, not shown as ₹0', () => {
     const l = buildPayLines(model, { ...rates(people), e1: [] }, '2026-10-01')
-    const owner = buildCardReport(model, l, NOW, { ownerCopy: true })
+    const owner = buildCardReport(model, l, NOW)
     expect(owner.people[1].pay).toEqual({ monthly: null, perHour: null, parts: null, salary: null })
     expect(owner.totals.pay!.unrated).toBe(1)
     expect(JSON.stringify(cardsDoc(owner).content)).toContain('no salary set')
@@ -136,14 +136,14 @@ describe('what is printed says the right things', () => {
   const model = month(people)
   const lines = buildPayLines(model, rates(people), '2026-10-01')
   it('names the shop, and makes no promise the owner has not made', () => {
-    const all = JSON.stringify(cardsDoc(buildCardReport(model, lines, NOW, { ownerCopy: false }))) + JSON.stringify(statementsDoc([buildStatement(model, model.people[0], lines[0], NOW)]))
+    const all = JSON.stringify(cardsDoc(buildCardReport(model, lines, NOW))) + JSON.stringify(statementsDoc([buildStatement(model, model.people[0], lines[0], NOW)]))
     expect(all).toContain('UNITECH MACHINERIES')
     expect(all).not.toContain('Unitech Attendance')
     expect(all).not.toMatch(/within 7 days|looks wrong/)
   })
 
-  it('the owner copy is stamped for the owner and gives the hourly rule', () => {
-    const all = JSON.stringify(cardsDoc(buildCardReport(model, lines, NOW, { ownerCopy: true })).content)
+  it('the report is stamped for the owner and gives the hourly rule', () => {
+    const all = JSON.stringify(cardsDoc(buildCardReport(model, lines, NOW)).content)
     expect(all).toContain('OWNER COPY')
     expect(all).toContain('Attendance and pay · September 2026')
     expect(all).toContain('divides by 240')
@@ -151,26 +151,17 @@ describe('what is printed says the right things', () => {
   })
 })
 
-describe('what is printed for sharing never carries money', () => {
+describe('what is pinned up never carries money', () => {
   const people = staff(5)
   const model = month(people)
   const lines = buildPayLines(model, rates(people), '2026-10-01')
-  const text = (doc: TDocumentDefinitions) => JSON.stringify(doc.content) + JSON.stringify((doc.footer as (a: number, b: number) => unknown)(1, 1))
 
-  it('the attendance report and the statements hold no rupee sign, salary, pay or payment wording', () => {
-    const docs = [cardsDoc(buildCardReport(model, lines, NOW, { ownerCopy: false })), statementsDoc(model.people.map((p, i) => buildStatement(model, p, lines[i], NOW)))]
-    for (const doc of docs) {
-      const all = text(doc)
-      expect(all).not.toContain('₹')
-      expect(all).not.toMatch(/salary|payment|balance|per hour|an hour|rate|owner copy/i)
-      expect(all).not.toMatch(/18000|18,000/)
-    }
-  })
-
-  it('the shareable report is built without any pay figure at all, not merely hidden', () => {
-    const r = buildCardReport(model, lines, NOW, { ownerCopy: false })
-    expect(r.totals.pay).toBeNull()
-    expect(r.people.every((c) => c.pay === null)).toBe(true)
+  it('the employee statements hold no rupee sign, salary, pay or payment wording', () => {
+    const doc = statementsDoc(model.people.map((p, i) => buildStatement(model, p, lines[i], NOW)))
+    const all = JSON.stringify(doc.content) + JSON.stringify((doc.footer as (a: number, b: number) => unknown)(1, 1))
+    expect(all).not.toContain('₹')
+    expect(all).not.toMatch(/salary|payment|balance|per hour|an hour|rate|owner copy/i)
+    expect(all).not.toMatch(/18000|18,000/)
   })
 })
 
@@ -179,8 +170,8 @@ describe('the PDF itself', () => {
   const model = month(people)
   const lines = buildPayLines(model, rates(people), '2026-10-01')
 
-  it.each([false, true])('draws the attendance cards on one A4 portrait page for five people (owner copy: %s), with both fonts embedded', async (ownerCopy) => {
-    const pdf = await render(cardsDoc(buildCardReport(model, lines, NOW, { ownerCopy })))
+  it('draws the cards on one A4 portrait page for five people, with both fonts embedded', async () => {
+    const pdf = await render(cardsDoc(buildCardReport(model, lines, NOW)))
     expect(pdf.subarray(0, 5).toString()).toBe('%PDF-')
     expect(pageCount(pdf)).toBe(1)
     expect(pdf.length).toBeGreaterThan(8_000)
@@ -195,14 +186,13 @@ describe('the PDF itself', () => {
     const many = staff(14)
     const m = month(many)
     const l = buildPayLines(m, rates(many), '2026-10-01')
-    expect(pageCount(await render(cardsDoc(buildCardReport(m, l, NOW, { ownerCopy: false }))))).toBeGreaterThanOrEqual(2)
-    expect(pageCount(await render(cardsDoc(buildCardReport(m, l, NOW, { ownerCopy: true }))))).toBeGreaterThanOrEqual(2)
+    expect(pageCount(await render(cardsDoc(buildCardReport(m, l, NOW))))).toBeGreaterThanOrEqual(2)
   })
 
-  it('a month that needs six calendar rows (August 2026) still draws, owner copy included', async () => {
+  it('a month that needs six calendar rows (August 2026) still draws', async () => {
     const m = buildMonthModel({ ym: '2026-08', employees: staff(5), records: [], overrides: [], overtime: [], today: '2026-09-15' })
     const l = buildPayLines(m, rates(staff(5)), '2026-09-15')
-    expect(pageCount(await render(cardsDoc(buildCardReport(m, l, NOW, { ownerCopy: true }))))).toBeLessThanOrEqual(2)
+    expect(pageCount(await render(cardsDoc(buildCardReport(m, l, NOW))))).toBeLessThanOrEqual(2)
   })
 
   it('draws one A4 portrait page per person, and a single person gives a single page', async () => {
@@ -215,6 +205,6 @@ describe('the PDF itself', () => {
 
   it('copes with a 31-day month and with no one in it', async () => {
     const m = buildMonthModel({ ym: '2026-10', employees: [], records: [], overrides: [], overtime: [], today: '2026-11-01' })
-    expect(pageCount(await render(cardsDoc(buildCardReport(m, [], NOW, { ownerCopy: true }))))).toBe(1)
+    expect(pageCount(await render(cardsDoc(buildCardReport(m, [], NOW))))).toBe(1)
   })
 })

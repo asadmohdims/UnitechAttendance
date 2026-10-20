@@ -4,10 +4,10 @@ import { C, MONO, TONE } from './reportDocs'
 import { fmtHours, fmtPrepared, type CardReport, type DayCode, type PersonCard, type ReportCell } from './reportModel'
 
 /**
- * The attendance report: A4 portrait, two cards across, one calendar card per person (their month, the hours worked each
- * day, and below it the sum of their hours), laid out as the "Report · Attendance" cards boards on the canvas.
- * The shareable version is hours only. The owner copy adds a pay row under the hours, priced at each person's own hourly
- * rate, ending in their salary.
+ * The owner's Attendance and pay report: A4 portrait, two cards across, one calendar card per person (their month, the
+ * hours worked each day, the sum of their hours, and under it that sum priced at their own hourly rate, ending in their
+ * salary), laid out as the "Report · Attendance and pay, owner copy" board on the canvas. Owner only: it carries money,
+ * so it is stamped and is never the page that gets pinned up (the employee statements are).
  * Differences from the boards, deliberate: an absent day is a solid tint with its letter rather than hatching, and a
  * docked Friday is a pale red with a struck-through F rather than an outlined cell (the PDF library has no pattern fill
  * and no per-cell outline), so the letters and tints are the whole legend and a black-and-white print still reads.
@@ -110,23 +110,22 @@ const card = (stack: N[], fill?: string): N => ({
 })
 
 function personCard(p: PersonCard, r: CardReport): N {
-  const salary: N | null = p.pay
-    ? p.pay.monthly === null
+  const salary: N =
+    p.pay.monthly === null
       ? { text: 'No salary set', font: MONO, fontSize: 8, color: C.muted }
       : { text: [{ text: fmtCurrency(p.pay.monthly), bold: true, font: MONO, fontSize: 9 }, { text: ` (${fmtRate(p.pay.perHour)} an hour)`, font: MONO, fontSize: 7, color: C.muted }] }
-    : null
   return card([
     {
       columns: [
         { width: 20, table: { widths: [20], heights: [20], body: [[{ text: initials2(p.name), font: MONO, bold: true, fontSize: 7, color: C.muted, fillColor: C.sunken, alignment: 'center', margin: [0, 6, 0, 0] }]] }, layout: noBorders },
         { width: '*', text: p.name, bold: true, fontSize: 11.5, margin: [6, 3, 0, 0] },
-        ...(salary ? [{ width: 'auto', ...salary, alignment: 'right', margin: [0, 4, 0, 0] }] : []),
+        { width: 'auto', ...salary, alignment: 'right', margin: [0, 4, 0, 0] },
       ],
       margin: [0, 0, 0, 4],
     },
     calendar(p.cells, r.leadBlanks),
     { ...hoursRow(p.hours), margin: [0, 5, 0, 0] },
-    ...(p.pay ? [{ ...payRow(p.pay.parts, p.pay.salary), margin: [0, 5, 0, 0] }] : []),
+    { ...payRow(p.pay.parts, p.pay.salary), margin: [0, 5, 0, 0] },
   ])
 }
 
@@ -139,7 +138,7 @@ const SWATCH: { code: Exclude<DayCode, ''>; text: string; label: string }[] = [
 ]
 
 function glance(r: CardReport): N {
-  const items = r.totals.pay && r.totals.pay.unrated ? r.totals.pay.unrated : 0
+  const items = r.totals.pay.unrated
   const legend: N[][] = [
     ...SWATCH.map((s): N[] => [
       { text: s.label, font: MONO, bold: true, fontSize: 6, color: TONE[s.code].ink, fillColor: TONE[s.code].bg, alignment: 'center', margin: [0, 2, 0, 1.5], ...(s.code === 'D' ? { decoration: 'lineThrough' } : {}) },
@@ -152,11 +151,11 @@ function glance(r: CardReport): N {
     [
       tiny('The month at a glance, everyone', { margin: [0, 0, 0, 5] }),
       hoursRow(r.totals.hours),
-      ...(r.totals.pay ? [{ ...payRow(r.totals.pay.parts, r.totals.pay.salary, 'Total salary'), margin: [0, 5, 0, 0] }] : []),
+      { ...payRow(r.totals.pay.parts, r.totals.pay.salary, 'Total salary'), margin: [0, 5, 0, 0] },
       ...(items ? [{ text: `Left out of the pay row: ${items} ${items === 1 ? 'person has' : 'people have'} no salary set.`, fontSize: 7, color: C.muted, margin: [0, 4, 0, 0] }] : []),
       tiny('How to read a day', { margin: [0, 9, 0, 4] }),
       { table: { widths: [26, '*'], body: legend }, layout: { ...noBorders, hLineWidth: () => 0, paddingBottom: () => 3 } },
-      { text: ['Hours are counted to the nearest quarter hour.', ...(r.ownerCopy ? [' ', perHourRule] : [])].join(''), fontSize: 7, color: C.muted, margin: [0, 4, 0, 0], lineHeight: 1.2 },
+      { text: `Hours are counted to the nearest quarter hour. ${perHourRule}`, fontSize: 7, color: C.muted, margin: [0, 4, 0, 0], lineHeight: 1.2 },
     ],
     C.sunken,
   )
@@ -169,10 +168,10 @@ export function cardsDoc(r: CardReport): TDocumentDefinitions {
   for (let i = 0; i < cells.length; i += 2) {
     rows.push({ columns: [cells[i], cells[i + 1] ?? { text: '' }], columnGap: GAP, unbreakable: true, margin: [0, 0, 0, GAP] })
   }
-  const title = r.ownerCopy ? `Attendance and pay · ${r.monthLabel}` : `Attendance report · ${r.monthLabel}`
+  const title = `Attendance and pay · ${r.monthLabel}`
   const right: N[] = [
-    ...(r.ownerCopy ? [{ text: 'OWNER COPY · NOT FOR STAFF', font: MONO, bold: true, fontSize: 6.5, characterSpacing: 0.5, color: '#7a2400', background: '#f7c4ae', alignment: 'right' }] : []),
-    { text: `${r.people.length} ${r.people.length === 1 ? 'person' : 'people'} · ${r.daysInMonth} days · Prepared ${fmtPrepared(r.preparedAt)}`, fontSize: 7.5, color: C.muted, alignment: 'right', margin: [0, r.ownerCopy ? 4 : 10, 0, 0] },
+    { text: 'OWNER COPY · NOT FOR STAFF', font: MONO, bold: true, fontSize: 6.5, characterSpacing: 0.5, color: '#7a2400', background: '#f7c4ae', alignment: 'right' },
+    { text: `${r.people.length} ${r.people.length === 1 ? 'person' : 'people'} · ${r.daysInMonth} days · Prepared ${fmtPrepared(r.preparedAt)}`, fontSize: 7.5, color: C.muted, alignment: 'right', margin: [0, 4, 0, 0] },
   ]
   const foot = (left: string, rightText: string) => (page: number, pages: number): N => ({
     margin: [PAGE.margin[0], 0, PAGE.margin[2], 0],
@@ -183,9 +182,7 @@ export function cardsDoc(r: CardReport): TDocumentDefinitions {
     pageMargins: PAGE.margin,
     defaultStyle: { font: 'Figtree', fontSize: 9, color: C.ink },
     info: { title: `${title}`, author: r.shop },
-    footer: (r.ownerCopy
-      ? foot('Approved by the owner: ______________________   Date: ____________', `${r.monthLabel} · Owner copy`)
-      : foot('Checked by the owner: ______________________   Date: ____________', `${r.shop} · ${r.monthLabel}`)) as unknown as TDocumentDefinitions['footer'],
+    footer: foot('Approved by the owner: ______________________   Date: ____________', `${r.monthLabel} · Owner copy`) as unknown as TDocumentDefinitions['footer'],
     content: [
       {
         columns: [

@@ -44,8 +44,8 @@ const pwa = () =>
       start_url: './',
       scope: './',
       display: 'standalone',
-      background_color: '#0b1220',
-      theme_color: '#0b1220',
+      background_color: '#1d3fd1',
+      theme_color: '#1d3fd1',
       icons: [
         { src: 'icons/icon-192.png', sizes: '192x192', type: 'image/png', purpose: 'any' },
         { src: 'icons/icon-512.png', sizes: '512x512', type: 'image/png', purpose: 'any' },

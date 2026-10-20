@@ -182,16 +182,8 @@ export function Kiosk({ mediaDevices, capture, onAdminAccess }: KioskProps) {
   const inCount = active.filter((e) => open[e.id]).length
   const missedCount = active.filter((e) => !open[e.id] && isMissedClockIn(punchedToday.has(e.id), tick)).length
   const syncView = SYNC_TEXT(sync)
-  const theme = useMemo(() => {
-    try {
-      return localStorage.getItem('tc2:theme') === 'dark' ? 'dark' : 'light'
-    } catch {
-      return 'light'
-    }
-  }, [])
-
   return (
-    <div className="kiosk" data-theme={theme}>
+    <div className="kiosk">
       <aside className="kiosk-side">
         <div className="kiosk-side__top">
           <div className="kiosk-side__id">

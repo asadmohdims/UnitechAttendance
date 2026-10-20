@@ -1,5 +1,8 @@
 /* Page-level defaults; everything else comes from tokens.css and components.css. */
 *,*::before,*::after{box-sizing:border-box}
 html,body{margin:0}
+/* Native controls, scrollbars and form fields follow the theme. */
+:root{color-scheme:light}
+[data-theme="dark"]{color-scheme:dark}
 body{background:var(--bg);color:var(--ink);font-family:var(--font-sans);-webkit-font-smoothing:antialiased}
 button{font-family:inherit}

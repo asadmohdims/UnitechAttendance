@@ -48,7 +48,7 @@ provided from npm). Do not edit those shared modules for v2's sake; the live app
   after a failure or 3s, so v2 never awaits it for a first draw: `useCachedQuery` renders the last good value
   at once and refetches behind it, and photos are saved on the device (`photoCache.ts`). Every store call goes
   through `store.ts`, which makes each method return a promise (demoStore returns plain values). v1 is untouched.
-- Status (2026-10-19): every screen on the canvas is built, tested (`npm test` in `v2/`, 207 tests) and deployed: the
+- Status (2026-10-19): every screen on the canvas is built, tested (`npm test` in `v2/`, 221 tests) and deployed: the
   offline-first data layer, kiosk home and punch flow, kiosk Payments (PIN, own month, add, confirmation), phone layouts,
   the admin shell with unlock, Days (all its edit actions), Month (Attendance, Pay, Excel, the Payments ledger, PDF
   reports), People (including photo, PIN, rate, deactivate), the sign-in dialog, and the service worker. Not built: the
@@ -63,6 +63,10 @@ provided from npm). Do not edit those shared modules for v2's sake; the live app
   someone simply clocked in today is not on it), because two rules disagreed in both directions. A flagged no-photo day offers
   **Mark as reviewed** (`v2/src/admin/review.ts`): it re-saves the same times through `updateRecordTimes`, so only the edit marker is
   written (`orig_*` = the times as confirmed, not a claim about the kiosk) and the day reads "Reviewed", not "You changed the times".
+- **Dark mode** (graphite "G3 Deep"): `v2/src/theme.ts` keeps one choice per device in `tc2:theme` (default light) and sets `data-theme` on `<html>`;
+  an inline script in `v2/index.html` applies it before first paint. The **Display** pop-up (`v2/src/ui/DisplayMenu.tsx`: sun / moon) sits in the
+  admin rail and the phone header. The kiosk follows the same setting (set once from the tablet's admin screens). Edit colours in
+  `styles/tokens.json` AND `tokens.css` (hand-kept in step; `tokens.test.ts` checks the JSON for contrast).
 - Month's **Download** menu builds PDFs on the device (`v2/src/reports/`, pdfmake, fonts in `src/assets/pdf-fonts/`): an attendance report (A4 landscape),
   per-person statements (A4 portrait). Both are hours only, by design and by test, since they get printed and pinned up. Payroll summary is drawn, not built.
 - Parity checklist (what the live app does vs the design): `v2/PARITY.md`. Update it as screens are built.

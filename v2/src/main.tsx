@@ -12,10 +12,13 @@ import { onSignInRestored } from '@legacy/supabaseClient.js'
 import { requestRefresh } from './data/invalidate'
 import { App } from './App'
 import { startServiceWorker } from './pwa'
+import { applyTheme, readTheme } from './theme'
 
 // After a sign-in renewal that followed refused requests, the screens may be showing saved data only.
 // The store re-sends queued punches by itself; this re-reads what is on screen.
 onSignInRestored(requestRefresh)
+
+applyTheme(readTheme())
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>

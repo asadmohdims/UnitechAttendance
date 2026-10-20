@@ -1,8 +1,9 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useMemo, useState } from 'react'
 import { dayModel, emptyDayModel } from '@legacy/dayStatus.js'
 import type { RecordRow } from '../../data/types'
 import { dateKey, fmtHours, fmtTime } from '../../format'
 import { Avatar } from '../../ui/Avatar'
+import { useMinWidth } from '../../ui/useMinWidth'
 import { buildAttentionQueue, type QueueItem } from '../dayEntries'
 import { withReview } from '../review'
 import { calloutStamp, calloutText, fmtDayShort } from '../dayText'
@@ -48,22 +49,10 @@ type View = 'team' | 'person'
 
 /** The team grid needs width; below this the one-person view is the only one (as v1's phone view was). */
 const GRID_MIN_WIDTH = 900
-function useWide(): boolean {
-  const query = `(min-width:${GRID_MIN_WIDTH}px)`
-  const [wide, setWide] = useState(() => window.matchMedia?.(query).matches ?? true)
-  useEffect(() => {
-    const mq = window.matchMedia?.(query)
-    if (!mq) return
-    const on = () => setWide(mq.matches)
-    mq.addEventListener('change', on)
-    return () => mq.removeEventListener('change', on)
-  }, [query])
-  return wide
-}
 
 export function Attendance({ model, records, overtime, now, currentYm, actions }: Props) {
   const today = dateKey(now)
-  const wide = useWide()
+  const wide = useMinWidth(GRID_MIN_WIDTH)
   const [viewChoice, setView] = useState<View>('team')
   const view: View = wide ? viewChoice : 'person'
   const [pickedEmp, setPickedEmp] = useState<string | null>(null)

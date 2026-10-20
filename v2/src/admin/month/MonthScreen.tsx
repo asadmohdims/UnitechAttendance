@@ -15,6 +15,7 @@ import { DownloadMenu } from './DownloadMenu'
 import { Pay } from './Pay'
 import { Payments, type PaymentActions } from './Payments'
 import { buildLedger } from './paymentsModel'
+import { buildAttentionQueue } from '../dayEntries'
 import { useMonthData } from './useMonthData'
 
 type Section = 'attendance' | 'pay' | 'payments'
@@ -43,7 +44,13 @@ export function MonthScreen({ onNotice, onOpenDay, nowOverride }: Props) {
 
   const data = useMonthData(ym, today)
   const { model, lines, records, overtime, payments } = data
-  const paidOut = payments ? payments.filter((p) => p.entered_by === 'owner').reduce((s, p) => s + Number(p.amount), 0) : null
+  // Days still to check per person, from the same list Attendance and Days read, for Pay's "days to check".
+  const checkDates = useMemo(() => {
+    const out: Record<string, string[]> = {}
+    for (const q of buildAttentionQueue((model?.people ?? []).map((p) => p.emp), records ?? [], overtime, now)) (out[q.emp.id] ??= []).push(q.date)
+    for (const k of Object.keys(out)) out[k].sort()
+    return out
+  }, [model, records, overtime, now])
 
   const attempt = useCallback(
     async (fn: () => Promise<void>) => {
@@ -101,8 +108,9 @@ export function MonthScreen({ onNotice, onOpenDay, nowOverride }: Props) {
     }
   }
 
-  const logPayment = async () => {
-    const active = (data.employees ?? []).filter((e) => e.active)
+  const logPayment = async (firstEmpId?: string) => {
+    // The select's first option is its default, so the person whose pay is on screen goes first.
+    const active = (data.employees ?? []).filter((e) => e.active).sort((a, b) => Number(b.id === firstEmpId) - Number(a.id === firstEmpId))
     if (!active.length) return onNotice('Add an employee first.')
     const v = await sheets.prompt(paymentForm(null, active, today))
     if (!v) return
@@ -177,7 +185,13 @@ export function MonthScreen({ onNotice, onOpenDay, nowOverride }: Props) {
       ) : section === 'payments' ? (
         <Payments ledger={ledger} actions={paymentActions} />
       ) : (
-        <Pay lines={lines} daysInMonth={model.daysInMonth} daysElapsed={model.daysElapsed} isCurrent={ym === currentYm} paidOut={paidOut} onChangeRate={(l) => void changeRate(l)} />
+        <Pay
+          lines={lines} people={model.people} payments={payments ?? null} checkDates={checkDates}
+          monthName={new Date(`${ym}-01T00:00:00`).toLocaleDateString('en-GB', { month: 'long' })}
+          daysInMonth={model.daysInMonth} daysElapsed={model.daysElapsed} isCurrent={ym === currentYm}
+          onChangeRate={(l) => void changeRate(l)} onLogPayment={(id) => void logPayment(id)}
+          onOpenPayments={() => setSection('payments')} onOpenAttendance={() => setSection('attendance')} onOpenDay={onOpenDay}
+        />
       )}
     </div>
   )

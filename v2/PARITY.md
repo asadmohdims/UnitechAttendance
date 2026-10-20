@@ -246,8 +246,15 @@ Where it differs from the live app or from the board, and why:
   a read-only dialog).
 - **Excel** is the live sheet: exact punch hours, "IN (no out)", totals **without** overtime. This disagrees with the
   month's "Hours recorded" figure, which includes overtime, exactly as live. Say if the sheet should include it.
-- **Already paid out** (Pay) is the sum of **owner-entered** payments for the month; the board draws the figure but
-  does not say which side. Shows "—" if the payments read fails. Confirm or change.
+- **Pay (reworked 2026-10-20, from the owner's review)**: no longer a port of the live Salary list. A settlement list (who is
+  owed what: "to pay", "settled", "paid ahead", paid-versus-earned bar, "No rate set", "N days to check"; filter Everyone / To pay)
+  beside one person's statement: Hours worked, + Paid Fridays, + Overtime (hidden when zero), Total hours, x Rate, Pay, Already
+  paid (each payment dated), Still to pay, then "Where the hours went" (a day strip) and Log a payment / Open in Payments / Open in
+  Attendance. Below 900px the list and the statement are two steps with a Back button. The live app's "Show calculation" table is gone;
+  the statement is the calculation (same formula, `buildPayLines` unchanged). **Still to pay** = pay minus **owner-entered** payments
+  for the month (the employee's own entries are the ledger's cross-check, not counted); paid ahead is shown, and does not reduce
+  what others are owed. If the payments read fails, Paid out and Still to pay show "—", never zero. "Open in Attendance" does not
+  pre-select the person. Model: `payModel.ts`; tests `payModel.test.ts`, `MonthScreen.test.tsx`.
 - **Change rate** replaces Amend (board wording); same two fields and the same toast.
 - **Payments** section: built later, see "Built in v2: People, Payments, sign-in".
 - Not verified on a device: the phone layout was only measured (375px: no horizontal scroll, two-column stats).

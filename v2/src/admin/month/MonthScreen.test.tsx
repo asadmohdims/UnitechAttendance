@@ -163,19 +163,54 @@ describe('Month · Attendance', () => {
 })
 
 describe('Month · Pay', () => {
-  it('shows each person, "No rate set" where none, and the calculation', async () => {
-    boot()
-    await open()
+  const openPay = async () => {
+    const ctx = await open()
     fireEvent.click(screen.getByRole('button', { name: 'Pay' }))
     await act(async () => {})
-    expect(screen.getByText('No rate set')).toBeInTheDocument()
-    expect(screen.getByText('₹5,000')).toBeInTheDocument() // already paid out: owner entries
-    const row = screen.getByText('Faizan').closest('tr') as HTMLElement
-    fireEvent.click(within(row).getByRole('button', { name: 'Show calculation' }))
-    const calc = screen.getByRole('region', { name: /Faizan, how this is worked out/ })
-    expect(within(calc).getByText(/₹18,000 ÷ 248:00 \(31 days × 8h\) = ₹72\.58/)).toBeInTheDocument()
+    return ctx
+  }
+
+  it('lists who is owed what, with "No rate set" where there is none', async () => {
+    boot()
+    await openPay()
+    const faizan = screen.getByText('Faizan', { selector: '.heading' }).closest('button') as HTMLElement
+    expect(within(faizan).getByText(/₹5,000 of ₹.* paid/)).toBeInTheDocument() // owner entries only
+    const shakib = screen.getByText('Shakib', { selector: '.heading' }).closest('button') as HTMLElement
+    expect(within(shakib).getByText('No rate set')).toBeInTheDocument()
+    expect(screen.getByText('Paid out').closest('.tc-stat')).toHaveTextContent('₹5,000')
+  })
+
+  it('builds the pay as hours worked + paid Fridays (+ overtime), times the rate, less what was paid', async () => {
+    boot()
+    await openPay()
+    const st = screen.getByRole('region', { name: /Faizan, pay for October/ })
     // 3 worked days (24:00) + 2 paid Fridays (16:00) = 40:00
-    expect(within(calc).getByText(/24:00 worked \+ 16:00 \(2 paid holidays\) = 40:00/)).toBeInTheDocument()
+    expect(within(st).getByText('Hours worked').parentElement).toHaveTextContent('24:00')
+    expect(within(st).getByText('Paid Fridays').parentElement).toHaveTextContent('+ 16:00')
+    expect(within(st).queryByText('Overtime')).toBeNull() // hidden when there is none
+    expect(within(st).getByText('Total hours').parentElement).toHaveTextContent('40:00')
+    expect(within(st).getByText(/₹18,000 a month ÷ 248:00 \(31 days × 8h\)/)).toBeInTheDocument()
+    expect(within(st).getByText('Rate').parentElement).toHaveTextContent('× ₹72.58 an hour')
+    expect(within(st).getByText('Pay for October').parentElement).toHaveTextContent('₹2,903') // 72.58.. × 40
+    expect(within(st).getByText('Already paid').parentElement).toHaveTextContent('− ₹5,000')
+  })
+
+  it('opens another person, and says so when they have no rate', async () => {
+    boot()
+    await openPay()
+    fireEvent.click(screen.getByText('Shakib', { selector: '.heading' }).closest('button') as HTMLElement)
+    const st = screen.getByRole('region', { name: /Shakib, pay for October/ })
+    expect(within(st).getByText(/No salary rate has been set for Shakib/)).toBeInTheDocument()
+    expect(within(st).getByRole('button', { name: 'Set rate' })).toBeInTheDocument()
+  })
+
+  it('says the month is not finished, and links "Open in Payments"', async () => {
+    boot()
+    await openPay()
+    expect(screen.getByText(/October is not finished\./)).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Open in Payments' }))
+    await act(async () => {})
+    expect(screen.getByRole('button', { name: 'Payments' })).toHaveAttribute('aria-pressed', 'true')
   })
 })
 

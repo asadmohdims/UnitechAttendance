@@ -364,8 +364,10 @@ Proposal boards: "Days · a Friday worked", "Days · mark a day as a paid holida
 ## Monthly reports as PDFs (2026-10-19), built from the Report boards
 
 Month's header now has one **Download** button (a popover from 900px, a bottom sheet on a phone) in place of "Download Excel", with two items:
-- **Employee statements**: A4 portrait, one page per person (calendar, days, absent, half days, hours worked, "how your hours are
-  counted", signature lines). **No money anywhere**: a test fails if a rupee sign, "salary", "payment", "balance" or "rate" appears
+- **Employee statements**: A4 portrait, one page per person: a narrow calendar, the four tiles and "how your hours are counted" on the left,
+  and the **daily log** on the right (every day: counted in/out for the morning and afternoon, the hours as "4:00 + 4:00", the day's total;
+  canvas board "Statement with daily log, A1"), then signature lines. The log shows the *counted* times only (quarter-hour rule, auto-closed
+  clock-outs counted to closing), never the kiosk's own punch times and never an owner-edit marker. **No money anywhere**: a test fails if a rupee sign, "salary", "payment", "balance" or "rate" appears
   in either document. "All in one PDF" for printing, or each person on their own (Share on a touch device, Save elsewhere).
 - **Data for a spreadsheet**: removed 2026-10-20 (owner's review). The menu has three downloads.
 - **Attendance and pay** (owner only, 2026-10-20; replaces the landscape attendance report, the shareable card version and the payroll summary table): A4 portrait, a calendar card per person, two across (date and hours per day; A, H, F, and a docked Friday in pale red with a struck F), then Worked + Fridays + Overtime = Total, with the monthly salary and hourly rate ("₹18,000 (₹75.00 an hour)")

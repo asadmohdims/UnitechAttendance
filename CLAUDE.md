@@ -48,7 +48,7 @@ provided from npm). Do not edit those shared modules for v2's sake; the live app
   after a failure or 3s, so v2 never awaits it for a first draw: `useCachedQuery` renders the last good value
   at once and refetches behind it, and photos are saved on the device (`photoCache.ts`). Every store call goes
   through `store.ts`, which makes each method return a promise (demoStore returns plain values). v1 is untouched.
-- Status (2026-10-19): every screen on the canvas is built, tested (`npm test` in `v2/`, 258 tests) and deployed: the
+- Status (2026-10-19): every screen on the canvas is built, tested (`npm test` in `v2/`, 264 tests) and deployed: the
   offline-first data layer, kiosk home and punch flow, kiosk Payments (PIN, own month, add, confirmation), phone layouts,
   the admin shell with unlock, Days (all its edit actions), Month (Attendance, Pay, the Payments ledger, PDF
   reports), People (including photo, PIN, rate, deactivate), the sign-in dialog, and the service worker. Not built: the
@@ -80,7 +80,8 @@ provided from npm). Do not edit those shared modules for v2's sake; the live app
   not for Fridays or future dates) and **Remove the holiday** (sets those rows to `false`); the one-person docking toggle is the existing "Mark unpaid / Restore as paid".
   v1's Salary screen still follows the old rule (a worked Friday gets no 8:00), so v1 and v2 disagree on pay for such a day until cutover.
 - Month's **Download** menu builds PDFs on the device (`v2/src/reports/`, pdfmake, fonts in `src/assets/pdf-fonts/`), two items: per-person **statements**
-  (A4 portrait, hours only, safe to print and pin up; `reports.test.ts` fails on a rupee sign; a "Paid holidays" line appears only when there are any) and the owner's
+  (A4 portrait, one page, hours only, safe to print and pin up; `reports.test.ts` fails on a rupee sign; a "Paid holidays" line appears only when there are any; beside the narrow
+  calendar sits a **daily log** of every day's *counted* in/out times (`countedSpans` in `reportModel.ts`, the same rounding and lunch-paid merge the month's hours use, so out minus in always adds up to the Total column; the kiosk's own punch times and owner-edit markers are deliberately not shown; a third stretch in a day goes on a second line of the Worked cell) and the owner's
   **Attendance and pay** (A4 portrait, a calendar card per person, two across: the day's hours, then Worked + Fridays + Holiday + Overtime = Total, then a pay row that
   prices each part at the person's hourly rate and ends in their salary; stamped "Owner copy · not for staff"; the last slot totals the team, names the paid holidays and holds
   the legend). **The monthly salary and the hourly rate are not printed** (owner's review, 2026-10-20; a test checks), only the rupees they produce. Calendar marks: `F` a

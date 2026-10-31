@@ -9,7 +9,7 @@ import { buildMonthModel, buildPayLines } from '../admin/month/monthModel'
 import { PDF_FONTS } from './fonts'
 import { cardsDoc } from './cardsDoc'
 import { statementsDoc } from './reportDocs'
-import { buildCardReport, buildStatement } from './reportModel'
+import { buildCardReport, buildStatement, countedSpans, fmtClock } from './reportModel'
 
 const NOW = new Date(2026, 9, 1, 9, 12)
 const YM = '2026-09'
@@ -121,7 +121,7 @@ describe('the numbers on paper are the numbers on screen', () => {
     expect(s.counted.paidHolidays).toBe(1)
     expect(s.counted.holidayHours).toBe(8)
     expect(s.counted.total).toBeCloseTo(s.counted.worked + 32 + 8 + 2, 5)
-    expect(JSON.stringify(statementsDoc([s]).content)).toContain('Paid holidays: 1 × 8:00')
+    expect(JSON.stringify(statementsDoc([s]).content)).toContain('Paid holidays, 1 × 8:00')
     expect(JSON.stringify(statementsDoc([plain]).content)).not.toContain('Paid holidays')
   })
 
@@ -252,5 +252,72 @@ describe('the PDF itself', () => {
   it('copes with a 31-day month and with no one in it', async () => {
     const m = buildMonthModel({ ym: '2026-10', employees: [], records: [], overrides: [], overtime: [], today: '2026-11-01' })
     expect(pageCount(await render(cardsDoc(buildCardReport(m, [], NOW))))).toBe(1)
+  })
+})
+
+describe('the daily log on each statement', () => {
+  const people = staff(5)
+  const model = month(people)
+  const lines = buildPayLines(model, rates(people), '2026-10-01')
+  const rec = (id: string, date: string, i: [number, number], o: [number, number] | null, extra: Partial<RecordRow> = {}): RecordRow => ({
+    id, emp_id: 'e0', date, clock_in: at(date, ...i), clock_out: o ? at(date, ...o) : null, in_photo: 'p', out_photo: o ? 'p' : null, lunch_paid: false,
+    created_at: at(date, ...i), edited_at: null, orig_clock_in: null, orig_clock_out: null, ...extra,
+  })
+
+  it('the Total column adds up to the hours counted, for everyone, with Fridays and overtime in it', () => {
+    model.people.forEach((p, i) => {
+      const s = buildStatement(model, p, lines[i], NOW)
+      expect(s.log).toHaveLength(30)
+      expect(s.log.reduce((t, r) => t + (r.total ?? 0), 0)).toBeCloseTo(s.counted.total, 5)
+    })
+  })
+
+  it('each day shows the punches as they are counted, so out minus in is the hours', () => {
+    const s = buildStatement(model, model.people[0], lines[0], NOW)
+    const day2 = s.log[1]
+    expect(day2.spans.map((x) => [fmtClock(x.inMs), fmtClock(x.outMs as number)])).toEqual([['9:00', '1:00'], ['2:00', '6:00']]) // 9:03 and 13:05 count as 9:00 and 1:00
+    expect(day2.spans.reduce((t, x) => t + x.hours, 0)).toBe(8)
+    const day4 = s.log[3] // 4 September 2026 is a Friday with no punches
+    expect(day4).toMatchObject({ weekday: 'Fri', kind: 'holiday', spans: [], total: 8 })
+    expect(s.log.find((r) => r.day === 12)).toMatchObject({ kind: 'absent', total: null }) // e0 is absent on the 12th
+    expect(s.log.find((r) => r.day === 21)).toMatchObject({ overtime: 2, total: 10 }) // overtime is counted on top of the day's 8:00
+  })
+
+  it('a paid-through lunch is one stretch, and a clock-out the kiosk made for the person is counted to closing time', () => {
+    const chained = [rec('a', '2026-09-02', [9, 0], [13, 0], { lunch_paid: true }), rec('b', '2026-09-02', [14, 0], [18, 0])]
+    expect(countedSpans(chained).map((x) => [fmtClock(x.inMs), fmtClock(x.outMs as number), x.hours])).toEqual([['9:00', '6:00', 9]])
+    const midnight = rec('c', '2026-09-03', [14, 0], null, { clock_out: new Date(2026, 8, 4, 0, 0).toISOString(), out_photo: null })
+    expect(countedSpans([midnight]).map((x) => [fmtClock(x.inMs), fmtClock(x.outMs as number)])).toEqual([['2:00', '6:00']])
+  })
+
+  it('a session still open has an in time and no out time, and no hours', () => {
+    expect(countedSpans([rec('o', '2026-09-30', [9, 2], null)])).toEqual([{ inMs: new Date(2026, 8, 30, 9, 0).getTime(), outMs: null, hours: 0 }])
+  })
+
+  it('prints the log: every day, the half day and the owner overtime in words, and nothing priced', () => {
+    const doc = JSON.stringify(statementsDoc([buildStatement(model, model.people[0], lines[0], NOW)]).content)
+    expect(doc).toContain('Your daily log')
+    expect(doc).toContain('Weekly holiday, paid')
+    expect(doc).toContain('Half day')
+    expect(doc).toContain('+ 2:00 overtime')
+    expect(doc).toContain('Absent')
+  })
+
+  it('a 31-day month with a Friday worked, overtime and a third stretch still fits on one page', async () => {
+    const people1 = staff(1)
+    const recs: RecordRow[] = []
+    for (let d = 1; d <= 31; d++) {
+      const date = `2026-10-${String(d).padStart(2, '0')}`
+      if (new Date(2026, 9, d).getDay() === 5 && d !== 9 && d !== 16) continue
+      recs.push(rec(`m${d}`, date, [9, 3], [13, 5]), rec(`n${d}`, date, [14, 2], d === 20 ? [16, 0] : [18, 1]))
+      if (d === 20) recs.push(rec(`x${d}`, date, [17, 0], [19, 0]))
+    }
+    const ot: OvertimeRow[] = [3, 10, 24].map((d) => ({ emp_id: 'e0', date: `2026-10-${String(d).padStart(2, '0')}`, hours: 1.5 }))
+    const m = buildMonthModel({ ym: '2026-10', employees: people1, records: recs, overrides: [], overtime: ot, today: '2026-11-01' })
+    const l = buildPayLines(m, rates(people1), '2026-11-01')
+    const st = buildStatement(m, m.people[0], l[0], NOW)
+    expect(st.log).toHaveLength(31)
+    expect(st.log.reduce((t, r) => t + (r.total ?? 0), 0)).toBeCloseTo(st.counted.total, 5)
+    expect(pageCount(await render(statementsDoc([st])))).toBe(1)
   })
 })

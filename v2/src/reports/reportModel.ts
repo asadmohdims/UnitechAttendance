@@ -1,4 +1,8 @@
-import type { MonthModel, PayLine, PersonMonth } from '../admin/month/monthModel'
+import { STANDARD_DAY_HOURS } from '@legacy/config.js'
+import { countedClockOut } from '@legacy/autoClosed.js'
+import { roundToQuarterHour } from '@legacy/rounding.js'
+import type { MonthDay, MonthModel, PayLine, PersonMonth } from '../admin/month/monthModel'
+import type { RecordRow } from '../data/types'
 import { fmtDateYear } from '../admin/people/peopleModel'
 import { fmtHours, initials } from '../format'
 import { SHOP_NAME } from './shop'
@@ -125,6 +129,73 @@ export function buildCardReport(model: MonthModel, lines: PayLine[], now: Date):
   }
 }
 
+/**
+ * One counted stretch of a day: both punches rounded the way pay is worked out (quarter hour, the 10-minute grace, an auto-closed
+ * clock-out counted to closing time). `outMs` is null while the session is still open.
+ */
+export interface LogSpan { inMs: number; outMs: number | null; hours: number }
+
+/** What one day of the statement's daily log says. `holiday` is a paid (or docked) standard day, with no punches or with some on top. */
+export type LogKind = 'worked' | 'half' | 'open' | 'holiday' | 'absent' | 'none'
+
+export interface LogRow {
+  day: number
+  weekday: string
+  kind: LogKind
+  spans: LogSpan[]
+  /** The owner paid through the lunch gap, so the first span runs from the morning in to the evening out. */
+  lunchPaid: boolean
+  /** The standard day this date earns on top of the punches, and what it is called; docked ones earn nothing. */
+  credit: { kind: 'friday' | 'holiday'; hours: number; docked: boolean } | null
+  overtime: number
+  /** The day's counted hours (punches + the standard day + overtime); null where there is nothing to add. */
+  total: number | null
+}
+
+const WEEKDAY = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
+
+/**
+ * The same spans the month's hours are built from: a run of sessions chained by "lunch paid" is one span from the first in to
+ * the last out (as `dayHoursFromSessions` does), then each end is rounded. So the log's times always add up to the day's hours.
+ */
+export function countedSpans(sessions: RecordRow[]): LogSpan[] {
+  const spans: LogSpan[] = []
+  let i = 0
+  while (i < sessions.length) {
+    let j = i
+    while (j + 1 < sessions.length && sessions[j].lunch_paid) j++
+    const last = sessions[j]
+    const inMs = roundToQuarterHour(sessions[i].clock_in).getTime()
+    const outMs = last.clock_out ? roundToQuarterHour(countedClockOut({ clock_in: sessions[i].clock_in, clock_out: last.clock_out, out_photo: last.out_photo })).getTime() : null
+    spans.push({ inMs, outMs, hours: outMs === null ? 0 : Math.max(0, (outMs - inMs) / 3600000) })
+    i = j + 1
+  }
+  return spans
+}
+
+function logRowOf(d: MonthDay): LogRow {
+  const credit = d.credit ? { kind: d.credit, hours: d.docked ? 0 : STANDARD_DAY_HOURS, docked: d.docked } : null
+  const hasHours = d.kind === 'worked' || d.kind === 'half'
+  // paidHours folds the overtime in; the punches' own hours are the rest.
+  const total = hasHours ? (d.paidHours ?? 0) + (credit?.hours ?? 0) : d.kind === 'holiday' && credit && !credit.docked ? credit.hours : null
+  return {
+    day: d.day,
+    weekday: WEEKDAY[new Date(`${d.date}T00:00:00`).getDay()],
+    kind: d.kind === 'holiday' || d.kind === 'worked' || d.kind === 'half' || d.kind === 'open' || d.kind === 'absent' ? d.kind : 'none',
+    spans: countedSpans(d.sessions),
+    lunchPaid: d.sessions.some((r, i) => r.lunch_paid && i < d.sessions.length - 1),
+    credit,
+    overtime: d.overtime,
+    total,
+  }
+}
+
+/** "9:15", "1:00": a 12-hour clock time with no am/pm, because the log's columns say which half of the day it is. */
+export function fmtClock(ms: number): string {
+  const d = new Date(ms)
+  return `${d.getHours() % 12 || 12}:${String(d.getMinutes()).padStart(2, '0')}`
+}
+
 export interface Statement {
   shop: string
   monthLabel: string
@@ -136,6 +207,8 @@ export interface Statement {
   /** Monday-first: blanks before the 1st, then every day. */
   leadBlanks: number
   cells: ReportCell[]
+  /** Every day of the month, in order: the daily log. */
+  log: LogRow[]
   hasOpen: boolean
   counted: { worked: number; paidFridays: number; fridayHours: number; paidHolidays: number; holidayHours: number; overtime: number; total: number }
   preparedAt: Date
@@ -154,6 +227,7 @@ export function buildStatement(model: MonthModel, person: PersonMonth, line: Pay
     tiles: { daysWorked: person.daysWorked, absent: person.daysOff, halfDays: person.halfDays, hoursWorked: workedHours(person) },
     leadBlanks: (first + 6) % 7,
     cells: cellsOf(person),
+    log: person.days.map(logRowOf),
     hasOpen: person.days.some((d) => d.kind === 'open'),
     // Exactly Month · Pay's hours lines, hours only: what the paid hours are made of.
     counted: { worked: line.punchedHours, paidFridays: line.paidFridays, fridayHours: line.creditedHours, paidHolidays: line.paidHolidays, holidayHours: line.holidayHours, overtime: line.overtime, total: line.paidHours },

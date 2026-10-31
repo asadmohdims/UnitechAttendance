@@ -44,6 +44,8 @@ const pwa = () =>
       start_url: './',
       scope: './',
       display: 'standalone',
+      // The kiosk tablet stays landscape, as v1 does.
+      orientation: 'landscape',
       background_color: '#1d3fd1',
       theme_color: '#1d3fd1',
       icons: [

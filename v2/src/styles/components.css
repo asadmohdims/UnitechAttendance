@@ -8,6 +8,12 @@
 .tc-btn--primary:hover{background:var(--brand-hover)}
 .tc-btn--secondary{background:var(--surface);color:var(--ink);border-color:var(--line-strong)}
 .tc-btn--quiet{background:transparent;color:var(--brand-ink)}
+/* The camera's shutter: green to clock in, red to clock out, so the colour says which punch this photo makes. */
+.tc-btn--in{background:var(--in);color:var(--on-brand)}
+.tc-btn--in:hover{background:var(--in-ink)}
+.tc-btn--out{background:var(--alert);color:var(--on-brand)}
+.tc-btn--out:hover{background:var(--alert-ink)}
+.tc-btn--in:hover,.tc-btn--out:hover{color:var(--surface)}
 .tc-btn--danger{background:transparent;color:var(--alert-ink);border-color:var(--alert)}
 .tc-btn--kiosk{min-height:var(--tap-kiosk);padding:0 32px;font-size:18px}
 .tc-btn:disabled{background:var(--sunken);color:var(--ink-muted);border-color:transparent;cursor:not-allowed;transform:none}

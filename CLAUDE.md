@@ -48,7 +48,7 @@ provided from npm). Do not edit those shared modules for v2's sake; the live app
   after a failure or 3s, so v2 never awaits it for a first draw: `useCachedQuery` renders the last good value
   at once and refetches behind it, and photos are saved on the device (`photoCache.ts`). Every store call goes
   through `store.ts`, which makes each method return a promise (demoStore returns plain values). v1 is untouched.
-- Status (2026-10-19): every screen on the canvas is built, tested (`npm test` in `v2/`, 264 tests) and deployed: the
+- Status (2026-10-19): every screen on the canvas is built, tested (`npm test` in `v2/`, 267 tests) and deployed: the
   offline-first data layer, kiosk home and punch flow, kiosk Payments (PIN, own month, add, confirmation), phone layouts,
   the admin shell with unlock, Days (all its edit actions), Month (Attendance, Pay, the Payments ledger, PDF
   reports), People (including photo, PIN, rate, deactivate), the sign-in dialog, and the service worker. Not built: the
@@ -63,6 +63,10 @@ provided from npm). Do not edit those shared modules for v2's sake; the live app
   someone simply clocked in today is not on it), because two rules disagreed in both directions. A flagged no-photo day offers
   **Mark as reviewed** (`v2/src/admin/review.ts`): it re-saves the same times through `updateRecordTimes`, so only the edit marker is
   written (`orig_*` = the times as confirmed, not a claim about the kiosk) and the day reads "Reviewed", not "You changed the times".
+- **Full screen** (`v2/src/ui/FullScreenToggle.tsx`): an item in the admin rail above Display, labelled "Full screen" / "Exit full screen" and outlined while on; it follows the
+  system's own exit too and is hidden where the browser lacks the API. It is in admin only, so a kiosk tap can never leave full screen. A browser starts full screen only from a tap,
+  so after a restart the owner taps it once (auto-re-entry on the first kiosk tap was offered and left out, because it would also undo a deliberate edge-swipe exit). The app stays
+  `display: standalone` with `orientation: landscape` in the manifest (as v1); the camera shutter is green to clock in and red to clock out.
 - **Dark mode** (graphite "G3 Deep"): `v2/src/theme.ts` keeps one choice per device in `tc2:theme` (default light) and sets `data-theme` on `<html>`;
   an inline script in `v2/index.html` applies it before first paint. The **Display** pop-up (`v2/src/ui/DisplayMenu.tsx`: sun / moon) sits in the
   admin rail and the phone header. The kiosk follows the same setting (set once from the tablet's admin screens). Edit colours in

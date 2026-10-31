@@ -121,7 +121,7 @@ export function CameraDialog({ name, action, onCapture, onCancel, mediaDevices, 
         </div>
         <div className="caption kiosk-camera__msg" role="status">{message}</div>
         <div className="kiosk-camera__actions">
-          <button type="button" className="tc-btn tc-btn--primary tc-btn--kiosk" disabled={shutterDisabled} onClick={takePhoto}>Take photo</button>
+          <button type="button" className={`tc-btn ${action === 'in' ? 'tc-btn--in' : action === 'out' ? 'tc-btn--out' : 'tc-btn--primary'} tc-btn--kiosk`} disabled={shutterDisabled} onClick={takePhoto}>Take photo</button>
           <button type="button" className="tc-btn tc-btn--secondary tc-btn--kiosk" onClick={onCancel}>{action === 'avatar' ? 'Skip for now' : 'Cancel'}</button>
         </div>
       </div>

@@ -77,6 +77,7 @@ describe('Kiosk · punch flow', () => {
     const video = document.querySelector('video')!
     await act(async () => { fireEvent.loadedData(video) })
     expect(shutter).toBeEnabled()
+    expect(shutter).toHaveClass('tc-btn--in') // green: this photo clocks in
 
     await act(async () => { fireEvent.click(shutter) })
     expect(clockIn).toHaveBeenCalledTimes(1)
@@ -179,6 +180,7 @@ describe('Kiosk · punch flow', () => {
     await act(async () => {})
     fireEvent.click(screen.getByRole('button', { name: /Imran/ }))
     await act(async () => { fireEvent.loadedData(document.querySelector('video')!) })
+    expect(screen.getByRole('button', { name: 'Take photo' })).toHaveClass('tc-btn--out') // red: this photo clocks out
     await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Take photo' })) })
     expect(clockOut).toHaveBeenCalledTimes(1)
     const card = screen.getByText('Clocked out').closest('.tc-confirm') as HTMLElement

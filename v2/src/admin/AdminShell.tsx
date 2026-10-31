@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react'
 import { DisplayMenu } from '../ui/DisplayMenu'
+import { FullScreenToggle } from '../ui/FullScreenToggle'
 import type { AdminTab } from './route'
 
 const ICON = { width: 24, height: 24, viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', strokeWidth: 1.8, strokeLinecap: 'round', strokeLinejoin: 'round', 'aria-hidden': true } as const
@@ -29,6 +30,7 @@ export function AdminShell({ tab, onTab, onKiosk, children }: Props) {
             <span>{i.label}</span>
           </button>
         ))}
+        <FullScreenToggle />
         <DisplayMenu variant="rail" />
         <button type="button" className="tc-nav-item tc-nav-item--exit" onClick={onKiosk}>
           {KIOSK_ICON}

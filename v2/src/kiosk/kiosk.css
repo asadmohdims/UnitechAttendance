@@ -32,7 +32,7 @@
 @keyframes kiosk-flash{0%{opacity:.85}100%{opacity:0}}
 .kiosk-camera__msg{color:var(--alert-ink);min-height:16px}
 .kiosk-camera__actions{display:flex;gap:var(--space-3)}
-.kiosk-camera__actions .tc-btn--primary{flex:1}
+.kiosk-camera__actions .tc-btn--primary,.kiosk-camera__actions .tc-btn--in,.kiosk-camera__actions .tc-btn--out{flex:1}
 
 .kiosk-confirm{position:fixed;inset:0;display:grid;place-items:center;background:rgba(8,12,22,.45);z-index:20;animation:kiosk-fade .15s ease-out}
 @keyframes kiosk-fade{from{opacity:0}to{opacity:1}}
